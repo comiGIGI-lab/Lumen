@@ -1,0 +1,13 @@
+{
+  "name": "study-liu-web-workspace",
+  "private": true,
+  "version": "1.0.0",
+  "description": "study-liu 学习智能助手 · Vue3 + Vite 前端 + Python 零依赖 API 后端",
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "server": "python server/api_server.py --port 8000",
+    "web": "npm --prefix web run dev",
+    "install:web": "npm --prefix web install",
+    "build": "npm --prefix web run build"
+  }
+}

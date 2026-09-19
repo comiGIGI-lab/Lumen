@@ -1,0 +1,53 @@
+# ============================================================
+# study-liu Web · Git 忽略规则
+# ============================================================
+
+# ---------- 依赖 ----------
+node_modules/
+.pnpm-store/
+
+# ---------- 构建产物 ----------
+dist/
+dist-*/
+build/
+*.local
+
+# ---------- Python 缓存 ----------
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ---------- ⚠️ 敏感：含 API Key 与个人使用记录，绝对不要提交 ----------
+.env
+.env.local
+.env.*.local
+settings.json
+# 运行期数据目录（历史方案 / 缓存 / 调用日志 / 用户画像）
+data/
+!**/data/.gitkeep
+
+# ---------- 日志 ----------
+*.log
+logs/
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+pytest_*.log
+
+# ---------- 编辑器 / 系统 ----------
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---------- 本项目开发期临时目录 ----------
+.preview/
+.clicktest/
