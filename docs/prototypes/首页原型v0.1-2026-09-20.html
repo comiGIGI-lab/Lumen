@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<!-- 智教星途·首页原型 v0.1，由 LearnBuddy 生成，2026-09-20 -->
+<!-- 视觉基调参考 lionheart-education.com：米白底 #FBF9F6 / 近黑 #191919 / 强调红 #E51520 / 直角卡片 + 胶囊按钮 / 区块大留白 -->
+<!-- 公共片段（三页必须同步修改）：:root 变量块 / zj-nav 导航区 / I18N 的 nav.* 键 -->
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title data-i18n="page.title">智教星途 · 多模态教学智能体</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  :root {
+    --bg: #FBF9F6;
+    --surface: #FFFFFF;
+    --band: #F8F3EC;
+    --peach: #FFE8D6;
+    --text: #191919;
+    --border: #E4DED5;
+    --primary: #191919;
+    --primary-ink: #FFFFFF;
+    --accent: #E51520;
+    --muted: #808080;
+    --chip: #F1ECE4;
+    --ok: #2E7D32;
+    --warn: #B26A00;
+    --err: #E51520;
+    --err-bg: #FDECEC;
+    --font-serif: Georgia, "Times New Roman", "Songti SC", "Noto Serif CJK SC", "Source Han Serif SC", serif;
+    --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    --shadow-btn: 0 5px 10px rgba(0,0,0,.15);
+  }
+  :root[data-theme="dark"] {
+    --bg: #141414;
+    --surface: #1C1C1C;
+    --band: #232323;
+    --peach: #2A2422;
+    --text: #F2EFEA;
+    --border: #343434;
+    --primary: #F2EFEA;
+    --primary-ink: #141414;
+    --accent: #FF5A63;
+    --muted: #9A9A9A;
+    --chip: #2A2A2A;
+    --ok: #6BBF6B;
+    --warn: #E0A63C;
+    --err: #FF6B73;
+    --err-bg: #3A2222;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: var(--font-sans);
+    background: var(--bg);
+    color: var(--text);
+  }
+  .tm { color: var(--muted); }
+  .bd { border-color: var(--border); }
+  .card { background: var(--surface); border: 1px solid var(--border); }
+  .band { background: var(--band); }
+  .wrap { max-width: 1180px; margin: 0 auto; padding-left: 40px; padding-right: 40px; }
+
+  .eyebrow {
+    font-family: var(--font-serif); font-style: italic;
+    font-size: 13px; letter-spacing: .16em; text-transform: uppercase; color: var(--accent);
+  }
+  .h-hero { font-family: var(--font-serif); font-size: 56px; line-height: 1.14; font-weight: 400; letter-spacing: -0.01em; }
+  .h-sec  { font-family: var(--font-serif); font-size: 32px; line-height: 1.3;  font-weight: 400; }
+  .h-card { font-family: var(--font-serif); font-size: 18px; font-weight: 400; }
+  .lead { font-size: 18px; line-height: 1.75; color: var(--muted); }
+  .body-15 { font-size: 15px; line-height: 1.7; }
+
+  .btn-main {
+    display: inline-flex; align-items: center; justify-content: center;
+    height: 48px; padding: 0 28px; border-radius: 1000px;
+    background: var(--primary); color: var(--primary-ink);
+    font-size: 14px; letter-spacing: .06em; box-shadow: var(--shadow-btn);
+    transition: transform .18s ease, opacity .18s ease;
+  }
+  .btn-main:hover { transform: translateY(-1px); opacity: .92; }
+  .btn-ghost {
+    display: inline-flex; align-items: center; justify-content: center;
+    height: 48px; padding: 0 28px; border-radius: 1000px;
+    border: 1px solid var(--border); color: var(--text); background: transparent;
+    font-size: 14px; letter-spacing: .06em;
+  }
+  .btn-sm {
+    display: inline-flex; align-items: center; justify-content: center;
+    height: 36px; padding: 0 16px; border-radius: 1000px;
+    border: 1px solid var(--border); font-size: 12px; letter-spacing: .08em;
+  }
+
+  .feat-card { transition: transform .18s ease, border-color .18s ease; }
+  .feat-card:hover { transform: translateY(-3px); border-color: var(--accent); }
+  .num { font-family: var(--font-serif); font-size: 13px; letter-spacing: .1em; color: var(--accent); }
+
+  nav.zj-nav a { font-size: 12px; letter-spacing: .12em; text-transform: uppercase; white-space: nowrap; }
+  nav.zj-nav a.active { color: var(--accent); font-weight: 500; }
+  nav.zj-nav a.active::after { content: ""; display: block; height: 2px; background: var(--accent); margin-top: 4px; }
+
+  .zj-footer { background: #191919; color: #FFFFFF; }
+  :root[data-theme="dark"] .zj-footer { background: #000000; color: #F2EFEA; }
+
+  .dot { width: 8px; height: 8px; border-radius: 999px; display: inline-block; }
+  .dot-ok { background: var(--ok); }
+  .dot-run { background: var(--accent); animation: pulse 1.2s infinite; }
+  .dot-queue { background: var(--muted); }
+  .dot-err { background: var(--err); }
+  .bar-fill { transition: width .35s ease; }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+  .fade-in { animation: fadeIn .4s ease both; }
+</style>
+</head>
+<body>
+
+<!-- ========== 顶部导航（公共片段，三页同步） ========== -->
+<header class="card border-b bd sticky top-0 z-20" style="border-radius:0;">
+  <div class="wrap h-16 flex items-center gap-8">
+    <div class="flex items-center gap-3 shrink-0">
+      <div class="w-9 h-9 flex items-center justify-center text-sm font-bold"
+           style="background:var(--primary); color:var(--primary-ink);">ZJ</div>
+      <div class="leading-tight">
+        <div class="font-medium" style="font-family:var(--font-serif); font-size:16px;" data-i18n="app.name">智教星途</div>
+        <div class="text-xs tm" data-i18n="app.slogan">多模态教学智能体</div>
+      </div>
+    </div>
+
+    <nav class="zj-nav flex items-center gap-7 shrink-0">
+      <a href="首页原型v0.1-2026-09-20.html" class="active" data-i18n="nav.home">首页</a>
+      <a href="知识库页原型v0.3-2026-09-20.html" class="tm" data-i18n="nav.kb">知识库</a>
+      <a href="文档导入页原型v0.1-2026-09-20.html" class="tm" data-i18n="nav.import">导入</a>
+    </nav>
+
+    <div class="flex items-center gap-3 ml-auto">
+      <button id="langToggle" class="btn-sm">EN</button>
+      <button id="themeToggle" class="btn-sm" data-i18n="theme.toggle">暗色</button>
+      <a href="知识库页原型v0.3-2026-09-20.html" class="btn-main" style="height:36px; padding:0 18px; font-size:12px;"
+         data-i18n="nav.kb">知识库</a>
+    </div>
+  </div>
+</header>
+
+<!-- ========== HERO ========== -->
+<section class="wrap py-24 grid gap-16 items-center fade-in" style="grid-template-columns: 1.35fr 1fr;">
+  <div>
+    <div class="eyebrow mb-5" data-i18n="hero.eyebrow">Your courseware, made queryable</div>
+    <h1 class="h-hero mb-6" data-i18n="app.name">智教星途</h1>
+    <p class="lead mb-10" style="max-width: 540px;" data-i18n="hero.sub">
+      把课件 PDF、课堂板书照片和录音丢进来，AI 自动 OCR、转写、分块并建立索引，
+      随后你可以像问助教一样提问，每个答案都能溯源回原文位置。
+    </p>
+    <div class="flex flex-wrap gap-4">
+      <a href="知识库页原型v0.3-2026-09-20.html" class="btn-main" data-i18n="hero.cta">进入我的知识库</a>
+      <a href="文档导入页原型v0.1-2026-09-20.html" class="btn-ghost" data-i18n="hero.cta2">导入第一份课件</a>
+    </div>
+    <div class="flex gap-12 mt-14">
+      <div>
+        <div class="h-card" style="font-size:26px;">128</div>
+        <div class="text-xs tm mt-1" data-i18n="hero.stat1">已解析文档</div>
+      </div>
+      <div>
+        <div class="h-card" style="font-size:26px;">2,431</div>
+        <div class="text-xs tm mt-1" data-i18n="hero.stat2">可检索知识分块</div>
+      </div>
+      <div>
+        <div class="h-card" style="font-size:26px;">92%</div>
+        <div class="text-xs tm mt-1" data-i18n="hero.stat3">答案命中率</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 右侧：知识库实时状态示意（演示用静态卡） -->
+  <div class="card p-8">
+    <div class="text-xs tm mb-5" style="letter-spacing:.12em; text-transform:uppercase;" data-i18n="demo.title">
+      知识库实时状态
+    </div>
+    <div class="space-y-5">
+      <div>
+        <div class="flex items-center justify-between mb-2">
+          <span class="body-15" data-i18n="demo.f1">第2章 极限与连续.pdf</span>
+          <span class="text-xs inline-flex items-center gap-2" style="color:var(--ok);">
+            <span class="dot dot-ok"></span><span data-i18n="status.ready">已入库</span>
+          </span>
+        </div>
+        <div class="text-xs tm" data-i18n="demo.f1meta">42 个分块 · 已建立向量索引</div>
+      </div>
+      <div>
+        <div class="flex items-center justify-between mb-2">
+          <span class="body-15" data-i18n="demo.f2">课堂板书_0912.jpg</span>
+          <span class="text-xs inline-flex items-center gap-2" style="color:var(--accent);">
+            <span class="dot dot-run"></span><span data-i18n="status.parsing">解析中 62%</span>
+          </span>
+        </div>
+        <div class="h-1" style="background:var(--chip);"><div class="bar-fill h-full" style="width:62%; background:var(--accent);"></div></div>
+      </div>
+      <div>
+        <div class="flex items-center justify-between mb-2">
+          <span class="body-15" data-i18n="demo.f3">手写笔记_模糊页.jpg</span>
+          <span class="text-xs inline-flex items-center gap-2" style="color:var(--err);">
+            <span class="dot dot-err"></span><span data-i18n="status.failed">解析失败</span>
+          </span>
+        </div>
+        <div class="text-xs tm" data-i18n="demo.f3meta">图片过模糊 · 可一键重试或重新上传</div>
+      </div>
+    </div>
+    <a href="文档导入页原型v0.1-2026-09-20.html" class="btn-ghost w-full mt-8" style="height:40px; font-size:12px;"
+       data-i18n="demo.more">查看全部文档</a>
+  </div>
+</section>
+
+<!-- ========== 四大能力 ========== -->
+<section class="band border-y bd">
+  <div class="wrap py-20">
+    <div class="eyebrow mb-4" data-i18n="feat.eyebrow">Core capabilities</div>
+    <h2 class="h-sec mb-3" data-i18n="feat.title">四项能力，覆盖一整个复习周期</h2>
+    <p class="lead mb-14" style="max-width: 620px;" data-i18n="feat.sub">
+      从导入课件到生成方案、从提问讲解到进度追踪，所有环节都建立在你自己的知识库之上。
+    </p>
+
+    <div class="grid gap-6" style="grid-template-columns: repeat(4, 1fr);">
+      <a href="知识库页原型v0.3-2026-09-20.html" class="feat-card card p-7 block">
+        <div class="num mb-4">01</div>
+        <div class="h-card mb-3" data-i18n="feat.f1">生成学习方案</div>
+        <p class="body-15 tm" data-i18n="feat.d1">按考研 / 期末目标与剩余天数，自动排出每天的任务清单与优先级。</p>
+      </a>
+      <a href="知识库页原型v0.3-2026-09-20.html" class="feat-card card p-7 block">
+        <div class="num mb-4">02</div>
+        <div class="h-card mb-3" data-i18n="feat.f2">知识库问答</div>
+        <p class="body-15 tm" data-i18n="feat.d2">先检索你的课件再作答，答案标注出处页码，可直接跳回原文核对。</p>
+      </a>
+      <a href="文档导入页原型v0.1-2026-09-20.html" class="feat-card card p-7 block">
+        <div class="num mb-4">03</div>
+        <div class="h-card mb-3" data-i18n="feat.f3">截图讲解</div>
+        <p class="body-15 tm" data-i18n="feat.d3">截图或拍照上传题目，OCR 识别后逐步拆解，并关联同类错题。</p>
+      </a>
+      <a href="知识库页原型v0.3-2026-09-20.html" class="feat-card card p-7 block">
+        <div class="num mb-4">04</div>
+        <div class="h-card mb-3" data-i18n="feat.f4">学习进度</div>
+        <p class="body-15 tm" data-i18n="feat.d4">按章节勾选掌握程度，自动标记薄弱环节并回推复习计划。</p>
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- ========== 工作流三步 ========== -->
+<section class="wrap py-20">
+  <h2 class="h-sec mb-14" data-i18n="flow.title">三步把课件变成可提问的知识库</h2>
+  <div class="grid gap-10" style="grid-template-columns: repeat(3, 1fr);">
+    <div class="card p-8">
+      <div class="num mb-5" style="font-size:40px; line-height:1;">01</div>
+      <div class="h-card mb-3" data-i18n="flow.s1">上传课件</div>
+      <p class="body-15 tm" data-i18n="flow.d1">支持 PDF、图片、音频，可一次拖入多份，自动识别类型。</p>
+    </div>
+    <div class="card p-8">
+      <div class="num mb-5" style="font-size:40px; line-height:1;">02</div>
+      <div class="h-card mb-3" data-i18n="flow.s2">自动解析</div>
+      <p class="body-15 tm" data-i18n="flow.d2">OCR 识别板书、转写录音、按语义分块并写入向量索引。</p>
+    </div>
+    <div class="card p-8">
+      <div class="num mb-5" style="font-size:40px; line-height:1;">03</div>
+      <div class="h-card mb-3" data-i18n="flow.s3">开始提问</div>
+      <p class="body-15 tm" data-i18n="flow.d3">答案带引用溯源，错题自动归集，进度随时间线推进。</p>
+    </div>
+  </div>
+</section>
+
+<!-- ========== 底部 CTA ========== -->
+<section class="band border-y bd">
+  <div class="wrap py-20 text-center">
+    <h2 class="h-sec mb-4" data-i18n="cta.title">先导入一份课件，两分钟看到效果</h2>
+    <p class="lead mb-10" data-i18n="cta.sub">不需要整理、不需要标注，剩下的交给多模态解析。</p>
+    <a href="文档导入页原型v0.1-2026-09-20.html" class="btn-main" data-i18n="cta.btn">立即导入课件</a>
+  </div>
+</section>
+
+<!-- ========== 页脚 ========== -->
+<footer class="zj-footer">
+  <div class="wrap py-14 grid gap-8" style="grid-template-columns: 2fr 1fr 1fr;">
+    <div>
+      <div style="font-family:var(--font-serif); font-size:20px;" data-i18n="app.name">智教星途</div>
+      <p class="text-sm mt-3" style="opacity:.7; max-width:340px;" data-i18n="footer.desc">
+        大湾区 AI Coding 创新大赛 · 方向一 AI + 教学管理助手参赛作品
+      </p>
+    </div>
+    <div>
+      <div class="text-xs mb-3" style="opacity:.6; letter-spacing:.12em;">PAGES</div>
+      <div class="text-sm space-y-2">
+        <div><a href="首页原型v0.1-2026-09-20.html" style="color:inherit;" data-i18n="nav.home">首页</a></div>
+        <div><a href="知识库页原型v0.3-2026-09-20.html" style="color:inherit;" data-i18n="nav.kb">知识库</a></div>
+        <div><a href="文档导入页原型v0.1-2026-09-20.html" style="color:inherit;" data-i18n="nav.import">导入</a></div>
+      </div>
+    </div>
+    <div>
+      <div class="text-xs mb-3" style="opacity:.6; letter-spacing:.12em;">TEAM</div>
+      <div class="text-sm space-y-2" style="opacity:.85;">
+        <div data-i18n="footer.team">智教星途团队</div>
+        <div data-i18n="footer.stack">FastAPI · Vue3 · 多模态解析</div>
+      </div>
+    </div>
+  </div>
+  <div class="wrap pb-10 text-xs" style="opacity:.55;" data-i18n="footer.rights">
+    © 2026 智教星途 · 原型演示页面
+  </div>
+</footer>
+
+<script>
+/* ============================================================
+ * i18n 字典（zh / en）
+ * ------------------------------------------------------------
+ * 未来接入真实文案：替换 I18N.zh / I18N.en 里的值即可；
+ * 页面上所有可见文案都带 data-i18n 属性，切换语言时统一替换 textContent。
+ * 语言偏好写入 localStorage['zjxt.lang']，主题写入 localStorage['zjxt.theme']，三页共享。
+ * ============================================================ */
+const I18N = {
+  zh: {
+    'page.title': '智教星途 · 多模态教学智能体',
+    'app.name': '智教星途',
+    'app.slogan': '多模态教学智能体',
+    'nav.home': '首页', 'nav.kb': '知识库', 'nav.import': '导入',
+    'theme.toggle': '暗色',
+    'hero.eyebrow': 'Your courseware, made queryable',
+    'hero.sub': '把课件 PDF、课堂板书照片和录音丢进来，AI 自动 OCR、转写、分块并建立索引，随后你可以像问助教一样提问，每个答案都能溯源回原文位置。',
+    'hero.cta': '进入我的知识库', 'hero.cta2': '导入第一份课件',
+    'hero.stat1': '已解析文档', 'hero.stat2': '可检索知识分块', 'hero.stat3': '答案命中率',
+    'demo.title': '知识库实时状态',
+    'demo.f1': '第2章 极限与连续.pdf', 'demo.f1meta': '42 个分块 · 已建立向量索引',
+    'demo.f2': '课堂板书_0912.jpg', 'demo.f3': '手写笔记_模糊页.jpg',
+    'demo.f3meta': '图片过模糊 · 可一键重试或重新上传', 'demo.more': '查看全部文档',
+    'status.ready': '已入库', 'status.parsing': '解析中 62%', 'status.failed': '解析失败',
+    'feat.eyebrow': 'Core capabilities',
+    'feat.title': '四项能力，覆盖一整个复习周期',
+    'feat.sub': '从导入课件到生成方案、从提问讲解到进度追踪，所有环节都建立在你自己的知识库之上。',
+    'feat.f1': '生成学习方案', 'feat.d1': '按考研 / 期末目标与剩余天数，自动排出每天的任务清单与优先级。',
+    'feat.f2': '知识库问答', 'feat.d2': '先检索你的课件再作答，答案标注出处页码，可直接跳回原文核对。',
+    'feat.f3': '截图讲解', 'feat.d3': '截图或拍照上传题目，OCR 识别后逐步拆解，并关联同类错题。',
+    'feat.f4': '学习进度', 'feat.d4': '按章节勾选掌握程度，自动标记薄弱环节并回推复习计划。',
+    'flow.title': '三步把课件变成可提问的知识库',
+    'flow.s1': '上传课件', 'flow.d1': '支持 PDF、图片、音频，可一次拖入多份，自动识别类型。',
+    'flow.s2': '自动解析', 'flow.d2': 'OCR 识别板书、转写录音、按语义分块并写入向量索引。',
+    'flow.s3': '开始提问', 'flow.d3': '答案带引用溯源，错题自动归集，进度随时间线推进。',
+    'cta.title': '先导入一份课件，两分钟看到效果',
+    'cta.sub': '不需要整理、不需要标注，剩下的交给多模态解析。',
+    'cta.btn': '立即导入课件',
+    'footer.desc': '大湾区 AI Coding 创新大赛 · 方向一 AI + 教学管理助手参赛作品',
+    'footer.team': '智教星途团队', 'footer.stack': 'FastAPI · Vue3 · 多模态解析',
+    'footer.rights': '© 2026 智教星途 · 原型演示页面'
+  },
+  en: {
+    'page.title': 'ZhiJiaoXingTu · Multimodal Teaching Agent',
+    'app.name': 'ZhiJiaoXingTu',
+    'app.slogan': 'Multimodal Teaching Agent',
+    'nav.home': 'Home', 'nav.kb': 'Knowledge Base', 'nav.import': 'Import',
+    'theme.toggle': 'Dark',
+    'hero.eyebrow': 'Your courseware, made queryable',
+    'hero.sub': 'Drop in your PDFs, board photos and lecture audio. They get OCR-ed, transcribed, chunked and indexed — then ask questions and get answers traceable to the source.',
+    'hero.cta': 'Open My Knowledge Base', 'hero.cta2': 'Import Your First Courseware',
+    'hero.stat1': 'Documents parsed', 'hero.stat2': 'Searchable chunks', 'hero.stat3': 'Answer hit rate',
+    'demo.title': 'Knowledge base status',
+    'demo.f1': 'Chapter 2 · Limits and Continuity.pdf', 'demo.f1meta': '42 chunks · vector index built',
+    'demo.f2': 'Board notes_0912.jpg', 'demo.f3': 'Handwritten notes_blurry.jpg',
+    'demo.f3meta': 'Image too blurry · retry or re-upload', 'demo.more': 'View all documents',
+    'status.ready': 'Ready', 'status.parsing': 'Parsing 62%', 'status.failed': 'Failed',
+    'feat.eyebrow': 'Core capabilities',
+    'feat.title': 'Four capabilities for a full revision cycle',
+    'feat.sub': 'From importing courseware to generating plans, from Q&A to progress tracking — all built on your own knowledge base.',
+    'feat.f1': 'Study Plan', 'feat.d1': 'Set a goal and deadline, get a daily task list with priorities.',
+    'feat.f2': 'Knowledge Q&A', 'feat.d2': 'Answers are grounded in your courseware, with page-level citations.',
+    'feat.f3': 'Screenshot Explain', 'feat.d3': 'Upload a problem photo — OCR, step-by-step solving, linked mistakes.',
+    'feat.f4': 'Progress', 'feat.d4': 'Tick chapters as mastered; weak spots feed back into your plan.',
+    'flow.title': 'Three steps to a queryable knowledge base',
+    'flow.s1': 'Upload', 'flow.d1': 'PDF, image and audio — drag in many at once.',
+    'flow.s2': 'Auto parse', 'flow.d2': 'OCR, transcription, semantic chunking and vector indexing.',
+    'flow.s3': 'Ask', 'flow.d3': 'Answers with citations, mistakes collected, progress tracked.',
+    'cta.title': 'Import one file and see it work in two minutes',
+    'cta.sub': 'No tidying, no labelling — leave the rest to multimodal parsing.',
+    'cta.btn': 'Import courseware now',
+    'footer.desc': 'Greater Bay Area AI Coding Innovation Contest · Track 1: AI Teaching Assistant',
+    'footer.team': 'ZhiJiaoXingTu Team', 'footer.stack': 'FastAPI · Vue3 · Multimodal parsing',
+    'footer.rights': '© 2026 ZhiJiaoXingTu · Prototype demo page'
+  }
+};
+
+const $ = (s) => document.querySelector(s);
+let lang = localStorage.getItem('zjxt.lang') || 'zh';
+
+/* 主题偏好跨页保持 */
+(function () {
+  var saved = localStorage.getItem('zjxt.theme');
+  if (saved) document.documentElement.dataset.theme = saved;
+})();
+
+function t(key) {
+  return (I18N[lang] && I18N[lang][key]) || I18N.zh[key] || key;
+}
+
+function setLang(next) {
+  lang = next;
+  localStorage.setItem('zjxt.lang', next);
+  document.documentElement.lang = next === 'en' ? 'en' : 'zh-CN';
+  document.querySelectorAll('[data-i18n]').forEach(el => { el.textContent = t(el.dataset.i18n); });
+  document.title = t('page.title');
+  $('#langToggle').textContent = next === 'zh' ? 'EN' : '中';
+}
+
+function syncThemeBtn() {
+  const dark = document.documentElement.dataset.theme === 'dark';
+  $('#themeToggle').textContent = dark ? t('theme.light') : t('theme.dark');
+}
+
+$('#langToggle').addEventListener('click', () => setLang(lang === 'zh' ? 'en' : 'zh'));
+$('#themeToggle').addEventListener('click', () => {
+  const root = document.documentElement;
+  const next = root.dataset.theme === 'light' ? 'dark' : 'light';
+  root.dataset.theme = next;
+  localStorage.setItem('zjxt.theme', next);
+  syncThemeBtn();
+});
+
+/* 未写进字典的兜底文案（避免 en 下出现空白） */
+I18N.en['theme.dark'] = 'Dark';
+I18N.en['theme.light'] = 'Light';
+I18N.zh['theme.dark'] = '暗色';
+I18N.zh['theme.light'] = '亮色';
+
+setLang(lang);
+syncThemeBtn();
+</script>
+</body>
+</html>
