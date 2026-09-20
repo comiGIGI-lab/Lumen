@@ -1,7 +1,10 @@
 <!DOCTYPE html>
-<!-- 智教星途·知识库页原型 v0.3，由 LearnBuddy 生成，2026-09-20 -->
-<!-- 相对 v0.2：① lionheart 视觉改版（米白底 #FBF9F6 / 近黑 #191919 / 强调红 #E51520 / 直角卡片 + 胶囊按钮 / 大留白）② 顶部三页导航常驻、当前页高亮 ③ i18n、暗色、三个演示态全部保留 -->
-<!-- 公共片段（三页必须同步修改）：:root 变量块 / zj-nav 导航区 / I18N 的 nav.* 键 -->
+<!-- 智教星途·知识库页原型 v0.4，由 LearnBuddy 生成，2026-09-20 -->
+<!-- 相对 v0.3：① 补齐 768px 响应式 —— 侧边栏窄屏收成顶部横向滚动条、网格落单列、导航条收成 logo + 当前页名 + 汉堡菜单、文档表横向滚动
+     ② 底部补一条精简页脚：团队邮箱占位 + 隐私说明弹层（中英两版）
+     ③ 内部链接对齐 v0.2 首页 / v0.2 导入页 -->
+<!-- 公共片段（三页必须同步修改）：:root 变量块 / zj-nav 导航区 / 汉堡菜单 / 隐私弹层 / I18N 的 nav.* 与 privacy.* 键 -->
+<!-- 文案硬规则：不带感叹号；不出现「高效」「智能」等营销词 -->
 <html lang="zh-CN" data-theme="light">
 <head>
 <meta charset="UTF-8" />
@@ -100,14 +103,83 @@
   .nav-item.active { box-shadow: inset 3px 0 0 var(--accent) !important; }
   .dot-run { background: var(--accent) !important; }
   .dot-ok { background: var(--ok); }
+
+  /* 精简页脚 */
+  .zj-minifooter { background: var(--band); border-top: 1px solid var(--border); }
+  .zj-minifooter button { background: none; border: none; cursor: pointer; color: inherit; text-decoration: underline; }
+
+  /* ============================================================
+   * 响应式：断点 768px
+   * 规则：① 侧边栏收成顶部横向滚动条 ② 网格落单列 ③ 导航条只剩 logo + 当前页名 + 汉堡
+   *      ④ 文档表横向滚动 ⑤ 演示控制台让位
+   * ============================================================ */
+  .nav-current { display: none; }
+  .zj-burger { display: none; }
+  .zj-mobile-menu { display: none; }
+  .zj-mobile-search { display: none; }
+
+  @media (max-width: 768px) {
+    /* 导航条 */
+    nav.zj-nav { display: none !important; }
+    .zj-actions { display: none !important; }
+    .zj-search { display: none !important; }
+    .zj-logo-block { width: auto !important; }
+    .nav-current {
+      display: inline; font-size: 12px; letter-spacing: .12em;
+      text-transform: uppercase; color: var(--accent); white-space: nowrap;
+    }
+    .zj-burger {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 36px; height: 36px; border-radius: 1000px;
+      border: 1px solid var(--border); font-size: 14px; background: transparent; color: var(--text);
+    }
+    .zj-mobile-menu.open { display: block; }
+    .zj-mobile-search { display: block; }
+
+    /* 主体：由左右改为上下 */
+    .zj-shell { flex-direction: column !important; }
+
+    /* 侧边栏 → 顶部横向滚动条 */
+    .zj-sidebar {
+      width: 100% !important; flex-direction: row !important; align-items: center;
+      border-right: none !important; border-bottom: 1px solid var(--border) !important;
+      overflow-x: auto; flex: 0 0 auto !important;
+    }
+    .zj-sidebar .sb-title { display: none !important; }
+    .zj-sidebar #noteList {
+      display: flex !important; flex-direction: row !important; gap: 8px;
+      overflow-x: auto; overflow-y: hidden; padding: 8px !important; flex: 1 1 auto !important;
+    }
+    .zj-sidebar #noteList .nav-item { flex: 0 0 auto; min-width: 190px; padding-top: 8px; padding-bottom: 8px; }
+    .zj-sidebar .sb-new { border-top: none !important; padding: 8px 12px !important; flex: 0 0 auto; }
+    .zj-sidebar .sb-new button { width: auto !important; white-space: nowrap; padding-left: 16px; padding-right: 16px; }
+
+    /* 网格落单列 */
+    .grid-stack-2 { grid-template-columns: 1fr !important; }
+    .grid-stack-3 { grid-template-columns: 1fr !important; }
+    #contentArea { padding: 20px !important; }
+    .space-y-6 > * + * { margin-top: 20px !important; }
+    #noteTitle { font-size: 22px; }
+
+    /* 文档表横向滚动 */
+    .zj-tablewrap { overflow-x: auto; }
+    .zj-tablewrap table { min-width: 640px; }
+
+    /* 固定定位的辅助件让位 */
+    .zj-demo-console { display: none !important; }
+    #fabImport { bottom: 64px !important; }
+    #importModal > div { width: 92vw !important; }
+  }
 </style>
 </head>
 <body class="min-h-screen">
 
+<div class="flex flex-col" style="height:100vh;">
+
 <!-- ========== 顶部 AppBar ========== -->
-<header class="surface border-b bd h-16 flex items-center px-5 gap-5 sticky top-0 z-20">
+<header class="surface border-b bd h-16 flex items-center px-5 gap-5 shrink-0">
   <!-- 左：logo + 副标题 -->
-  <div class="flex items-center gap-3 w-60 shrink-0">
+  <div class="zj-logo-block flex items-center gap-3 w-60 shrink-0">
     <div class="w-9 h-9 rounded-lg btn-p flex items-center justify-center text-sm font-bold">ZJ</div>
     <div class="leading-tight">
       <div class="font-semibold" data-i18n="app.name">智教星途</div>
@@ -115,15 +187,18 @@
     </div>
   </div>
 
+  <!-- 窄屏专用：当前页名 -->
+  <span class="nav-current" data-i18n="nav.kb">知识库</span>
+
   <!-- 中：三页导航（公共片段，三页同步） -->
   <nav class="zj-nav flex items-center gap-7 shrink-0">
-    <a href="首页原型v0.1-2026-09-20.html" class="tm" data-i18n="nav.home">首页</a>
-    <a href="知识库页原型v0.3-2026-09-20.html" class="active" data-i18n="nav.kb">知识库</a>
-    <a href="文档导入页原型v0.1-2026-09-20.html" class="tm" data-i18n="nav.import">导入</a>
+    <a href="首页原型v0.2-2026-09-20.html" class="tm" data-i18n="nav.home">首页</a>
+    <a href="知识库页原型v0.4-2026-09-20.html" class="active" data-i18n="nav.kb">知识库</a>
+    <a href="文档导入页原型v0.2-2026-09-20.html" class="tm" data-i18n="nav.import">导入</a>
   </nav>
 
-  <!-- 中：搜索框 -->
-  <div class="flex-1 max-w-xl">
+  <!-- 中：搜索框（窄屏移到下一行） -->
+  <div class="zj-search flex-1 max-w-xl">
     <div class="relative">
       <input id="searchInput" type="text"
         class="w-full h-10 pl-10 pr-3 rounded-lg border bd surface text-sm outline-none"
@@ -133,25 +208,51 @@
   </div>
 
   <!-- 右：语言切换 + 主题切换 + 导入 + 头像 -->
-  <div class="flex items-center gap-3 ml-auto">
-    <button id="langToggle" class="h-9 px-3 rounded-lg border bd text-sm font-medium" title="language">EN</button>
-    <button id="themeToggle" class="h-9 w-9 rounded-lg border bd text-sm" title="theme">🌙</button>
+  <div class="zj-actions flex items-center gap-3 ml-auto">
+    <button class="js-lang h-9 px-3 rounded-lg border bd text-sm font-medium" title="language">EN</button>
+    <button class="js-theme h-9 w-9 rounded-lg border bd text-sm" title="theme">🌙</button>
     <button id="importBtnTop" class="btn-p h-9 px-4 rounded-lg text-sm font-medium" data-i18n="action.import">
       导入文档
     </button>
     <div class="w-9 h-9 rounded-full chip flex items-center justify-center text-sm font-medium">林</div>
   </div>
+
+  <button class="zj-burger ml-auto" aria-label="menu" aria-expanded="false">☰</button>
 </header>
 
-<div class="flex" style="height: calc(100vh - 4rem);">
+<!-- ========== 窄屏汉堡菜单（公共片段，三页同步） ========== -->
+<div id="zjMobileMenu" class="zj-mobile-menu surface border-b bd">
+  <div class="px-5 py-3 flex flex-col">
+    <a href="首页原型v0.2-2026-09-20.html" class="py-3 text-sm" data-i18n="nav.home">首页</a>
+    <a href="知识库页原型v0.4-2026-09-20.html" class="py-3 text-sm" data-i18n="nav.kb">知识库</a>
+    <a href="文档导入页原型v0.2-2026-09-20.html" class="py-3 text-sm" data-i18n="nav.import">导入</a>
+    <div class="flex gap-2 pt-3 mt-1 border-t bd">
+      <button class="js-lang h-9 px-3 rounded-lg border bd text-sm">EN</button>
+      <button class="js-theme h-9 w-9 rounded-lg border bd text-sm">🌙</button>
+      <button id="importBtnMobile" class="btn-p h-9 px-4 rounded-lg text-sm" data-i18n="action.import">导入文档</button>
+    </div>
+  </div>
+</div>
 
-  <!-- ========== 左侧 240px 侧边栏 ========== -->
-  <aside class="surface border-r bd shrink-0 flex flex-col" style="width: 240px;">
-    <div class="px-4 py-3 text-xs tm uppercase tracking-wide" data-i18n="sidebar.title">
+<!-- ========== 窄屏搜索行 ========== -->
+<div class="zj-mobile-search surface border-b bd px-4 py-2">
+  <div class="relative">
+    <input id="searchInputMobile" type="text"
+      class="w-full h-9 pl-9 pr-3 rounded-lg border bd surface text-sm outline-none"
+      data-i18n-placeholder="search.placeholder" placeholder="搜索笔记标题、标签或知识点…" />
+    <span class="absolute left-3 top-1/2 -translate-y-1/2 tm text-sm">🔍</span>
+  </div>
+</div>
+
+<div class="zj-shell flex flex-1 min-h-0">
+
+  <!-- ========== 左侧 240px 侧边栏（窄屏收成顶部横向滚动条） ========== -->
+  <aside class="zj-sidebar surface border-r bd shrink-0 flex flex-col min-h-0" style="width: 240px;">
+    <div class="sb-title px-4 py-3 text-xs tm uppercase tracking-wide" data-i18n="sidebar.title">
       我的笔记
     </div>
     <div id="noteList" class="flex-1 overflow-y-auto px-2 pb-2 space-y-1"></div>
-    <div class="p-3 border-t bd">
+    <div class="sb-new p-3 border-t bd">
       <button class="w-full h-10 rounded-lg border bd text-sm font-medium" data-i18n="sidebar.new">
         + 新建笔记
       </button>
@@ -176,7 +277,7 @@
         <div class="text-5xl mb-4">📚</div>
         <div class="text-lg font-semibold mb-2" data-i18n="empty.title">知识库还是空的</div>
         <div class="text-sm tm mb-8" data-i18n="empty.desc">上传第一份课件，AI 会自动解析、分块并建立可提问的知识库</div>
-        <div class="grid grid-cols-3 gap-4 w-full mb-8 text-left">
+        <div class="grid grid-cols-3 gap-4 w-full mb-8 text-left grid-stack-3">
           <div class="border bd rounded-lg p-4">
             <div class="text-xl mb-2">⬆️</div>
             <div class="text-sm font-medium mb-1" data-i18n="empty.step1">上传课件</div>
@@ -211,7 +312,7 @@
       <!-- 笔记详情：元信息 -->
       <section class="surface border bd rounded-xl p-5">
         <div class="text-sm font-semibold mb-3" data-i18n="detail.meta">元信息</div>
-        <dl class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+        <dl class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm grid-stack-2">
           <div>
             <dt class="tm text-xs" data-i18n="detail.createdAt">创建时间</dt>
             <dd id="metaCreated" class="mt-1">—</dd>
@@ -237,18 +338,20 @@
           <span class="text-sm font-semibold" data-i18n="doclist.title">关联文档</span>
           <span class="ml-2 text-xs tm" data-i18n="doclist.hint">状态决定是否可提问</span>
         </div>
-        <table class="w-full text-sm">
-          <thead class="text-xs tm">
-            <tr class="border-b bd">
-              <th class="text-left font-medium px-5 py-2" data-i18n="doclist.colName">文档名</th>
-              <th class="text-left font-medium px-5 py-2" data-i18n="doclist.colType">类型</th>
-              <th class="text-left font-medium px-5 py-2" data-i18n="doclist.colStatus">状态</th>
-              <th class="text-left font-medium px-5 py-2" data-i18n="doclist.colChunks">分块数</th>
-              <th class="text-left font-medium px-5 py-2" data-i18n="doclist.colAction">操作</th>
-            </tr>
-          </thead>
-          <tbody id="docTableBody"></tbody>
-        </table>
+        <div class="zj-tablewrap">
+          <table class="w-full text-sm">
+            <thead class="text-xs tm">
+              <tr class="border-b bd">
+                <th class="text-left font-medium px-5 py-2" data-i18n="doclist.colName">文档名</th>
+                <th class="text-left font-medium px-5 py-2" data-i18n="doclist.colType">类型</th>
+                <th class="text-left font-medium px-5 py-2" data-i18n="doclist.colStatus">状态</th>
+                <th class="text-left font-medium px-5 py-2" data-i18n="doclist.colChunks">分块数</th>
+                <th class="text-left font-medium px-5 py-2" data-i18n="doclist.colAction">操作</th>
+              </tr>
+            </thead>
+            <tbody id="docTableBody"></tbody>
+          </table>
+        </div>
       </section>
 
       <!-- 分块预览（抄 Dify） -->
@@ -274,13 +377,24 @@
   </main>
 </div>
 
+<!-- ========== 精简页脚：联系方式 + 隐私说明 ========== -->
+<footer class="zj-minifooter shrink-0">
+  <div class="px-5 py-3 flex items-center gap-4 text-xs tm flex-wrap">
+    <span>team@zhijiaoxingtu.example</span>
+    <button class="js-privacy-open" data-i18n="footer.privacy">隐私说明</button>
+    <span class="ml-auto" data-i18n="footer.rights">© 2026 智教星途 · 原型演示页面</span>
+  </div>
+</footer>
+
+</div>
+
 <!-- ========== 右下角悬浮导入按钮 ========== -->
 <button id="fabImport"
   class="btn-p fixed bottom-6 right-6 h-12 w-12 rounded-full shadow-lg flex items-center justify-center text-xl"
   title="import">＋</button>
 
-<!-- ========== 演示控制台（答辩用，可删） ========== -->
-<div class="fixed bottom-6 left-6 surface border border-dashed bd rounded-xl p-3 w-56 text-xs">
+<!-- ========== 演示控制台（答辩用，可删；窄屏隐藏） ========== -->
+<div class="zj-demo-console fixed bottom-6 left-6 surface border border-dashed bd rounded-xl p-3 w-56 text-xs">
   <div class="font-semibold mb-2 tm" data-i18n="demo.title">演示控制台</div>
   <div class="space-y-2">
     <button id="demoEmptyBtn" class="w-full h-8 rounded-lg border bd text-left px-3" data-i18n="demo.empty">切换空知识库</button>
@@ -318,6 +432,24 @@
     <div class="mt-5 flex justify-end gap-3">
       <button id="modalCancel" class="h-9 px-4 rounded-lg border bd text-sm" data-i18n="modal.cancel">取消</button>
       <button id="modalConfirm" class="btn-p h-9 px-4 rounded-lg text-sm font-medium" data-i18n="modal.confirm">开始解析</button>
+    </div>
+  </div>
+</div>
+
+<!-- ========== 隐私说明弹层（公共片段，三页同步） ========== -->
+<div id="privacyModal" class="fixed inset-0 z-40 hidden items-center justify-center" style="background: rgba(0,0,0,.45);">
+  <div class="card surface p-7 border bd" style="width:520px; max-width:92vw;">
+    <div class="flex items-center justify-between mb-4">
+      <div class="text-lg font-semibold" data-i18n="privacy.title">隐私说明</div>
+      <button class="js-privacy-close tm text-lg" style="background:none;border:none;cursor:pointer;">✕</button>
+    </div>
+    <div class="text-sm tm space-y-3" style="line-height:1.7;">
+      <p data-i18n="privacy.p1">本页面为参赛原型演示，不收集任何个人信息。</p>
+      <p data-i18n="privacy.p2">演示所用的笔记、文档与学习记录均保存在你本机浏览器中，不会上传到服务器。</p>
+      <p data-i18n="privacy.p3">页面上的解析状态、分块数量与统计数字均为演示用示例数据。</p>
+    </div>
+    <div class="mt-6 flex justify-end">
+      <button class="js-privacy-close h-9 px-4 rounded-lg border bd text-sm" data-i18n="privacy.ok">知道了</button>
     </div>
   </div>
 </div>
@@ -378,6 +510,12 @@ const I18N = {
     'empty.cta': '导入第一份文档', 'empty.loadDemo': '载入示例笔记',
     'demo.title': '演示控制台', 'demo.empty': '切换空知识库',
     'demo.injectFail': '注入解析失败', 'demo.reset': '重置演示数据',
+    'footer.privacy': '隐私说明', 'footer.rights': '© 2026 智教星途 · 原型演示页面',
+    'privacy.title': '隐私说明',
+    'privacy.p1': '本页面为参赛原型演示，不收集任何个人信息。',
+    'privacy.p2': '演示所用的笔记、文档与学习记录均保存在你本机浏览器中，不会上传到服务器。',
+    'privacy.p3': '页面上的解析状态、分块数量与统计数字均为演示用示例数据。',
+    'privacy.ok': '知道了',
     'note.n1': '高等数学 · 极限与连续', 'note.n2': '考研英语 · 长难句拆解 01',
     'note.n3': '线性代数 · 矩阵秩的判定', 'note.n4': '错题本 · 不定积分常错点',
     'note.n5': '数据结构 · 红黑树笔记', 'note.n6': '机器学习 · 损失函数汇总',
@@ -439,6 +577,12 @@ const I18N = {
     'empty.cta': 'Import Your First Document', 'empty.loadDemo': 'Load Sample Notes',
     'demo.title': 'Demo Console', 'demo.empty': 'Toggle Empty State',
     'demo.injectFail': 'Inject Parse Failure', 'demo.reset': 'Reset Demo Data',
+    'footer.privacy': 'Privacy', 'footer.rights': '© 2026 ZhiJiaoXingTu · Prototype demo page',
+    'privacy.title': 'Privacy',
+    'privacy.p1': 'This is a contest prototype. No personal information is collected.',
+    'privacy.p2': 'Notes, documents and study records used in the demo stay in your own browser and are never uploaded to a server.',
+    'privacy.p3': 'Parsing states, chunk counts and statistics on this page are sample data for demonstration.',
+    'privacy.ok': 'Got it',
     'note.n1': 'Advanced Math · Limits and Continuity', 'note.n2': 'Postgrad English · Long Sentences 01',
     'note.n3': 'Linear Algebra · Rank of a Matrix', 'note.n4': 'Mistake Log · Indefinite Integrals',
     'note.n5': 'Data Structures · Red-Black Trees', 'note.n6': 'Machine Learning · Loss Functions',
@@ -516,16 +660,11 @@ let demoEmpty = false;
 let uploadTimer = null;
 
 const $ = (s) => document.querySelector(s);
+const $$ = (s) => Array.prototype.slice.call(document.querySelectorAll(s));
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
 /* ============================================================
  * 3. i18n 运行时
- * ------------------------------------------------------------
- * key 说明：静态文本写在元素的 data-i18n 上；
- * 输入框占位文本用 data-i18n-placeholder；
- * 动态渲染的内容在 t() 里取值后塞进 DOM，同样保留 data-i18n 属性。
- * 切换流程：setLang() → 替换静态文案 → 触发 renderSidebar/renderDetail 重渲染动态部分。
- * 语言偏好写入 localStorage['zjxt.lang']，刷新后保持。
  * ============================================================ */
 function t(key, vars) {
   let s = (I18N[lang] && I18N[lang][key]) || I18N.zh[key] || key;
@@ -537,11 +676,12 @@ function setLang(next) {
   lang = next;
   localStorage.setItem('zjxt.lang', next);
   document.documentElement.lang = next === 'en' ? 'en' : 'zh-CN';
-  document.querySelectorAll('[data-i18n]').forEach(el => { el.textContent = t(el.dataset.i18n); });
-  document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+  $$('[data-i18n]').forEach(el => { el.textContent = t(el.dataset.i18n); });
+  $$('[data-i18n-placeholder]').forEach(el => {
     el.setAttribute('placeholder', t(el.dataset.i18nPlaceholder));
   });
-  $('#langToggle').textContent = next === 'zh' ? 'EN' : '中';
+  $$('.js-lang').forEach(el => { el.textContent = next === 'zh' ? 'EN' : '中'; });
+  document.title = t('page.title');
   renderSidebar();
   renderDetail();
 }
@@ -729,17 +869,41 @@ function setEmptyMode(flag) {
 /* ============================================================
  * 9. 事件绑定
  * ============================================================ */
-$('#langToggle').addEventListener('click', () => setLang(lang === 'zh' ? 'en' : 'zh'));
+$$('.js-lang').forEach(btn => btn.addEventListener('click', () => setLang(lang === 'zh' ? 'en' : 'zh')));
 
-$('#themeToggle').addEventListener('click', () => {
+$$('.js-theme').forEach(btn => btn.addEventListener('click', () => {
   const root = document.documentElement;
   const next = root.dataset.theme === 'light' ? 'dark' : 'light';
   root.dataset.theme = next;
   localStorage.setItem('zjxt.theme', next);
-  $('#themeToggle').textContent = next === 'dark' ? '☀️' : '🌙';
-});
+  $$('.js-theme').forEach(b => { b.textContent = next === 'dark' ? '☀️' : '🌙'; });
+}));
 
-$('#searchInput').addEventListener('input', (e) => { keyword = e.target.value.trim(); renderSidebar(); });
+/* 汉堡菜单 */
+const burger = $('.zj-burger');
+const mobileMenu = $('#zjMobileMenu');
+burger.addEventListener('click', () => {
+  const open = mobileMenu.classList.toggle('open');
+  burger.setAttribute('aria-expanded', open ? 'true' : 'false');
+  burger.textContent = open ? '✕' : '☰';
+});
+mobileMenu.querySelectorAll('a').forEach(a => a.addEventListener('click', () => {
+  mobileMenu.classList.remove('open');
+  burger.setAttribute('aria-expanded', 'false');
+  burger.textContent = '☰';
+}));
+
+/* 搜索：桌面框与窄屏框双向同步 */
+function bindSearch(el) {
+  el.addEventListener('input', (e) => {
+    keyword = e.target.value.trim();
+    const other = el.id === 'searchInput' ? $('#searchInputMobile') : $('#searchInput');
+    if (other && other.value !== e.target.value) other.value = e.target.value;
+    renderSidebar();
+  });
+}
+bindSearch($('#searchInput'));
+bindSearch($('#searchInputMobile'));
 
 document.querySelectorAll('.filter-chip').forEach(btn => {
   btn.addEventListener('click', () => {
@@ -751,6 +915,10 @@ document.querySelectorAll('.filter-chip').forEach(btn => {
 });
 
 $('#importBtnTop').addEventListener('click', openModal);
+$('#importBtnMobile').addEventListener('click', () => {
+  mobileMenu.classList.remove('open'); burger.textContent = '☰';
+  openModal();
+});
 $('#fabImport').addEventListener('click', openModal);
 $('#emptyImport').addEventListener('click', openModal);
 $('#modalClose').addEventListener('click', closeModal);
@@ -767,7 +935,7 @@ $('#demoResetBtn').addEventListener('click', () => {
   document.querySelectorAll('.filter-chip').forEach((b, i) => {
     b.classList.toggle('chip-active', i === 0); b.classList.toggle('chip', i !== 0);
   });
-  $('#searchInput').value = ''; keyword = '';
+  $('#searchInput').value = ''; $('#searchInputMobile').value = ''; keyword = '';
   currentNoteId = 'n1';
   renderSidebar(); renderDetail();
 });
@@ -783,13 +951,26 @@ $('#saveRemark').addEventListener('click', () => {
   setTimeout(() => hint.classList.add('opacity-0'), 1600);
 });
 
+/* 隐私说明弹层 */
+function openPrivacy() {
+  const m = $('#privacyModal');
+  m.classList.remove('hidden'); m.classList.add('flex');
+}
+function closePrivacy() {
+  const m = $('#privacyModal');
+  m.classList.add('hidden'); m.classList.remove('flex');
+}
+$$('.js-privacy-open').forEach(b => b.addEventListener('click', openPrivacy));
+$$('.js-privacy-close').forEach(b => b.addEventListener('click', closePrivacy));
+$('#privacyModal').addEventListener('click', (e) => { if (e.target === $('#privacyModal')) closePrivacy(); });
+
 /* ============================================================
  * 10. 初始化
  * ============================================================ */
 setLang(lang);
 (function () {
   var cur = document.documentElement.dataset.theme;
-  $('#themeToggle').textContent = cur === 'dark' ? '☀️' : '🌙';
+  $$('.js-theme').forEach(b => { b.textContent = cur === 'dark' ? '☀️' : '🌙'; });
 })();
 </script>
 </body>

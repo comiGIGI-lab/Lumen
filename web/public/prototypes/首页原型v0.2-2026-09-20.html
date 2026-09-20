@@ -1,0 +1,761 @@
+<!DOCTYPE html>
+<!-- 智教星途·首页原型 v0.2，由 LearnBuddy 生成，2026-09-20 -->
+<!-- 相对 v0.1：① 功能卡 4→3，对齐赛题原文（图文素材智能解析 / 知识点结构化抽取 / 交互式答疑辅导），原「学习进度」降到 CTA 区当辅助信息
+     ② 页脚补团队邮箱占位 + 隐私说明弹层（中英两版）
+     ③ 补齐 768px 响应式：网格落单列、hero 大标题降两档、导航条窄屏收成 logo + 当前页名 + 汉堡菜单
+     ④ 补首访三步引导（目标日期用预设，不加第四步；第三步下方小字显示预设目标日，可点开改） -->
+<!-- 公共片段（三页必须同步修改）：:root 变量块 / zj-nav 导航区 / 汉堡菜单 / 页脚 CONTACT 列 / 隐私弹层 / I18N 的 nav.* 与 privacy.* 键 -->
+<!-- 文案硬规则：不带感叹号；不出现「高效」「智能」等营销词 -->
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title data-i18n="page.title">智教星途 · 多模态教学智能体</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  :root {
+    --bg: #FBF9F6;
+    --surface: #FFFFFF;
+    --band: #F8F3EC;
+    --peach: #FFE8D6;
+    --text: #191919;
+    --border: #E4DED5;
+    --primary: #191919;
+    --primary-ink: #FFFFFF;
+    --accent: #E51520;
+    --muted: #808080;
+    --chip: #F1ECE4;
+    --ok: #2E7D32;
+    --warn: #B26A00;
+    --err: #E51520;
+    --err-bg: #FDECEC;
+    --font-serif: Georgia, "Times New Roman", "Songti SC", "Noto Serif CJK SC", "Source Han Serif SC", serif;
+    --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    --shadow-btn: 0 5px 10px rgba(0,0,0,.15);
+  }
+  :root[data-theme="dark"] {
+    --bg: #141414;
+    --surface: #1C1C1C;
+    --band: #232323;
+    --peach: #2A2422;
+    --text: #F2EFEA;
+    --border: #343434;
+    --primary: #F2EFEA;
+    --primary-ink: #141414;
+    --accent: #FF5A63;
+    --muted: #9A9A9A;
+    --chip: #2A2A2A;
+    --ok: #6BBF6B;
+    --warn: #E0A63C;
+    --err: #FF6B73;
+    --err-bg: #3A2222;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: var(--font-sans);
+    background: var(--bg);
+    color: var(--text);
+  }
+  .tm { color: var(--muted); }
+  .bd { border-color: var(--border); }
+  .card { background: var(--surface); border: 1px solid var(--border); }
+  .band { background: var(--band); }
+  .wrap { max-width: 1180px; margin: 0 auto; padding-left: 40px; padding-right: 40px; }
+
+  .eyebrow {
+    font-family: var(--font-serif); font-style: italic;
+    font-size: 13px; letter-spacing: .16em; text-transform: uppercase; color: var(--accent);
+  }
+  .h-hero { font-family: var(--font-serif); font-size: 56px; line-height: 1.14; font-weight: 400; letter-spacing: -0.01em; }
+  .h-sec  { font-family: var(--font-serif); font-size: 32px; line-height: 1.3;  font-weight: 400; }
+  .h-card { font-family: var(--font-serif); font-size: 18px; font-weight: 400; }
+  .lead { font-size: 18px; line-height: 1.75; color: var(--muted); }
+  .body-15 { font-size: 15px; line-height: 1.7; }
+
+  .btn-main {
+    display: inline-flex; align-items: center; justify-content: center;
+    height: 48px; padding: 0 28px; border-radius: 1000px;
+    background: var(--primary); color: var(--primary-ink);
+    font-size: 14px; letter-spacing: .06em; box-shadow: var(--shadow-btn);
+    transition: transform .18s ease, opacity .18s ease;
+  }
+  .btn-main:hover { transform: translateY(-1px); opacity: .92; }
+  .btn-ghost {
+    display: inline-flex; align-items: center; justify-content: center;
+    height: 48px; padding: 0 28px; border-radius: 1000px;
+    border: 1px solid var(--border); color: var(--text); background: transparent;
+    font-size: 14px; letter-spacing: .06em;
+  }
+  .btn-sm {
+    display: inline-flex; align-items: center; justify-content: center;
+    height: 36px; padding: 0 16px; border-radius: 1000px;
+    border: 1px solid var(--border); font-size: 12px; letter-spacing: .08em;
+  }
+
+  .feat-card { transition: transform .18s ease, border-color .18s ease; }
+  .feat-card:hover { transform: translateY(-3px); border-color: var(--accent); }
+  .num { font-family: var(--font-serif); font-size: 13px; letter-spacing: .1em; color: var(--accent); }
+
+  nav.zj-nav a { font-size: 12px; letter-spacing: .12em; text-transform: uppercase; white-space: nowrap; }
+  nav.zj-nav a.active { color: var(--accent); font-weight: 500; }
+  nav.zj-nav a.active::after { content: ""; display: block; height: 2px; background: var(--accent); margin-top: 4px; }
+
+  .zj-footer { background: #191919; color: #FFFFFF; }
+  :root[data-theme="dark"] .zj-footer { background: #000000; color: #F2EFEA; }
+  .zj-footer a { text-decoration: none; }
+  .zj-footer a:hover { text-decoration: underline; }
+
+  .dot { width: 8px; height: 8px; border-radius: 999px; display: inline-block; }
+  .dot-ok { background: var(--ok); }
+  .dot-run { background: var(--accent); animation: pulse 1.2s infinite; }
+  .dot-queue { background: var(--muted); }
+  .dot-err { background: var(--err); }
+  .bar-fill { transition: width .35s ease; }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+  .fade-in { animation: fadeIn .4s ease both; }
+
+  /* ===== 首访三步引导 ===== */
+  .ob-opt {
+    border: 1px solid var(--border); border-radius: 1000px;
+    padding: 10px 20px; font-size: 13px; cursor: pointer; background: transparent; color: var(--text);
+    transition: border-color .18s ease, color .18s ease;
+  }
+  .ob-opt:hover { border-color: var(--accent); }
+  .ob-opt.on { border-color: var(--accent); color: var(--accent); }
+  .ob-step { display: none; }
+  .ob-step.on { display: block; }
+  #obDeadlineEdit { display: none; }
+  #obDeadlineEdit.on { display: inline-flex; }
+
+  /* ============================================================
+   * 响应式：断点 768px
+   * 规则：① .grid-stack 网格全部落单列 ② hero 大标题 56 → 40（降两档）
+   *      ③ 导航条只剩 logo + 当前页名 + 汉堡，其余进汉堡菜单
+   * ============================================================ */
+  .nav-current { display: none; }
+  .zj-burger { display: none; }
+  .zj-mobile-menu { display: none; }
+
+  @media (max-width: 768px) {
+    .wrap { padding-left: 20px; padding-right: 20px; }
+    .h-hero { font-size: 40px; }
+    .h-sec { font-size: 26px; }
+    .lead { font-size: 16px; }
+    .grid-stack { grid-template-columns: 1fr !important; }
+
+    /* hero / 区块留白收窄 */
+    .py-24 { padding-top: 48px !important; padding-bottom: 48px !important; }
+    .py-20 { padding-top: 40px !important; padding-bottom: 40px !important; }
+    .gap-16 { gap: 32px !important; }
+    .gap-12 { gap: 24px !important; }
+
+    /* 导航条 */
+    nav.zj-nav { display: none !important; }
+    .zj-actions { display: none !important; }
+    .nav-current {
+      display: inline; font-size: 12px; letter-spacing: .12em;
+      text-transform: uppercase; color: var(--accent); white-space: nowrap;
+    }
+    .zj-burger {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 36px; height: 36px; border-radius: 1000px;
+      border: 1px solid var(--border); font-size: 14px; background: transparent; color: var(--text);
+    }
+    .zj-mobile-menu.open { display: block; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ========== 顶部导航（公共片段，三页同步） ========== -->
+<header class="card border-b bd sticky top-0 z-20" style="border-radius:0;">
+  <div class="wrap h-16 flex items-center gap-8">
+    <div class="flex items-center gap-3 shrink-0">
+      <div class="w-9 h-9 flex items-center justify-center text-sm font-bold"
+           style="background:var(--primary); color:var(--primary-ink);">ZJ</div>
+      <div class="leading-tight">
+        <div class="font-medium" style="font-family:var(--font-serif); font-size:16px;" data-i18n="app.name">智教星途</div>
+        <div class="text-xs tm" data-i18n="app.slogan">多模态教学智能体</div>
+      </div>
+    </div>
+
+    <!-- 窄屏专用：当前页名 -->
+    <span class="nav-current" data-i18n="nav.home">首页</span>
+
+    <nav class="zj-nav flex items-center gap-7 shrink-0">
+      <a href="首页原型v0.2-2026-09-20.html" class="active" data-i18n="nav.home">首页</a>
+      <a href="知识库页原型v0.4-2026-09-20.html" class="tm" data-i18n="nav.kb">知识库</a>
+      <a href="文档导入页原型v0.2-2026-09-20.html" class="tm" data-i18n="nav.import">导入</a>
+    </nav>
+
+    <div class="zj-actions flex items-center gap-3 ml-auto">
+      <button class="js-lang btn-sm">EN</button>
+      <button class="js-theme btn-sm" data-i18n="theme.toggle">暗色</button>
+      <a href="知识库页原型v0.4-2026-09-20.html" class="btn-main" style="height:36px; padding:0 18px; font-size:12px;"
+         data-i18n="nav.kb">知识库</a>
+    </div>
+
+    <button class="zj-burger ml-auto" data-i18n-aria="nav.menu" aria-label="menu" aria-expanded="false">☰</button>
+  </div>
+</header>
+
+<!-- ========== 窄屏汉堡菜单（公共片段，三页同步） ========== -->
+<div id="zjMobileMenu" class="zj-mobile-menu card border-b bd">
+  <div class="wrap py-3 flex flex-col">
+    <a href="首页原型v0.2-2026-09-20.html" class="py-3 text-sm" data-i18n="nav.home">首页</a>
+    <a href="知识库页原型v0.4-2026-09-20.html" class="py-3 text-sm" data-i18n="nav.kb">知识库</a>
+    <a href="文档导入页原型v0.2-2026-09-20.html" class="py-3 text-sm" data-i18n="nav.import">导入</a>
+    <div class="flex gap-2 pt-3 mt-1 border-t bd">
+      <button class="js-lang btn-sm">EN</button>
+      <button class="js-theme btn-sm" data-i18n="theme.toggle">暗色</button>
+    </div>
+  </div>
+</div>
+
+<!-- ========== HERO ========== -->
+<section class="wrap py-24 grid gap-16 items-center fade-in grid-stack" style="grid-template-columns: 1.35fr 1fr;">
+  <div>
+    <div class="eyebrow mb-5" data-i18n="hero.eyebrow">Your courseware, made queryable</div>
+
+    <!-- 首访引导完成后回显；未完成时隐藏 -->
+    <div id="planEcho" class="hidden mb-5">
+      <span class="text-xs tm" id="planEchoText"></span>
+    </div>
+
+    <h1 class="h-hero mb-6" data-i18n="app.name">智教星途</h1>
+    <p class="lead mb-10" style="max-width: 540px;" data-i18n="hero.sub">
+      把课件 PDF、课堂板书照片和录音丢进来，AI 自动 OCR、转写、分块并建立索引，
+      随后你可以像问助教一样提问，每个答案都能溯源回原文位置。
+    </p>
+    <div class="flex flex-wrap gap-4">
+      <a href="知识库页原型v0.4-2026-09-20.html" class="btn-main" data-i18n="hero.cta">进入我的知识库</a>
+      <a href="文档导入页原型v0.2-2026-09-20.html" class="btn-ghost" data-i18n="hero.cta2">导入第一份课件</a>
+    </div>
+    <div class="flex gap-12 mt-14">
+      <div>
+        <div class="h-card" style="font-size:26px;">128</div>
+        <div class="text-xs tm mt-1" data-i18n="hero.stat1">已解析文档</div>
+      </div>
+      <div>
+        <div class="h-card" style="font-size:26px;">2,431</div>
+        <div class="text-xs tm mt-1" data-i18n="hero.stat2">可检索知识分块</div>
+      </div>
+      <div>
+        <div class="h-card" style="font-size:26px;">92%</div>
+        <div class="text-xs tm mt-1" data-i18n="hero.stat3">答案命中率</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 右侧：知识库实时状态示意（演示用静态卡） -->
+  <div class="card p-8">
+    <div class="text-xs tm mb-5" style="letter-spacing:.12em; text-transform:uppercase;" data-i18n="demo.title">
+      知识库实时状态
+    </div>
+    <div class="space-y-5">
+      <div>
+        <div class="flex items-center justify-between mb-2">
+          <span class="body-15" data-i18n="demo.f1">第2章 极限与连续.pdf</span>
+          <span class="text-xs inline-flex items-center gap-2" style="color:var(--ok);">
+            <span class="dot dot-ok"></span><span data-i18n="status.ready">已入库</span>
+          </span>
+        </div>
+        <div class="text-xs tm" data-i18n="demo.f1meta">42 个分块 · 已建立向量索引</div>
+      </div>
+      <div>
+        <div class="flex items-center justify-between mb-2">
+          <span class="body-15" data-i18n="demo.f2">课堂板书_0912.jpg</span>
+          <span class="text-xs inline-flex items-center gap-2" style="color:var(--accent);">
+            <span class="dot dot-run"></span><span data-i18n="status.parsing">解析中 62%</span>
+          </span>
+        </div>
+        <div class="h-1" style="background:var(--chip);"><div class="bar-fill h-full" style="width:62%; background:var(--accent);"></div></div>
+      </div>
+      <div>
+        <div class="flex items-center justify-between mb-2">
+          <span class="body-15" data-i18n="demo.f3">手写笔记_模糊页.jpg</span>
+          <span class="text-xs inline-flex items-center gap-2" style="color:var(--err);">
+            <span class="dot dot-err"></span><span data-i18n="status.failed">解析失败</span>
+          </span>
+        </div>
+        <div class="text-xs tm" data-i18n="demo.f3meta">图片过模糊 · 可一键重试或重新上传</div>
+      </div>
+    </div>
+    <a href="文档导入页原型v0.2-2026-09-20.html" class="btn-ghost w-full mt-8" style="height:40px; font-size:12px;"
+       data-i18n="demo.more">查看全部文档</a>
+  </div>
+</section>
+
+<!-- ========== 三项能力（对齐赛题原文） ========== -->
+<section class="band border-y bd">
+  <div class="wrap py-20">
+    <div class="eyebrow mb-4" data-i18n="feat.eyebrow">Core capabilities</div>
+    <h2 class="h-sec mb-3" data-i18n="feat.title">三项能力，覆盖一整个复习周期</h2>
+    <p class="lead mb-14" style="max-width: 620px;" data-i18n="feat.sub">
+      从解析课件到抽取知识点、从提问讲解到回到原文核对，所有环节都建立在你自己的知识库之上。
+    </p>
+
+    <div class="grid gap-6 grid-stack" style="grid-template-columns: repeat(3, 1fr);">
+      <a href="文档导入页原型v0.2-2026-09-20.html" class="feat-card card p-7 block">
+        <div class="num mb-4">01</div>
+        <div class="h-card mb-3" data-i18n="feat.f1">图文素材智能解析</div>
+        <p class="body-15 tm" data-i18n="feat.d1">课件 PDF、板书照片与课堂录音一次导入，自动 OCR、转写与分块，建立可检索的索引。</p>
+      </a>
+      <a href="知识库页原型v0.4-2026-09-20.html" class="feat-card card p-7 block">
+        <div class="num mb-4">02</div>
+        <div class="h-card mb-3" data-i18n="feat.f2">知识点结构化抽取</div>
+        <p class="body-15 tm" data-i18n="feat.d2">从解析结果里抽出知识点，归成笔记与知识图谱，标注薄弱点并按章节回推复习。</p>
+      </a>
+      <a href="知识库页原型v0.4-2026-09-20.html" class="feat-card card p-7 block">
+        <div class="num mb-4">03</div>
+        <div class="h-card mb-3" data-i18n="feat.f3">交互式答疑辅导</div>
+        <p class="body-15 tm" data-i18n="feat.d3">先检索你的课件再作答，答案标注出处页码，可继续追问，也可回到原文逐句核对。</p>
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- ========== 工作流三步 ========== -->
+<section class="wrap py-20">
+  <h2 class="h-sec mb-14" data-i18n="flow.title">三步把课件变成可提问的知识库</h2>
+  <div class="grid gap-10 grid-stack" style="grid-template-columns: repeat(3, 1fr);">
+    <div class="card p-8">
+      <div class="num mb-5" style="font-size:40px; line-height:1;">01</div>
+      <div class="h-card mb-3" data-i18n="flow.s1">上传课件</div>
+      <p class="body-15 tm" data-i18n="flow.d1">支持 PDF、图片、音频，可一次拖入多份，自动识别类型。</p>
+    </div>
+    <div class="card p-8">
+      <div class="num mb-5" style="font-size:40px; line-height:1;">02</div>
+      <div class="h-card mb-3" data-i18n="flow.s2">自动解析</div>
+      <p class="body-15 tm" data-i18n="flow.d2">OCR 识别板书、转写录音、按语义分块并写入向量索引。</p>
+    </div>
+    <div class="card p-8">
+      <div class="num mb-5" style="font-size:40px; line-height:1;">03</div>
+      <div class="h-card mb-3" data-i18n="flow.s3">开始提问</div>
+      <p class="body-15 tm" data-i18n="flow.d3">答案带引用溯源，错题自动归集，进度随时间线推进。</p>
+    </div>
+  </div>
+</section>
+
+<!-- ========== 底部 CTA（含「学习进度」辅助信息） ========== -->
+<section class="band border-y bd">
+  <div class="wrap py-20 text-center">
+    <h2 class="h-sec mb-4" data-i18n="cta.title">先导入一份课件，两分钟看到效果</h2>
+    <p class="lead mb-10" data-i18n="cta.sub">不需要整理、不需要标注，剩下的交给多模态解析。</p>
+    <a href="文档导入页原型v0.2-2026-09-20.html" class="btn-main" data-i18n="cta.btn">立即导入课件</a>
+
+    <!-- 原第四张功能卡「学习进度」降级为 CTA 区辅助信息 -->
+    <div class="mt-12 mx-auto" style="max-width:520px;">
+      <div class="flex items-center justify-between text-xs tm mb-2">
+        <span data-i18n="prog.title">学习进度</span>
+        <span data-i18n="prog.value">第 6 / 14 天</span>
+      </div>
+      <div class="h-1" style="background:var(--chip);">
+        <div class="bar-fill h-full" style="width:43%; background:var(--accent);"></div>
+      </div>
+      <div class="text-xs tm mt-3" data-i18n="prog.desc">
+        按章节记录掌握程度，薄弱点自动回推复习顺序。
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========== 页脚 ========== -->
+<footer class="zj-footer">
+  <div class="wrap py-14 grid gap-8 grid-stack" style="grid-template-columns: 2fr 1fr 1fr 1.2fr;">
+    <div>
+      <div style="font-family:var(--font-serif); font-size:20px;" data-i18n="app.name">智教星途</div>
+      <p class="text-sm mt-3" style="opacity:.7; max-width:340px;" data-i18n="footer.desc">
+        大湾区 AI Coding 创新大赛 · 方向一 AI + 教学管理助手参赛作品
+      </p>
+    </div>
+    <div>
+      <div class="text-xs mb-3" style="opacity:.6; letter-spacing:.12em;">PAGES</div>
+      <div class="text-sm space-y-2">
+        <div><a href="首页原型v0.2-2026-09-20.html" style="color:inherit;" data-i18n="nav.home">首页</a></div>
+        <div><a href="知识库页原型v0.4-2026-09-20.html" style="color:inherit;" data-i18n="nav.kb">知识库</a></div>
+        <div><a href="文档导入页原型v0.2-2026-09-20.html" style="color:inherit;" data-i18n="nav.import">导入</a></div>
+      </div>
+    </div>
+    <div>
+      <div class="text-xs mb-3" style="opacity:.6; letter-spacing:.12em;">TEAM</div>
+      <div class="text-sm space-y-2" style="opacity:.85;">
+        <div data-i18n="footer.team">智教星途团队</div>
+        <div data-i18n="footer.stack">Vue3 · Python · 多模态解析</div>
+      </div>
+    </div>
+    <!-- 联系方式 + 隐私说明（新增） -->
+    <div>
+      <div class="text-xs mb-3" style="opacity:.6; letter-spacing:.12em;">CONTACT</div>
+      <div class="text-sm space-y-2" style="opacity:.85;">
+        <div><a href="mailto:team@zhijiaoxingtu.example" style="color:inherit;">team@zhijiaoxingtu.example</a></div>
+        <div>
+          <button class="js-privacy-open" style="color:inherit; background:none; border:none; padding:0; font-size:14px; text-decoration:underline; cursor:pointer;"
+                  data-i18n="footer.privacy">隐私说明</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="wrap pb-10 text-xs" style="opacity:.55;" data-i18n="footer.rights">
+    © 2026 智教星途 · 原型演示页面
+  </div>
+</footer>
+
+<!-- ========== 隐私说明弹层（公共片段，三页同步） ========== -->
+<div id="privacyModal" class="fixed inset-0 z-40 hidden items-center justify-center" style="background: rgba(0,0,0,.45);">
+  <div class="card p-7" style="width:520px; max-width:92vw;">
+    <div class="flex items-center justify-between mb-4">
+      <div class="h-card" data-i18n="privacy.title">隐私说明</div>
+      <button class="js-privacy-close tm text-lg" style="background:none;border:none;cursor:pointer;">✕</button>
+    </div>
+    <div class="body-15 tm space-y-3">
+      <p data-i18n="privacy.p1">本页面为参赛原型演示，不收集任何个人信息。</p>
+      <p data-i18n="privacy.p2">演示所用的笔记、文档与学习记录均保存在你本机浏览器中，不会上传到服务器。</p>
+      <p data-i18n="privacy.p3">页面上的解析状态、分块数量与统计数字均为演示用示例数据。</p>
+    </div>
+    <div class="mt-6 flex justify-end">
+      <button class="js-privacy-close btn-sm" data-i18n="privacy.ok">知道了</button>
+    </div>
+  </div>
+</div>
+
+<!-- ========== 首访三步引导 ========== -->
+<div id="obModal" class="fixed inset-0 z-50 hidden items-center justify-center" style="background: rgba(0,0,0,.45);">
+  <div class="card p-8" style="width:560px; max-width:92vw;">
+    <div class="eyebrow mb-3" data-i18n="ob.eyebrow">Before we start</div>
+    <div class="h-sec mb-2" id="obTitle" data-i18n="ob.s1title">你想用这段时间做什么</div>
+    <div class="text-xs tm mb-6" id="obProgress">第 1 / 3 步</div>
+
+    <!-- 步骤 1：学习目标 -->
+    <div class="ob-step on" data-step="1">
+      <div class="flex flex-wrap gap-3">
+        <button class="ob-opt" data-goal="kaoyan" data-i18n="ob.goal1">考研冲刺</button>
+        <button class="ob-opt" data-goal="final" data-i18n="ob.goal2">期末复习</button>
+        <button class="ob-opt" data-goal="daily" data-i18n="ob.goal3">日常自习</button>
+      </div>
+    </div>
+
+    <!-- 步骤 2：当前水平 -->
+    <div class="ob-step" data-step="2">
+      <div class="flex flex-wrap gap-3">
+        <button class="ob-opt" data-level="basic" data-i18n="ob.level1">入门</button>
+        <button class="ob-opt" data-level="some" data-i18n="ob.level2">有一定基础</button>
+        <button class="ob-opt" data-level="good" data-i18n="ob.level3">熟练</button>
+      </div>
+    </div>
+
+    <!-- 步骤 3：每日时长 + 预设目标日（小字，可点开改） -->
+    <div class="ob-step" data-step="3">
+      <div class="flex flex-wrap gap-3">
+        <button class="ob-opt" data-hours="1" data-i18n="ob.h1">1 小时内</button>
+        <button class="ob-opt" data-hours="2" data-i18n="ob.h2">2–3 小时</button>
+        <button class="ob-opt" data-hours="4" data-i18n="ob.h3">4 小时以上</button>
+      </div>
+      <div class="mt-5 text-xs tm">
+        <span data-i18n="ob.dlLabel">目标日</span>
+        <span id="obDeadlineText" style="color:var(--accent); text-decoration:underline; cursor:pointer;">2026-12-20</span>
+        <span data-i18n="ob.dlHint">（预设，可点开修改）</span>
+        <input type="date" id="obDeadlineEdit" class="ml-2" style="height:30px; border:1px solid var(--border); background:var(--surface); color:var(--text); font-size:12px; padding:0 6px;" />
+      </div>
+    </div>
+
+    <div class="mt-8 flex items-center gap-3">
+      <button id="obBack" class="btn-ghost" style="height:40px; font-size:13px;" data-i18n="ob.back">上一步</button>
+      <button id="obNext" class="btn-main" style="height:40px; font-size:13px;" data-i18n="ob.next">下一步</button>
+      <button id="obSkip" class="text-xs tm ml-auto" style="background:none;border:none;cursor:pointer; text-decoration:underline;"
+              data-i18n="ob.skip">跳过</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+ * i18n 字典（zh / en）
+ * ------------------------------------------------------------
+ * 未来接入真实文案：替换 I18N.zh / I18N.en 里的值即可；
+ * 页面上所有可见文案都带 data-i18n 属性，切换语言时统一替换 textContent。
+ * 语言偏好写入 localStorage['zjxt.lang']，主题写入 localStorage['zjxt.theme']，三页共享。
+ * ============================================================ */
+const I18N = {
+  zh: {
+    'page.title': '智教星途 · 多模态教学智能体',
+    'app.name': '智教星途',
+    'app.slogan': '多模态教学智能体',
+    'nav.home': '首页', 'nav.kb': '知识库', 'nav.import': '导入', 'nav.menu': '菜单',
+    'theme.toggle': '暗色', 'theme.dark': '暗色', 'theme.light': '亮色',
+    'hero.eyebrow': 'Your courseware, made queryable',
+    'hero.sub': '把课件 PDF、课堂板书照片和录音丢进来，AI 自动 OCR、转写、分块并建立索引，随后你可以像问助教一样提问，每个答案都能溯源回原文位置。',
+    'hero.cta': '进入我的知识库', 'hero.cta2': '导入第一份课件',
+    'hero.stat1': '已解析文档', 'hero.stat2': '可检索知识分块', 'hero.stat3': '答案命中率',
+    'demo.title': '知识库实时状态',
+    'demo.f1': '第2章 极限与连续.pdf', 'demo.f1meta': '42 个分块 · 已建立向量索引',
+    'demo.f2': '课堂板书_0912.jpg', 'demo.f3': '手写笔记_模糊页.jpg',
+    'demo.f3meta': '图片过模糊 · 可一键重试或重新上传', 'demo.more': '查看全部文档',
+    'status.ready': '已入库', 'status.parsing': '解析中 62%', 'status.failed': '解析失败',
+    'feat.eyebrow': 'Core capabilities',
+    'feat.title': '三项能力，覆盖一整个复习周期',
+    'feat.sub': '从解析课件到抽取知识点、从提问讲解到回到原文核对，所有环节都建立在你自己的知识库之上。',
+    'feat.f1': '图文素材智能解析',
+    'feat.d1': '课件 PDF、板书照片与课堂录音一次导入，自动 OCR、转写与分块，建立可检索的索引。',
+    'feat.f2': '知识点结构化抽取',
+    'feat.d2': '从解析结果里抽出知识点，归成笔记与知识图谱，标注薄弱点并按章节回推复习。',
+    'feat.f3': '交互式答疑辅导',
+    'feat.d3': '先检索你的课件再作答，答案标注出处页码，可继续追问，也可回到原文逐句核对。',
+    'flow.title': '三步把课件变成可提问的知识库',
+    'flow.s1': '上传课件', 'flow.d1': '支持 PDF、图片、音频，可一次拖入多份，自动识别类型。',
+    'flow.s2': '自动解析', 'flow.d2': 'OCR 识别板书、转写录音、按语义分块并写入向量索引。',
+    'flow.s3': '开始提问', 'flow.d3': '答案带引用溯源，错题自动归集，进度随时间线推进。',
+    'cta.title': '先导入一份课件，两分钟看到效果',
+    'cta.sub': '不需要整理、不需要标注，剩下的交给多模态解析。',
+    'cta.btn': '立即导入课件',
+    'prog.title': '学习进度', 'prog.value': '第 6 / 14 天',
+    'prog.desc': '按章节记录掌握程度，薄弱点自动回推复习顺序。',
+    'footer.desc': '大湾区 AI Coding 创新大赛 · 方向一 AI + 教学管理助手参赛作品',
+    'footer.team': '智教星途团队', 'footer.stack': 'Vue3 · Python · 多模态解析',
+    'footer.privacy': '隐私说明', 'footer.rights': '© 2026 智教星途 · 原型演示页面',
+    'privacy.title': '隐私说明',
+    'privacy.p1': '本页面为参赛原型演示，不收集任何个人信息。',
+    'privacy.p2': '演示所用的笔记、文档与学习记录均保存在你本机浏览器中，不会上传到服务器。',
+    'privacy.p3': '页面上的解析状态、分块数量与统计数字均为演示用示例数据。',
+    'privacy.ok': '知道了',
+    'ob.eyebrow': 'Before we start',
+    'ob.s1title': '你想用这段时间做什么',
+    'ob.s2title': '现在的基础怎么样',
+    'ob.s3title': '每天大概能投入多久',
+    'ob.progress': '第 {n} / 3 步',
+    'ob.goal1': '考研冲刺', 'ob.goal2': '期末复习', 'ob.goal3': '日常自习',
+    'ob.level1': '入门', 'ob.level2': '有一定基础', 'ob.level3': '熟练',
+    'ob.h1': '1 小时内', 'ob.h2': '2–3 小时', 'ob.h3': '4 小时以上',
+    'ob.dlLabel': '目标日', 'ob.dlHint': '（预设，可点开修改）',
+    'ob.back': '上一步', 'ob.next': '下一步', 'ob.done': '开始使用', 'ob.skip': '跳过',
+    'ob.goal.kaoyan': '考研冲刺', 'ob.goal.final': '期末复习', 'ob.goal.daily': '日常自习',
+    'echo.plan': '你的{n}计划 · 第 {d} 天'
+  },
+  en: {
+    'page.title': 'ZhiJiaoXingTu · Multimodal Teaching Agent',
+    'app.name': 'ZhiJiaoXingTu',
+    'app.slogan': 'Multimodal Teaching Agent',
+    'nav.home': 'Home', 'nav.kb': 'Knowledge Base', 'nav.import': 'Import', 'nav.menu': 'Menu',
+    'theme.toggle': 'Dark', 'theme.dark': 'Dark', 'theme.light': 'Light',
+    'hero.eyebrow': 'Your courseware, made queryable',
+    'hero.sub': 'Drop in your PDFs, board photos and lecture audio. They get OCR-ed, transcribed, chunked and indexed — then ask questions and get answers traceable to the source.',
+    'hero.cta': 'Open My Knowledge Base', 'hero.cta2': 'Import Your First Courseware',
+    'hero.stat1': 'Documents parsed', 'hero.stat2': 'Searchable chunks', 'hero.stat3': 'Answer hit rate',
+    'demo.title': 'Knowledge base status',
+    'demo.f1': 'Chapter 2 · Limits and Continuity.pdf', 'demo.f1meta': '42 chunks · vector index built',
+    'demo.f2': 'Board notes_0912.jpg', 'demo.f3': 'Handwritten notes_blurry.jpg',
+    'demo.f3meta': 'Image too blurry · retry or re-upload', 'demo.more': 'View all documents',
+    'status.ready': 'Ready', 'status.parsing': 'Parsing 62%', 'status.failed': 'Failed',
+    'feat.eyebrow': 'Core capabilities',
+    'feat.title': 'Three capabilities for a full revision cycle',
+    'feat.sub': 'From parsing courseware to extracting key points, from asking questions to checking back against the source — all built on your own knowledge base.',
+    'feat.f1': 'Multimodal Material Parsing',
+    'feat.d1': 'Import courseware PDFs, board photos and lecture audio in one go — OCR, transcription and chunking run automatically, everything indexed and searchable.',
+    'feat.f2': 'Structured Knowledge Extraction',
+    'feat.d2': 'Key points are extracted from parsed material, organised into notes and a knowledge graph, with weak spots marked and revision pushed back by chapter.',
+    'feat.f3': 'Interactive Q&A Tutoring',
+    'feat.d3': 'Answers are grounded in your own courseware and cited by page — keep asking, or jump back to the source and check line by line.',
+    'flow.title': 'Three steps to a queryable knowledge base',
+    'flow.s1': 'Upload', 'flow.d1': 'PDF, image and audio — drag in many at once.',
+    'flow.s2': 'Auto parse', 'flow.d2': 'OCR, transcription, semantic chunking and vector indexing.',
+    'flow.s3': 'Ask', 'flow.d3': 'Answers with citations, mistakes collected, progress tracked.',
+    'cta.title': 'Import one file and see it work in two minutes',
+    'cta.sub': 'No tidying, no labelling — leave the rest to multimodal parsing.',
+    'cta.btn': 'Import courseware now',
+    'prog.title': 'Progress', 'prog.value': 'Day 6 / 14',
+    'prog.desc': 'Tick chapters as you go; weak spots reorder your revision.',
+    'footer.desc': 'Greater Bay Area AI Coding Innovation Contest · Track 1: AI Teaching Assistant',
+    'footer.team': 'ZhiJiaoXingTu Team', 'footer.stack': 'Vue3 · Python · Multimodal parsing',
+    'footer.privacy': 'Privacy', 'footer.rights': '© 2026 ZhiJiaoXingTu · Prototype demo page',
+    'privacy.title': 'Privacy',
+    'privacy.p1': 'This is a contest prototype. No personal information is collected.',
+    'privacy.p2': 'Notes, documents and study records used in the demo stay in your own browser and are never uploaded to a server.',
+    'privacy.p3': 'Parsing states, chunk counts and statistics on this page are sample data for demonstration.',
+    'privacy.ok': 'Got it',
+    'ob.eyebrow': 'Before we start',
+    'ob.s1title': 'What do you want to work towards',
+    'ob.s2title': 'Where are you starting from',
+    'ob.s3title': 'How much time per day',
+    'ob.progress': 'Step {n} / 3',
+    'ob.goal1': 'Postgrad exam sprint', 'ob.goal2': 'Finals revision', 'ob.goal3': 'Daily study',
+    'ob.level1': 'Beginner', 'ob.level2': 'Some grounding', 'ob.level3': 'Confident',
+    'ob.h1': 'Under 1 hour', 'ob.h2': '2–3 hours', 'ob.h3': '4 hours or more',
+    'ob.dlLabel': 'Target date', 'ob.dlHint': '(preset — click to change)',
+    'ob.back': 'Back', 'ob.next': 'Next', 'ob.done': 'Get started', 'ob.skip': 'Skip',
+    'ob.goal.kaoyan': 'postgrad sprint', 'ob.goal.final': 'finals revision', 'ob.goal.daily': 'daily study',
+    'echo.plan': 'Your {n} plan · day {d}'
+  }
+};
+
+const $ = (s) => document.querySelector(s);
+const $$ = (s) => Array.prototype.slice.call(document.querySelectorAll(s));
+let lang = localStorage.getItem('zjxt.lang') || 'zh';
+
+/* 主题偏好跨页保持 */
+(function () {
+  var saved = localStorage.getItem('zjxt.theme');
+  if (saved) document.documentElement.dataset.theme = saved;
+})();
+
+function t(key, vars) {
+  let s = (I18N[lang] && I18N[lang][key]) || I18N.zh[key] || key;
+  if (vars) Object.keys(vars).forEach(k => { s = s.replace('{' + k + '}', vars[k]); });
+  return s;
+}
+
+function setLang(next) {
+  lang = next;
+  localStorage.setItem('zjxt.lang', next);
+  document.documentElement.lang = next === 'en' ? 'en' : 'zh-CN';
+  $$('[data-i18n]').forEach(el => { el.textContent = t(el.dataset.i18n); });
+  $$('.js-lang').forEach(el => { el.textContent = next === 'zh' ? 'EN' : '中'; });
+  document.title = t('page.title');
+  syncThemeBtn();
+  renderEcho();
+  renderOb();
+}
+
+function syncThemeBtn() {
+  const dark = document.documentElement.dataset.theme === 'dark';
+  $$('.js-theme').forEach(el => { el.textContent = dark ? t('theme.light') : t('theme.dark'); });
+}
+
+/* ---------- 语言 / 主题：桌面与汉堡菜单共用 ---------- */
+$$('.js-lang').forEach(btn => btn.addEventListener('click', () => setLang(lang === 'zh' ? 'en' : 'zh')));
+$$('.js-theme').forEach(btn => btn.addEventListener('click', () => {
+  const root = document.documentElement;
+  const next = root.dataset.theme === 'light' ? 'dark' : 'light';
+  root.dataset.theme = next;
+  localStorage.setItem('zjxt.theme', next);
+  syncThemeBtn();
+}));
+
+/* ---------- 汉堡菜单 ---------- */
+const burger = $('.zj-burger');
+const mobileMenu = $('#zjMobileMenu');
+burger.addEventListener('click', () => {
+  const open = mobileMenu.classList.toggle('open');
+  burger.setAttribute('aria-expanded', open ? 'true' : 'false');
+  burger.textContent = open ? '✕' : '☰';
+});
+mobileMenu.querySelectorAll('a').forEach(a => a.addEventListener('click', () => {
+  mobileMenu.classList.remove('open');
+  burger.setAttribute('aria-expanded', 'false');
+  burger.textContent = '☰';
+}));
+
+/* ---------- 隐私说明弹层 ---------- */
+function openPrivacy() {
+  const m = $('#privacyModal');
+  m.classList.remove('hidden');
+  m.classList.add('flex');
+}
+function closePrivacy() {
+  const m = $('#privacyModal');
+  m.classList.add('hidden');
+  m.classList.remove('flex');
+}
+$$('.js-privacy-open').forEach(b => b.addEventListener('click', openPrivacy));
+$$('.js-privacy-close').forEach(b => b.addEventListener('click', closePrivacy));
+$('#privacyModal').addEventListener('click', (e) => { if (e.target === $('#privacyModal')) closePrivacy(); });
+
+/* ============================================================
+ * 首访三步引导
+ * 目标日期用预设（2026-12-20），不单独加一步；第三步下方小字显示，
+ * 点一下变成 date input 可改。完成写入 localStorage['zjxt.profile']。
+ * ============================================================ */
+const DEFAULT_DEADLINE = '2026-12-20';
+let obStep = 1;
+let obPick = { goal: null, level: null, hours: null, deadline: DEFAULT_DEADLINE };
+
+function profile() {
+  try { return JSON.parse(localStorage.getItem('zjxt.profile') || 'null'); }
+  catch (e) { return null; }
+}
+
+function renderEcho() {
+  const p = profile();
+  const echo = $('#planEcho');
+  if (!p) { echo.classList.add('hidden'); return; }
+  echo.classList.remove('hidden');
+  const start = new Date(p.startedAt + 'T00:00:00');
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const day = Math.max(1, Math.floor((today - start) / 86400000) + 1);
+  $('#planEchoText').textContent = t('echo.plan', { n: t('ob.goal.' + p.goal), d: day });
+}
+
+function renderOb() {
+  $$('.ob-step').forEach(el => el.classList.toggle('on', Number(el.dataset.step) === obStep));
+  $('#obTitle').textContent = t('ob.s' + obStep + 'title');
+  $('#obProgress').textContent = t('ob.progress', { n: obStep });
+  $('#obBack').style.visibility = obStep === 1 ? 'hidden' : 'visible';
+  $('#obNext').textContent = obStep === 3 ? t('ob.done') : t('ob.next');
+  $('#obDeadlineText').textContent = obPick.deadline;
+}
+
+function openOb() {
+  const m = $('#obModal');
+  m.classList.remove('hidden');
+  m.classList.add('flex');
+}
+function closeOb() {
+  const m = $('#obModal');
+  m.classList.add('hidden');
+  m.classList.remove('flex');
+}
+
+$$('.ob-opt').forEach(btn => btn.addEventListener('click', () => {
+  const key = btn.dataset.goal ? 'goal' : (btn.dataset.level ? 'level' : 'hours');
+  obPick[key] = btn.dataset.goal || btn.dataset.level || btn.dataset.hours;
+  btn.parentElement.querySelectorAll('.ob-opt').forEach(b => b.classList.remove('on'));
+  btn.classList.add('on');
+}));
+
+/* 目标日：点文字展开 date input */
+$('#obDeadlineText').addEventListener('click', () => {
+  const input = $('#obDeadlineEdit');
+  input.classList.add('on');
+  input.value = obPick.deadline;
+  input.focus();
+});
+$('#obDeadlineEdit').addEventListener('change', (e) => {
+  if (e.target.value) obPick.deadline = e.target.value;
+  $('#obDeadlineText').textContent = obPick.deadline;
+  $('#obDeadlineEdit').classList.remove('on');
+});
+
+$('#obBack').addEventListener('click', () => { if (obStep > 1) { obStep--; renderOb(); } });
+$('#obNext').addEventListener('click', () => {
+  if (obStep < 3) { obStep++; renderOb(); return; }
+  finishOb();
+});
+$('#obSkip').addEventListener('click', () => {
+  localStorage.setItem('zjxt.onboarded', '1');
+  closeOb();
+});
+
+function finishOb() {
+  const p = {
+    goal: obPick.goal || 'daily',
+    level: obPick.level || 'some',
+    hours: obPick.hours || '2',
+    deadline: obPick.deadline,
+    startedAt: new Date().toISOString().slice(0, 10)
+  };
+  localStorage.setItem('zjxt.profile', JSON.stringify(p));
+  localStorage.setItem('zjxt.onboarded', '1');
+  closeOb();
+  renderEcho();
+}
+
+/* ============================================================
+ * 初始化
+ * ============================================================ */
+setLang(lang);
+/* URL 带 ?skipob 时不弹首访引导（便于响应式演示与测试，不影响默认行为） */
+if (!localStorage.getItem('zjxt.onboarded') && !location.search.includes('skipob')) openOb();
+</script>
+</body>
+</html>
