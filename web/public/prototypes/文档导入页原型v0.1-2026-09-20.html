@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<!-- 智教星途·文档导入页原型 v0.1，由 LearnBuddy 生成，2026-09-20 -->
+<!-- 视觉基调参考 lionheart-education.com：米白底 #FBF9F6 / 近黑 #191919 / 强调红 #E51520 / 直角卡片 + 胶囊按钮 / 区块大留白 -->
+<!-- 公共片段（三页必须同步修改）：:root 变量块 / zj-nav 导航区 / I18N 的 nav.* 键 -->
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title data-i18n="page.title">智教星途 · 导入文档</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  :root {
+    --bg: #FBF9F6;
+    --surface: #FFFFFF;
+    --band: #F8F3EC;
+    --peach: #FFE8D6;
+    --text: #191919;
+    --border: #E4DED5;
+    --primary: #191919;
+    --primary-ink: #FFFFFF;
+    --accent: #E51520;
+    --muted: #808080;
+    --chip: #F1ECE4;
+    --ok: #2E7D32;
+    --warn: #B26A00;
+    --err: #E51520;
+    --err-bg: #FDECEC;
+    --font-serif: Georgia, "Times New Roman", "Songti SC", "Noto Serif CJK SC", "Source Han Serif SC", serif;
+    --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    --shadow-btn: 0 5px 10px rgba(0,0,0,.15);
+  }
+  :root[data-theme="dark"] {
+    --bg: #141414;
+    --surface: #1C1C1C;
+    --band: #232323;
+    --peach: #2A2422;
+    --text: #F2EFEA;
+    --border: #343434;
+    --primary: #F2EFEA;
+    --primary-ink: #141414;
+    --accent: #FF5A63;
+    --muted: #9A9A9A;
+    --chip: #2A2A2A;
+    --ok: #6BBF6B;
+    --warn: #E0A63C;
+    --err: #FF6B73;
+    --err-bg: #3A2222;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: var(--font-sans); background: var(--bg); color: var(--text); }
+  .tm { color: var(--muted); }
+  .bd { border-color: var(--border); }
+  .card { background: var(--surface); border: 1px solid var(--border); }
+  .wrap { max-width: 1180px; margin: 0 auto; padding-left: 40px; padding-right: 40px; }
+
+  .eyebrow { font-family: var(--font-serif); font-style: italic; font-size: 13px; letter-spacing: .16em; text-transform: uppercase; color: var(--accent); }
+  .h-sec { font-family: var(--font-serif); font-size: 32px; line-height: 1.3; font-weight: 400; }
+  .h-card { font-family: var(--font-serif); font-size: 18px; font-weight: 400; }
+  .lead { font-size: 16px; line-height: 1.75; color: var(--muted); }
+  .body-15 { font-size: 15px; line-height: 1.7; }
+
+  .btn-main {
+    display: inline-flex; align-items: center; justify-content: center;
+    height: 44px; padding: 0 26px; border-radius: 1000px;
+    background: var(--primary); color: var(--primary-ink);
+    font-size: 14px; letter-spacing: .06em; box-shadow: var(--shadow-btn);
+  }
+  .btn-ghost {
+    display: inline-flex; align-items: center; justify-content: center;
+    height: 44px; padding: 0 26px; border-radius: 1000px;
+    border: 1px solid var(--border); color: var(--text); background: transparent; font-size: 14px;
+  }
+  .btn-sm {
+    display: inline-flex; align-items: center; justify-content: center;
+    height: 36px; padding: 0 16px; border-radius: 1000px;
+    border: 1px solid var(--border); font-size: 12px; letter-spacing: .08em;
+  }
+
+  .drop-zone {
+    border: 1px dashed var(--border); background: var(--band);
+    transition: border-color .18s ease, background .18s ease;
+  }
+  .drop-zone:hover { border-color: var(--accent); }
+
+  .step-chip { border: 1px solid var(--border); border-radius: 1000px; padding: 6px 16px; font-size: 12px; letter-spacing: .08em; }
+  .step-chip.on { border-color: var(--accent); color: var(--accent); }
+  .step-chip.off { color: var(--muted); }
+
+  .tag-chip { border: 1px solid var(--border); border-radius: 1000px; padding: 5px 14px; font-size: 12px; cursor: pointer; }
+  .tag-chip.on { background: var(--primary); color: var(--primary-ink); border-color: var(--primary); }
+
+  select, input[type="checkbox"] { accent-color: var(--accent); }
+  select {
+    height: 36px; border: 1px solid var(--border); border-radius: 0;
+    background: var(--surface); color: var(--text); font-size: 13px; padding: 0 8px; width: 100%;
+  }
+
+  nav.zj-nav a { font-size: 12px; letter-spacing: .12em; text-transform: uppercase; white-space: nowrap; }
+  nav.zj-nav a.active { color: var(--accent); font-weight: 500; }
+  nav.zj-nav a.active::after { content: ""; display: block; height: 2px; background: var(--accent); margin-top: 4px; }
+
+  .dot { width: 8px; height: 8px; border-radius: 999px; display: inline-block; }
+  .dot-wait { background: var(--muted); }
+  .dot-run { background: var(--accent); animation: pulse 1.2s infinite; }
+  .dot-ok { background: var(--ok); }
+  .bar-fill { transition: width .3s ease; }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+  .fade-in { animation: fadeIn .35s ease both; }
+</style>
+</head>
+<body>
+
+<!-- ========== 顶部导航（公共片段，三页同步） ========== -->
+<header class="card border-b bd sticky top-0 z-20" style="border-radius:0;">
+  <div class="wrap h-16 flex items-center gap-8">
+    <div class="flex items-center gap-3 shrink-0">
+      <div class="w-9 h-9 flex items-center justify-center text-sm font-bold"
+           style="background:var(--primary); color:var(--primary-ink);">ZJ</div>
+      <div class="leading-tight">
+        <div class="font-medium" style="font-family:var(--font-serif); font-size:16px;" data-i18n="app.name">智教星途</div>
+        <div class="text-xs tm" data-i18n="app.slogan">多模态教学智能体</div>
+      </div>
+    </div>
+
+    <nav class="zj-nav flex items-center gap-7 shrink-0">
+      <a href="首页原型v0.1-2026-09-20.html" class="tm" data-i18n="nav.home">首页</a>
+      <a href="知识库页原型v0.3-2026-09-20.html" class="tm" data-i18n="nav.kb">知识库</a>
+      <a href="文档导入页原型v0.1-2026-09-20.html" class="active" data-i18n="nav.import">导入</a>
+    </nav>
+
+    <div class="flex items-center gap-3 ml-auto">
+      <button id="langToggle" class="btn-sm">EN</button>
+      <button id="themeToggle" class="btn-sm" data-i18n="theme.toggle">暗色</button>
+      <a href="知识库页原型v0.3-2026-09-20.html" class="btn-main" style="height:36px; padding:0 18px; font-size:12px;"
+         data-i18n="nav.kb">知识库</a>
+    </div>
+  </div>
+</header>
+
+<main class="wrap py-12 fade-in">
+  <!-- 面包屑 -->
+  <div class="text-xs tm mb-6">
+    <a href="首页原型v0.1-2026-09-20.html" class="tm" data-i18n="nav.home">首页</a>
+    <span class="mx-2">/</span>
+    <span data-i18n="imp.title">导入文档</span>
+  </div>
+
+  <div class="eyebrow mb-3" data-i18n="imp.eyebrow">Step 1 · Upload</div>
+  <h1 class="h-sec mb-3" data-i18n="imp.title">导入文档</h1>
+  <p class="lead mb-10" style="max-width:640px;" data-i18n="imp.desc">
+    支持课件 PDF、板书照片与课堂录音。上传后系统自动 OCR、转写、分块入库，完成后即可在知识库里提问。
+  </p>
+
+  <!-- 步骤条 -->
+  <div class="flex items-center gap-4 mb-10">
+    <span class="step-chip on" id="step1" data-i18n="step.1">01 选择文件</span>
+    <span class="tm text-xs">—</span>
+    <span class="step-chip off" id="step2" data-i18n="step.2">02 解析分块</span>
+    <span class="tm text-xs">—</span>
+    <span class="step-chip off" id="step3" data-i18n="step.3">03 入库可提问</span>
+  </div>
+
+  <div class="grid gap-8" style="grid-template-columns: 1.7fr 1fr;">
+    <!-- ===== 左：主流程 ===== -->
+    <div>
+      <!-- 拖拽区 -->
+      <div id="dropZone" class="drop-zone p-12 text-center cursor-pointer">
+        <div style="font-size:28px; margin-bottom:14px;">&#8681;</div>
+        <div class="body-15 mb-2" data-i18n="drop.title">把文件拖到这里</div>
+        <div class="text-xs tm mb-6" data-i18n="drop.hint">或点击选择，支持 PDF / 图片 / 音频，单个 ≤ 50 MB</div>
+        <button id="pickBtn" class="btn-main" style="height:40px; font-size:13px;" data-i18n="drop.btn">选择文件</button>
+      </div>
+
+      <!-- 文件队列 -->
+      <div class="card mt-8">
+        <div class="px-6 py-4 border-b bd flex items-center">
+          <span class="h-card" data-i18n="queue.title">待导入文件</span>
+          <span class="ml-auto text-xs tm" id="queueCount"></span>
+        </div>
+        <div id="queueRows" class="px-6"></div>
+      </div>
+
+      <!-- 完成提示 -->
+      <div id="doneBar" class="card mt-6 p-6 hidden items-center gap-4" style="border-color:var(--ok);">
+        <div style="color:var(--ok); font-size:18px;">&#10003;</div>
+        <div class="flex-1">
+          <div class="body-15" data-i18n="done.title">3 个文档已入库</div>
+          <div class="text-xs tm mt-1" data-i18n="done.hint">共切分 57 个知识分块，现在可以开始提问了</div>
+        </div>
+        <a href="知识库页原型v0.3-2026-09-20.html" class="btn-main" style="height:40px; font-size:13px;"
+           data-i18n="done.cta">去知识库提问</a>
+      </div>
+
+      <!-- 操作 -->
+      <div class="flex items-center gap-4 mt-8">
+        <a href="首页原型v0.1-2026-09-20.html" class="btn-ghost" data-i18n="btn.cancel">取消</a>
+        <button id="startBtn" class="btn-main" data-i18n="btn.start">开始解析</button>
+        <span class="text-xs tm" data-i18n="btn.note">演示页面：点击后播放上传与解析动画</span>
+      </div>
+    </div>
+
+    <!-- ===== 右：解析设置 ===== -->
+    <div class="space-y-8">
+      <div class="card p-6">
+        <div class="h-card mb-5" data-i18n="set.title">解析设置</div>
+
+        <div class="mb-5">
+          <div class="text-xs tm mb-2" data-i18n="set.ocr">OCR 语言</div>
+          <select>
+            <option data-i18n="set.ocrAuto">自动识别</option>
+            <option data-i18n="set.ocrZh">中文优先</option>
+            <option data-i18n="set.ocrEn">英文优先</option>
+          </select>
+        </div>
+
+        <div class="mb-5">
+          <div class="text-xs tm mb-2" data-i18n="set.chunk">分块策略</div>
+          <select>
+            <option data-i18n="set.chunkAuto">自动（按语义）</option>
+            <option data-i18n="set.chunkPage">按页切分</option>
+            <option data-i18n="set.chunkSection">按章节切分</option>
+          </select>
+        </div>
+
+        <div class="mb-6">
+          <div class="text-xs tm mb-3" data-i18n="set.tag">归入笔记</div>
+          <div class="flex flex-wrap gap-2">
+            <span class="tag-chip on" data-i18n="tag.math">高数</span>
+            <span class="tag-chip" data-i18n="tag.english">英语</span>
+            <span class="tag-chip" data-i18n="tag.wrong">错题</span>
+            <span class="tag-chip" data-i18n="tag.other">其他</span>
+          </div>
+        </div>
+
+        <label class="flex items-start gap-3 text-xs tm">
+          <input type="checkbox" checked style="margin-top:2px;" />
+          <span data-i18n="set.audio">音频自动转写为文本</span>
+        </label>
+      </div>
+
+      <div class="card p-6">
+        <div class="h-card mb-4" data-i18n="sup.title">支持格式</div>
+        <div class="space-y-3 text-xs tm">
+          <div class="flex justify-between"><span data-i18n="sup.pdf">课件 / 讲义 PDF</span><span>.pdf</span></div>
+          <div class="flex justify-between"><span data-i18n="sup.image">板书 / 题目截图</span><span>.jpg .png</span></div>
+          <div class="flex justify-between"><span data-i18n="sup.audio">课堂录音</span><span>.mp3 .wav .m4a</span></div>
+        </div>
+        <div class="text-xs tm mt-5 pt-4 border-t bd" data-i18n="sup.limit">单个文件 ≤ 50 MB，单次最多 20 个</div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script>
+/* ============================================================
+ * i18n 字典（zh / en）
+ * ------------------------------------------------------------
+ * 所有可见文案带 data-i18n；切换语言时统一替换 textContent。
+ * 语言偏好 localStorage['zjxt.lang']、主题 localStorage['zjxt.theme']，三页共享。
+ * ============================================================ */
+const I18N = {
+  zh: {
+    'page.title': '智教星途 · 导入文档',
+    'app.name': '智教星途', 'app.slogan': '多模态教学智能体',
+    'nav.home': '首页', 'nav.kb': '知识库', 'nav.import': '导入',
+    'theme.toggle': '暗色', 'theme.dark': '暗色', 'theme.light': '亮色',
+    'imp.eyebrow': 'Step 1 · Upload', 'imp.title': '导入文档',
+    'imp.desc': '支持课件 PDF、板书照片与课堂录音。上传后系统自动 OCR、转写、分块入库，完成后即可在知识库里提问。',
+    'step.1': '01 选择文件', 'step.2': '02 解析分块', 'step.3': '03 入库可提问',
+    'drop.title': '把文件拖到这里',
+    'drop.hint': '或点击选择，支持 PDF / 图片 / 音频，单个 ≤ 50 MB',
+    'drop.btn': '选择文件',
+    'queue.title': '待导入文件', 'queue.count': '共 {n} 个文件',
+    'status.waiting': '待开始', 'status.uploading': '上传中 {n}%', 'status.parsing': '解析中', 'status.ready': '已入库',
+    'done.title': '3 个文档已入库',
+    'done.hint': '共切分 57 个知识分块，现在可以开始提问了',
+    'done.cta': '去知识库提问',
+    'btn.cancel': '取消', 'btn.start': '开始解析', 'btn.starting': '解析中…', 'btn.reset': '重新演示',
+    'btn.note': '演示页面：点击后播放上传与解析动画',
+    'set.title': '解析设置',
+    'set.ocr': 'OCR 语言', 'set.ocrAuto': '自动识别', 'set.ocrZh': '中文优先', 'set.ocrEn': '英文优先',
+    'set.chunk': '分块策略', 'set.chunkAuto': '自动（按语义）', 'set.chunkPage': '按页切分', 'set.chunkSection': '按章节切分',
+    'set.tag': '归入笔记', 'set.audio': '音频自动转写为文本',
+    'tag.math': '高数', 'tag.english': '英语', 'tag.wrong': '错题', 'tag.other': '其他',
+    'sup.title': '支持格式',
+    'sup.pdf': '课件 / 讲义 PDF', 'sup.image': '板书 / 题目截图', 'sup.audio': '课堂录音',
+    'sup.limit': '单个文件 ≤ 50 MB，单次最多 20 个',
+    'f1.name': '第3章 导数与微分.pdf', 'f2.name': '课堂板书_0920.jpg', 'f3.name': '习题课录音_0920.mp3'
+  },
+  en: {
+    'page.title': 'ZhiJiaoXingTu · Import Documents',
+    'app.name': 'ZhiJiaoXingTu', 'app.slogan': 'Multimodal Teaching Agent',
+    'nav.home': 'Home', 'nav.kb': 'Knowledge Base', 'nav.import': 'Import',
+    'theme.toggle': 'Dark', 'theme.dark': 'Dark', 'theme.light': 'Light',
+    'imp.eyebrow': 'Step 1 · Upload', 'imp.title': 'Import Documents',
+    'imp.desc': 'Courseware PDFs, board photos and lecture audio. Files are OCR-ed, transcribed, chunked and indexed automatically — then ready to query.',
+    'step.1': '01 Select files', 'step.2': '02 Parse & chunk', 'step.3': '03 Ready to ask',
+    'drop.title': 'Drop your files here',
+    'drop.hint': 'Or click to select — PDF / image / audio, up to 50 MB each',
+    'drop.btn': 'Select files',
+    'queue.title': 'Files to import', 'queue.count': '{n} files',
+    'status.waiting': 'Waiting', 'status.uploading': 'Uploading {n}%', 'status.parsing': 'Parsing', 'status.ready': 'Ready',
+    'done.title': '3 documents indexed',
+    'done.hint': '57 chunks created — you can start asking now',
+    'done.cta': 'Ask in knowledge base',
+    'btn.cancel': 'Cancel', 'btn.start': 'Start parsing', 'btn.starting': 'Parsing…', 'btn.reset': 'Replay demo',
+    'btn.note': 'Demo page: clicking plays the upload and parsing animation',
+    'set.title': 'Parsing settings',
+    'set.ocr': 'OCR language', 'set.ocrAuto': 'Auto detect', 'set.ocrZh': 'Chinese first', 'set.ocrEn': 'English first',
+    'set.chunk': 'Chunking strategy', 'set.chunkAuto': 'Auto (semantic)', 'set.chunkPage': 'By page', 'set.chunkSection': 'By section',
+    'set.tag': 'Assign to note', 'set.audio': 'Transcribe audio to text',
+    'tag.math': 'Math', 'tag.english': 'English', 'tag.wrong': 'Mistakes', 'tag.other': 'Others',
+    'sup.title': 'Supported formats',
+    'sup.pdf': 'Courseware PDF', 'sup.image': 'Board notes / screenshots', 'sup.audio': 'Lecture audio',
+    'sup.limit': 'Up to 50 MB each, 20 files per batch',
+    'f1.name': 'Chapter 3 · Derivatives.pdf', 'f2.name': 'Board notes_0920.jpg', 'f3.name': 'Tutorial audio_0920.mp3'
+  }
+};
+
+const $ = (s) => document.querySelector(s);
+let lang = localStorage.getItem('zjxt.lang') || 'zh';
+
+(function () {
+  var saved = localStorage.getItem('zjxt.theme');
+  if (saved) document.documentElement.dataset.theme = saved;
+})();
+
+function t(key, vars) {
+  let s = (I18N[lang] && I18N[lang][key]) || I18N.zh[key] || key;
+  if (vars) Object.keys(vars).forEach(k => { s = s.replace('{' + k + '}', vars[k]); });
+  return s;
+}
+
+function setLang(next) {
+  lang = next;
+  localStorage.setItem('zjxt.lang', next);
+  document.documentElement.lang = next === 'en' ? 'en' : 'zh-CN';
+  document.querySelectorAll('[data-i18n]').forEach(el => { el.textContent = t(el.dataset.i18n); });
+  document.title = t('page.title');
+  $('#langToggle').textContent = next === 'zh' ? 'EN' : '中';
+  renderQueue();
+}
+
+/* ============================================================
+ * 演示数据：三个示例文件 + 状态机 waiting → uploading → parsing → ready
+ * ============================================================ */
+const FILES = [
+  { id: 'f1', size: '2.4 MB', type: 'PDF', chunks: 31, status: 'waiting', progress: 0 },
+  { id: 'f2', size: '1.1 MB', type: 'JPG', chunks: 8,  status: 'waiting', progress: 0 },
+  { id: 'f3', size: '8.7 MB', type: 'MP3', chunks: 18, status: 'waiting', progress: 0 }
+];
+const SPEED = [7, 11, 4];
+let timer = null;
+let running = false;
+
+const DOT = { waiting: 'dot-wait', uploading: 'dot-run', parsing: 'dot-run', ready: 'dot-ok' };
+const COLOR = { waiting: 'var(--muted)', uploading: 'var(--accent)', parsing: 'var(--accent)', ready: 'var(--ok)' };
+
+function statusText(f) {
+  if (f.status === 'uploading') return t('status.uploading', { n: Math.round(f.progress) });
+  return t('status.' + f.status);
+}
+
+function renderQueue() {
+  $('#queueCount').textContent = t('queue.count', { n: FILES.length });
+  $('#queueRows').innerHTML = FILES.map(f => `
+    <div class="flex items-center gap-4 py-4 border-b bd">
+      <div class="flex-1 min-w-0">
+        <div class="body-15 truncate" data-i18n="${f.id}.name">${t(f.id + '.name')}</div>
+        <div class="text-xs tm mt-1">${f.size} · ${f.type}</div>
+      </div>
+      <div class="w-40 shrink-0">
+        <div class="h-1" style="background:var(--chip);">
+          <div class="bar-fill h-full" style="width:${f.progress}%; background:${COLOR[f.status]};"></div>
+        </div>
+      </div>
+      <div class="w-32 text-right shrink-0">
+        <span class="text-xs inline-flex items-center gap-2" style="color:${COLOR[f.status]};">
+          <span class="dot ${DOT[f.status]}"></span><span>${statusText(f)}</span>
+        </span>
+      </div>
+    </div>`).join('');
+}
+
+function setStep(n) {
+  [1, 2, 3].forEach(i => {
+    const el = $('#step' + i);
+    el.classList.toggle('on', i === n);
+    el.classList.toggle('off', i !== n);
+  });
+}
+
+function startParse() {
+  if (running) return;
+  running = true;
+  $('#startBtn').textContent = t('btn.starting');
+  $('#startBtn').disabled = true;
+  $('#doneBar').classList.add('hidden');
+  $('#doneBar').classList.remove('flex');
+  FILES.forEach(f => { f.status = 'uploading'; f.progress = 0; });
+  setStep(2);
+  renderQueue();
+
+  timer = setInterval(() => {
+    let allDone = true;
+    FILES.forEach((f, i) => {
+      if (f.status === 'uploading') {
+        allDone = false;
+        f.progress = Math.min(100, f.progress + SPEED[i]);
+        if (f.progress >= 100) { f.status = 'parsing'; f.parseAt = Date.now(); }
+      } else if (f.status === 'parsing') {
+        allDone = false;
+        if (Date.now() - f.parseAt > 1100) { f.status = 'ready'; f.progress = 100; }
+      }
+    });
+    renderQueue();
+    if (allDone) {
+      clearInterval(timer);
+      running = false;
+      setStep(3);
+      $('#doneBar').classList.remove('hidden');
+      $('#doneBar').classList.add('flex');
+      $('#startBtn').textContent = t('btn.reset');
+      $('#startBtn').disabled = false;
+    }
+  }, 220);
+}
+
+function resetDemo() {
+  FILES.forEach(f => { f.status = 'waiting'; f.progress = 0; delete f.parseAt; });
+  setStep(1);
+  $('#doneBar').classList.add('hidden');
+  $('#doneBar').classList.remove('flex');
+  $('#startBtn').textContent = t('btn.start');
+  renderQueue();
+}
+
+/* ============================================================
+ * 事件绑定
+ * ============================================================ */
+$('#langToggle').addEventListener('click', () => setLang(lang === 'zh' ? 'en' : 'zh'));
+$('#themeToggle').addEventListener('click', () => {
+  const root = document.documentElement;
+  const next = root.dataset.theme === 'light' ? 'dark' : 'light';
+  root.dataset.theme = next;
+  localStorage.setItem('zjxt.theme', next);
+  $('#themeToggle').textContent = next === 'dark' ? t('theme.light') : t('theme.dark');
+});
+$('#dropZone').addEventListener('click', startParse);
+$('#pickBtn').addEventListener('click', (e) => { e.stopPropagation(); startParse(); });
+$('#startBtn').addEventListener('click', () => { running ? null : startParse(); });
+document.querySelectorAll('.tag-chip').forEach(chip => {
+  chip.addEventListener('click', () => {
+    document.querySelectorAll('.tag-chip').forEach(c => c.classList.remove('on'));
+    chip.classList.add('on');
+  });
+});
+
+setLang(lang);
+renderQueue();
+setStep(1);
+$('#themeToggle').textContent = document.documentElement.dataset.theme === 'dark' ? t('theme.light') : t('theme.dark');
+</script>
+</body>
+</html>

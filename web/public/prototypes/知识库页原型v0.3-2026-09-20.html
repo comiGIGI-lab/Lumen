@@ -1,0 +1,796 @@
+<!DOCTYPE html>
+<!-- 智教星途·知识库页原型 v0.3，由 LearnBuddy 生成，2026-09-20 -->
+<!-- 相对 v0.2：① lionheart 视觉改版（米白底 #FBF9F6 / 近黑 #191919 / 强调红 #E51520 / 直角卡片 + 胶囊按钮 / 大留白）② 顶部三页导航常驻、当前页高亮 ③ i18n、暗色、三个演示态全部保留 -->
+<!-- 公共片段（三页必须同步修改）：:root 变量块 / zj-nav 导航区 / I18N 的 nav.* 键 -->
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title data-i18n="page.title">智教星途 · 知识库</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  :root {
+    --bg: #FBF9F6;
+    --surface: #FFFFFF;
+    --band: #F8F3EC;
+    --peach: #FFE8D6;
+    --text: #191919;
+    --border: #E4DED5;
+    --primary: #191919;
+    --primary-ink: #FFFFFF;
+    --accent: #E51520;
+    --muted: #808080;
+    --chip: #F1ECE4;
+    --ok: #2E7D32;
+    --warn: #B26A00;
+    --err: #E51520;
+    --err-bg: #FDECEC;
+    --font-serif: Georgia, "Times New Roman", "Songti SC", "Noto Serif CJK SC", "Source Han Serif SC", serif;
+    --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    --shadow-btn: 0 5px 10px rgba(0,0,0,.15);
+  }
+  :root[data-theme="dark"] {
+    --bg: #141414;
+    --surface: #1C1C1C;
+    --band: #232323;
+    --peach: #2A2422;
+    --text: #F2EFEA;
+    --border: #343434;
+    --primary: #F2EFEA;
+    --primary-ink: #141414;
+    --accent: #FF5A63;
+    --muted: #9A9A9A;
+    --chip: #2A2A2A;
+    --ok: #6BBF6B;
+    --warn: #E0A63C;
+    --err: #FF6B73;
+    --err-bg: #3A2222;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: var(--font-sans);
+    background: var(--bg);
+    color: var(--text);
+  }
+  .surface { background: var(--surface); }
+  .bd { border-color: var(--border); }
+  .tm { color: var(--muted); }
+  .btn-p { background: var(--primary); color: var(--primary-ink); box-shadow: var(--shadow-btn); }
+  .btn-p:hover { filter: brightness(1.08); }
+  .btn-danger { color: var(--err); border-color: var(--err); }
+  .chip { background: var(--chip); color: var(--text); }
+  .chip-active { background: var(--primary); color: var(--primary-ink); }
+  .nav-item.active { background: var(--chip); box-shadow: inset 3px 0 0 var(--primary); }
+  .dot-ok { background: var(--ok); }
+  .dot-run { background: var(--primary); animation: pulse 1.2s infinite; }
+  .dot-queue { background: var(--muted); }
+  .dot-err { background: var(--err); }
+  .row-failed { background: var(--err-bg); }
+  .bar-fill { transition: width .35s ease; }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  .fade-in { animation: fadeIn .25s ease both; }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+  /* ===== lionheart 视觉：直角卡片 + 胶囊按钮 + 大留白 ===== */
+  .rounded-xl, .rounded-lg { border-radius: 0 !important; }
+  button.rounded-lg, button.rounded-xl, a.rounded-lg { border-radius: 1000px !important; }
+  input.rounded-lg, textarea.rounded-lg { border-radius: 1000px !important; }
+  textarea.rounded-lg { border-radius: 0 !important; }
+  .btn-p, .btn-danger { border-radius: 1000px !important; }
+  .btn-danger { padding-left: 14px; padding-right: 14px; }
+
+  /* 标题用衬线体，正文用无衬线 —— 沿用 lionheart 的 Lora 基调 */
+  #noteTitle { font-family: var(--font-serif); font-size: 28px; font-weight: 400; letter-spacing: .01em; }
+  .doc-sec-title { font-family: var(--font-serif); font-size: 20px; }
+
+  /* 留白节奏：区块间距 32px，内容区 40px 内边距 */
+  .space-y-6 > * + * { margin-top: 32px !important; }
+  #contentArea { padding: 40px !important; max-width: 1180px; margin: 0 auto; }
+  .surface { box-shadow: 0 1px 2px rgba(0,0,0,.04); }
+
+  /* 顶部三页导航（公共片段） */
+  nav.zj-nav a { font-size: 12px; letter-spacing: .12em; text-transform: uppercase; white-space: nowrap; }
+  nav.zj-nav a.active { color: var(--accent); font-weight: 500; }
+  nav.zj-nav a.active::after {
+    content: ""; display: block; height: 2px; background: var(--accent); margin-top: 4px;
+  }
+  .nav-item.active { box-shadow: inset 3px 0 0 var(--accent) !important; }
+  .dot-run { background: var(--accent) !important; }
+  .dot-ok { background: var(--ok); }
+</style>
+</head>
+<body class="min-h-screen">
+
+<!-- ========== 顶部 AppBar ========== -->
+<header class="surface border-b bd h-16 flex items-center px-5 gap-5 sticky top-0 z-20">
+  <!-- 左：logo + 副标题 -->
+  <div class="flex items-center gap-3 w-60 shrink-0">
+    <div class="w-9 h-9 rounded-lg btn-p flex items-center justify-center text-sm font-bold">ZJ</div>
+    <div class="leading-tight">
+      <div class="font-semibold" data-i18n="app.name">智教星途</div>
+      <div class="text-xs tm" data-i18n="app.slogan">多模态教学智能体</div>
+    </div>
+  </div>
+
+  <!-- 中：三页导航（公共片段，三页同步） -->
+  <nav class="zj-nav flex items-center gap-7 shrink-0">
+    <a href="首页原型v0.1-2026-09-20.html" class="tm" data-i18n="nav.home">首页</a>
+    <a href="知识库页原型v0.3-2026-09-20.html" class="active" data-i18n="nav.kb">知识库</a>
+    <a href="文档导入页原型v0.1-2026-09-20.html" class="tm" data-i18n="nav.import">导入</a>
+  </nav>
+
+  <!-- 中：搜索框 -->
+  <div class="flex-1 max-w-xl">
+    <div class="relative">
+      <input id="searchInput" type="text"
+        class="w-full h-10 pl-10 pr-3 rounded-lg border bd surface text-sm outline-none"
+        data-i18n-placeholder="search.placeholder" placeholder="搜索笔记标题、标签或知识点…" />
+      <span class="absolute left-3 top-1/2 -translate-y-1/2 tm text-sm">🔍</span>
+    </div>
+  </div>
+
+  <!-- 右：语言切换 + 主题切换 + 导入 + 头像 -->
+  <div class="flex items-center gap-3 ml-auto">
+    <button id="langToggle" class="h-9 px-3 rounded-lg border bd text-sm font-medium" title="language">EN</button>
+    <button id="themeToggle" class="h-9 w-9 rounded-lg border bd text-sm" title="theme">🌙</button>
+    <button id="importBtnTop" class="btn-p h-9 px-4 rounded-lg text-sm font-medium" data-i18n="action.import">
+      导入文档
+    </button>
+    <div class="w-9 h-9 rounded-full chip flex items-center justify-center text-sm font-medium">林</div>
+  </div>
+</header>
+
+<div class="flex" style="height: calc(100vh - 4rem);">
+
+  <!-- ========== 左侧 240px 侧边栏 ========== -->
+  <aside class="surface border-r bd shrink-0 flex flex-col" style="width: 240px;">
+    <div class="px-4 py-3 text-xs tm uppercase tracking-wide" data-i18n="sidebar.title">
+      我的笔记
+    </div>
+    <div id="noteList" class="flex-1 overflow-y-auto px-2 pb-2 space-y-1"></div>
+    <div class="p-3 border-t bd">
+      <button class="w-full h-10 rounded-lg border bd text-sm font-medium" data-i18n="sidebar.new">
+        + 新建笔记
+      </button>
+    </div>
+  </aside>
+
+  <!-- ========== 主区 ========== -->
+  <main class="flex-1 overflow-y-auto">
+    <!-- 标签筛选 chip 行 -->
+    <div class="sticky top-0 z-10 surface border-b bd px-6 py-3 flex items-center gap-2 flex-wrap">
+      <button class="filter-chip chip-active h-8 px-3 rounded-full text-sm" data-filter="all" data-i18n="filter.all">全部</button>
+      <button class="filter-chip chip h-8 px-3 rounded-full text-sm" data-filter="high-math" data-i18n="filter.math">高数</button>
+      <button class="filter-chip chip h-8 px-3 rounded-full text-sm" data-filter="english" data-i18n="filter.english">英语</button>
+      <button class="filter-chip chip h-8 px-3 rounded-full text-sm" data-filter="mistakes" data-i18n="filter.wrong">错题</button>
+      <button class="filter-chip chip h-8 px-3 rounded-full text-sm" data-filter="others" data-i18n="filter.other">其他</button>
+      <span class="ml-auto text-xs tm" id="countText"></span>
+    </div>
+
+    <!-- ===== 演示态 1：空知识库引导页 ===== -->
+    <div id="emptyState" class="hidden p-6">
+      <div class="surface border bd rounded-xl p-12 flex flex-col items-center text-center fade-in max-w-2xl mx-auto mt-10">
+        <div class="text-5xl mb-4">📚</div>
+        <div class="text-lg font-semibold mb-2" data-i18n="empty.title">知识库还是空的</div>
+        <div class="text-sm tm mb-8" data-i18n="empty.desc">上传第一份课件，AI 会自动解析、分块并建立可提问的知识库</div>
+        <div class="grid grid-cols-3 gap-4 w-full mb-8 text-left">
+          <div class="border bd rounded-lg p-4">
+            <div class="text-xl mb-2">⬆️</div>
+            <div class="text-sm font-medium mb-1" data-i18n="empty.step1">上传课件</div>
+            <div class="text-xs tm" data-i18n="empty.step1desc">支持 PDF / 图片 / 音频</div>
+          </div>
+          <div class="border bd rounded-lg p-4">
+            <div class="text-xl mb-2">⚙️</div>
+            <div class="text-sm font-medium mb-1" data-i18n="empty.step2">自动解析</div>
+            <div class="text-xs tm" data-i18n="empty.step2desc">OCR + 转写 + 分块索引</div>
+          </div>
+          <div class="border bd rounded-lg p-4">
+            <div class="text-xl mb-2">💬</div>
+            <div class="text-sm font-medium mb-1" data-i18n="empty.step3">开始提问</div>
+            <div class="text-xs tm" data-i18n="empty.step3desc">答案可溯源到原文</div>
+          </div>
+        </div>
+        <div class="flex gap-3">
+          <button id="emptyImport" class="btn-p h-10 px-5 rounded-lg text-sm font-medium" data-i18n="empty.cta">导入第一份文档</button>
+          <button id="emptyDemo" class="h-10 px-5 rounded-lg border bd text-sm" data-i18n="empty.loadDemo">载入示例笔记</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== 正常内容区 ===== -->
+    <div id="contentArea" class="p-6 space-y-6">
+      <!-- 笔记详情：标题 -->
+      <section class="surface border bd rounded-xl p-5">
+        <input id="noteTitle" class="w-full text-2xl font-semibold surface outline-none border-none"
+          data-i18n-placeholder="detail.titlePlaceholder" placeholder="笔记标题" />
+      </section>
+
+      <!-- 笔记详情：元信息 -->
+      <section class="surface border bd rounded-xl p-5">
+        <div class="text-sm font-semibold mb-3" data-i18n="detail.meta">元信息</div>
+        <dl class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+          <div>
+            <dt class="tm text-xs" data-i18n="detail.createdAt">创建时间</dt>
+            <dd id="metaCreated" class="mt-1">—</dd>
+          </div>
+          <div>
+            <dt class="tm text-xs" data-i18n="detail.updatedAt">最近更新</dt>
+            <dd id="metaUpdated" class="mt-1">—</dd>
+          </div>
+          <div>
+            <dt class="tm text-xs" data-i18n="detail.tag">标签</dt>
+            <dd id="metaTag" class="mt-1">—</dd>
+          </div>
+          <div>
+            <dt class="tm text-xs" data-i18n="detail.docCount">关联文档</dt>
+            <dd id="metaDocs" class="mt-1">—</dd>
+          </div>
+        </dl>
+      </section>
+
+      <!-- 文档列表：状态列（抄 Dify） -->
+      <section class="surface border bd rounded-xl overflow-hidden">
+        <div class="px-5 py-3 border-b bd flex items-center">
+          <span class="text-sm font-semibold" data-i18n="doclist.title">关联文档</span>
+          <span class="ml-2 text-xs tm" data-i18n="doclist.hint">状态决定是否可提问</span>
+        </div>
+        <table class="w-full text-sm">
+          <thead class="text-xs tm">
+            <tr class="border-b bd">
+              <th class="text-left font-medium px-5 py-2" data-i18n="doclist.colName">文档名</th>
+              <th class="text-left font-medium px-5 py-2" data-i18n="doclist.colType">类型</th>
+              <th class="text-left font-medium px-5 py-2" data-i18n="doclist.colStatus">状态</th>
+              <th class="text-left font-medium px-5 py-2" data-i18n="doclist.colChunks">分块数</th>
+              <th class="text-left font-medium px-5 py-2" data-i18n="doclist.colAction">操作</th>
+            </tr>
+          </thead>
+          <tbody id="docTableBody"></tbody>
+        </table>
+      </section>
+
+      <!-- 分块预览（抄 Dify） -->
+      <section class="surface border bd rounded-xl p-5">
+        <div class="text-sm font-semibold mb-3" data-i18n="chunk.title">分块预览</div>
+        <div id="chunkPreview" class="space-y-2"></div>
+      </section>
+
+      <!-- 保存备注 -->
+      <section class="surface border bd rounded-xl p-5">
+        <div class="text-sm font-semibold mb-3" data-i18n="note.remark">备注</div>
+        <textarea id="remarkInput" rows="4"
+          class="w-full rounded-lg border bd surface p-3 text-sm outline-none resize-none"
+          data-i18n-placeholder="note.remarkPlaceholder"
+          placeholder="记录你的复习计划、易错点…"></textarea>
+        <div class="mt-3 flex items-center gap-3">
+          <button id="saveRemark" class="btn-p h-9 px-4 rounded-lg text-sm font-medium" data-i18n="action.save">保存备注</button>
+          <span id="saveHint" class="text-xs tm opacity-0 transition-opacity" data-i18n="note.saved">已保存</span>
+          <span class="text-xs tm" data-i18n="note.autosave">修改后自动保存</span>
+        </div>
+      </section>
+    </div>
+  </main>
+</div>
+
+<!-- ========== 右下角悬浮导入按钮 ========== -->
+<button id="fabImport"
+  class="btn-p fixed bottom-6 right-6 h-12 w-12 rounded-full shadow-lg flex items-center justify-center text-xl"
+  title="import">＋</button>
+
+<!-- ========== 演示控制台（答辩用，可删） ========== -->
+<div class="fixed bottom-6 left-6 surface border border-dashed bd rounded-xl p-3 w-56 text-xs">
+  <div class="font-semibold mb-2 tm" data-i18n="demo.title">演示控制台</div>
+  <div class="space-y-2">
+    <button id="demoEmptyBtn" class="w-full h-8 rounded-lg border bd text-left px-3" data-i18n="demo.empty">切换空知识库</button>
+    <button id="demoFailBtn" class="w-full h-8 rounded-lg border bd text-left px-3" data-i18n="demo.injectFail">注入解析失败</button>
+    <button id="demoResetBtn" class="w-full h-8 rounded-lg border bd text-left px-3" data-i18n="demo.reset">重置演示数据</button>
+  </div>
+</div>
+
+<!-- ========== 导入弹窗（含上传进度动画） ========== -->
+<div id="importModal" class="fixed inset-0 z-30 hidden items-center justify-center" style="background: rgba(0,0,0,.45);">
+  <div class="surface rounded-xl w-[520px] p-6 border bd">
+    <div class="flex items-center justify-between mb-4">
+      <div class="font-semibold" data-i18n="modal.title">导入文档</div>
+      <button id="modalClose" class="tm text-lg">✕</button>
+    </div>
+
+    <!-- 拖拽区 -->
+    <div id="dropZone" class="border-2 border-dashed bd rounded-xl h-36 flex flex-col items-center justify-center tm text-sm">
+      <div class="text-2xl mb-2">📄</div>
+      <div data-i18n="modal.drop">拖拽文件到此处，或点击选择</div>
+      <div class="text-xs mt-1" data-i18n="modal.support">支持 PDF / 图片 / 音频</div>
+    </div>
+
+    <!-- 上传队列 + 进度条 -->
+    <div id="uploadQueue" class="hidden mt-4 space-y-3">
+      <div class="text-xs tm" data-i18n="modal.uploading">正在上传并解析…</div>
+      <div id="uploadRows"></div>
+    </div>
+
+    <!-- 完成态 -->
+    <div id="uploadDone" class="hidden mt-4 rounded-lg border bd p-3 text-sm">
+      ✅ <span data-i18n="modal.doneHint">3 个文档已加入解析队列</span>
+    </div>
+
+    <div class="mt-5 flex justify-end gap-3">
+      <button id="modalCancel" class="h-9 px-4 rounded-lg border bd text-sm" data-i18n="modal.cancel">取消</button>
+      <button id="modalConfirm" class="btn-p h-9 px-4 rounded-lg text-sm font-medium" data-i18n="modal.confirm">开始解析</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* 主题偏好跨页保持：localStorage['zjxt.theme'] */
+(function () {
+  var saved = localStorage.getItem('zjxt.theme');
+  if (saved) document.documentElement.dataset.theme = saved;
+})();
+
+/* ============================================================
+ * 1. i18n 字典（zh / en）
+ * ============================================================ */
+const I18N = {
+  zh: {
+    'page.title': '智教星途 · 知识库',
+    'app.name': '智教星途',
+    'nav.home': '首页', 'nav.kb': '知识库', 'nav.import': '导入文档',
+    'app.slogan': '多模态教学智能体',
+    'search.placeholder': '搜索笔记标题、标签或知识点…',
+    'action.import': '导入文档',
+    'action.save': '保存备注',
+    'action.preview': '预览分块',
+    'action.retry': '重试',
+    'action.retrying': '重试中…',
+    'sidebar.title': '我的笔记',
+    'sidebar.new': '+ 新建笔记',
+    'sidebar.noMatch': '没有匹配的笔记',
+    'filter.all': '全部', 'filter.math': '高数', 'filter.english': '英语',
+    'filter.wrong': '错题', 'filter.other': '其他',
+    'tag.high-math': '高数', 'tag.english': '英语', 'tag.mistakes': '错题', 'tag.others': '其他',
+    'count.notes': '共 {n} 条笔记',
+    'detail.titlePlaceholder': '笔记标题',
+    'detail.meta': '元信息',
+    'detail.createdAt': '创建时间', 'detail.updatedAt': '最近更新',
+    'detail.tag': '标签', 'detail.docCount': '关联文档',
+    'doclist.title': '关联文档', 'doclist.hint': '状态决定是否可提问',
+    'doclist.colName': '文档名', 'doclist.colType': '类型', 'doclist.colStatus': '状态',
+    'doclist.colChunks': '分块数', 'doclist.colAction': '操作',
+    'chunk.title': '分块预览',
+    'note.remark': '备注',
+    'note.remarkPlaceholder': '记录你的复习计划、易错点…',
+    'note.saved': '已保存',
+    'note.autosave': '修改后自动保存',
+    'status.ready': '已入库', 'status.parsing': '解析中',
+    'status.queue': '排队中', 'status.failed': '解析失败',
+    'doctype.pdf': 'PDF', 'doctype.image': '图片', 'doctype.audio': '音频',
+    'modal.title': '导入文档', 'modal.drop': '拖拽文件到此处，或点击选择',
+    'modal.support': '支持 PDF / 图片 / 音频', 'modal.cancel': '取消',
+    'modal.confirm': '开始解析', 'modal.uploading': '正在上传并解析…',
+    'modal.doneHint': '3 个文档已加入解析队列',
+    'empty.title': '知识库还是空的',
+    'empty.desc': '上传第一份课件，AI 会自动解析、分块并建立可提问的知识库',
+    'empty.step1': '上传课件', 'empty.step1desc': '支持 PDF / 图片 / 音频',
+    'empty.step2': '自动解析', 'empty.step2desc': 'OCR + 转写 + 分块索引',
+    'empty.step3': '开始提问', 'empty.step3desc': '答案可溯源到原文',
+    'empty.cta': '导入第一份文档', 'empty.loadDemo': '载入示例笔记',
+    'demo.title': '演示控制台', 'demo.empty': '切换空知识库',
+    'demo.injectFail': '注入解析失败', 'demo.reset': '重置演示数据',
+    'note.n1': '高等数学 · 极限与连续', 'note.n2': '考研英语 · 长难句拆解 01',
+    'note.n3': '线性代数 · 矩阵秩的判定', 'note.n4': '错题本 · 不定积分常错点',
+    'note.n5': '数据结构 · 红黑树笔记', 'note.n6': '机器学习 · 损失函数汇总',
+    'note.n7': '英语听力真题精听 Week3', 'note.n8': '概率论 · 大数定律与中心极限定理',
+    'remark.n1': '本周重点：ε-N 定义 + 两个重要极限，配套 3 道错题重做。',
+    'remark.n2': '每天 5 句长难句，先自己拆再对照解析。',
+    'remark.n3': '重点记：初等变换不改变秩。',
+    'remark.n4': '错因分类：符号错误 6 次、公式记混 4 次。',
+    'remark.n5': '旋转变色部分要能手绘，面试高频。',
+    'remark.n6': '交叉熵 vs MSE 的适用边界要讲清楚。',
+    'remark.n7': '精听流程：盲听 → 看稿 → 复述。',
+    'remark.n8': '中心极限定理三个条件别记漏。',
+    'chunk.c1': '数列极限的 ε-N 定义：对任意 ε>0，存在 N，当 n>N 时 |a_n - A| < ε…',
+    'chunk.c2': '夹逼准则：若 b_n ≤ a_n ≤ c_n 且 lim b_n = lim c_n = A，则 lim a_n = A…',
+    'chunk.c3': '两个重要极限：lim(sin x / x) = 1；(1 + 1/n)^n → e…'
+  },
+  en: {
+    'page.title': 'ZhiJiaoXingTu · Knowledge Base',
+    'app.name': 'ZhiJiaoXingTu',
+    'nav.home': 'Home', 'nav.kb': 'Knowledge Base', 'nav.import': 'Import',
+    'app.slogan': 'Multimodal Teaching Agent',
+    'search.placeholder': 'Search notes, tags or knowledge points…',
+    'action.import': 'Import',
+    'action.save': 'Save Note',
+    'action.preview': 'Preview Chunks',
+    'action.retry': 'Retry',
+    'action.retrying': 'Retrying…',
+    'sidebar.title': 'My Notes',
+    'sidebar.new': '+ New Note',
+    'sidebar.noMatch': 'No matching notes',
+    'filter.all': 'All', 'filter.math': 'Math', 'filter.english': 'English',
+    'filter.wrong': 'Mistakes', 'filter.other': 'Others',
+    'tag.high-math': 'Math', 'tag.english': 'English', 'tag.mistakes': 'Mistakes', 'tag.others': 'Others',
+    'count.notes': '{n} notes',
+    'detail.titlePlaceholder': 'Note title',
+    'detail.meta': 'Metadata',
+    'detail.createdAt': 'Created', 'detail.updatedAt': 'Updated',
+    'detail.tag': 'Tag', 'detail.docCount': 'Documents',
+    'doclist.title': 'Linked Documents', 'doclist.hint': 'Status decides whether it is queryable',
+    'doclist.colName': 'Name', 'doclist.colType': 'Type', 'doclist.colStatus': 'Status',
+    'doclist.colChunks': 'Chunks', 'doclist.colAction': 'Actions',
+    'chunk.title': 'Chunk Preview',
+    'note.remark': 'Note',
+    'note.remarkPlaceholder': 'Write your review plan and weak points…',
+    'note.saved': 'Saved',
+    'note.autosave': 'Auto-saved after edit',
+    'status.ready': 'Ready', 'status.parsing': 'Parsing',
+    'status.queue': 'Queued', 'status.failed': 'Failed',
+    'doctype.pdf': 'PDF', 'doctype.image': 'Image', 'doctype.audio': 'Audio',
+    'modal.title': 'Import Documents', 'modal.drop': 'Drop files here, or click to select',
+    'modal.support': 'PDF / Image / Audio supported', 'modal.cancel': 'Cancel',
+    'modal.confirm': 'Start Parsing', 'modal.uploading': 'Uploading and parsing…',
+    'modal.doneHint': '3 documents added to the parsing queue',
+    'empty.title': 'Your knowledge base is empty',
+    'empty.desc': 'Upload your first courseware — it will be parsed, chunked, and made queryable automatically',
+    'empty.step1': 'Upload', 'empty.step1desc': 'PDF / Image / Audio',
+    'empty.step2': 'Auto Parse', 'empty.step2desc': 'OCR + transcription + indexing',
+    'empty.step3': 'Ask Anything', 'empty.step3desc': 'Answers traceable to source',
+    'empty.cta': 'Import Your First Document', 'empty.loadDemo': 'Load Sample Notes',
+    'demo.title': 'Demo Console', 'demo.empty': 'Toggle Empty State',
+    'demo.injectFail': 'Inject Parse Failure', 'demo.reset': 'Reset Demo Data',
+    'note.n1': 'Advanced Math · Limits and Continuity', 'note.n2': 'Postgrad English · Long Sentences 01',
+    'note.n3': 'Linear Algebra · Rank of a Matrix', 'note.n4': 'Mistake Log · Indefinite Integrals',
+    'note.n5': 'Data Structures · Red-Black Trees', 'note.n6': 'Machine Learning · Loss Functions',
+    'note.n7': 'English Listening Practice Week 3', 'note.n8': 'Probability · Law of Large Numbers',
+    'remark.n1': 'Focus: ε-N definition + two special limits, redo 3 mistakes.',
+    'remark.n2': '5 sentences a day: parse first, then check the reference.',
+    'remark.n3': 'Key point: elementary transforms preserve rank.',
+    'remark.n4': 'Error types: sign errors 6, formula confusion 4.',
+    'remark.n5': 'Be able to draw rotations by hand — frequent interview topic.',
+    'remark.n6': 'Clarify when to use cross-entropy vs MSE.',
+    'remark.n7': 'Workflow: listen blind → read script → retell.',
+    'remark.n8': "Don't miss the three conditions of the CLT.",
+    'chunk.c1': 'ε-N definition of sequence limits: for any ε>0 there exists N such that |a_n - A| < ε when n>N…',
+    'chunk.c2': 'Squeeze theorem: if b_n ≤ a_n ≤ c_n and lim b_n = lim c_n = A, then lim a_n = A…',
+    'chunk.c3': 'Two important limits: lim(sin x / x) = 1; (1 + 1/n)^n → e…'
+  }
+};
+
+/* ============================================================
+ * 2. 假数据
+ * ============================================================ */
+const SEED_NOTES = [
+  { id: 'n1', tag: 'high-math', updated: '09-19 14:32', created: '09-12 09:10' },
+  { id: 'n2', tag: 'english',    updated: '09-19 10:05', created: '09-10 20:41' },
+  { id: 'n3', tag: 'high-math', updated: '09-18 21:47', created: '09-09 15:22' },
+  { id: 'n4', tag: 'mistakes',   updated: '09-18 19:03', created: '09-08 22:15' },
+  { id: 'n5', tag: 'others',     updated: '09-17 16:20', created: '09-07 11:30' },
+  { id: 'n6', tag: 'others',     updated: '09-17 08:55', created: '09-06 13:08' },
+  { id: 'n7', tag: 'english',    updated: '09-16 23:12', created: '09-05 19:44' },
+  { id: 'n8', tag: 'others',     updated: '09-15 20:30', created: '09-04 10:02' }
+];
+
+const SEED_DOCS = {
+  n1: [
+    { id: 'd101', name: '第2章 极限与连续.pdf', type: 'pdf', status: 'ready', chunks: 42 },
+    { id: 'd102', name: '课堂板书_0912.jpg', type: 'image', status: 'parsing', chunks: 0, progress: 62 },
+    { id: 'd103', name: '习题课录音.mp3', type: 'audio', status: 'queue', chunks: 0 }
+  ],
+  n2: [
+    { id: 'd201', name: '长难句精讲.pdf', type: 'pdf', status: 'ready', chunks: 28 },
+    { id: 'd202', name: '真题阅读扫描件.jpg', type: 'image', status: 'failed', chunks: 0, error: 'OCR_FAILED' }
+  ],
+  n3: [{ id: 'd301', name: '矩阵秩判定方法.pdf', type: 'pdf', status: 'ready', chunks: 17 }],
+  n4: [
+    { id: 'd401', name: '不定积分错题集.pdf', type: 'pdf', status: 'ready', chunks: 35 },
+    { id: 'd402', name: '错题照片_01.jpg', type: 'image', status: 'ready', chunks: 9 },
+    { id: 'd403', name: '错题照片_02.jpg', type: 'image', status: 'parsing', chunks: 0, progress: 28 },
+    { id: 'd404', name: '老师讲解录音.mp3', type: 'audio', status: 'queue', chunks: 0 }
+  ],
+  n5: [
+    { id: 'd501', name: '红黑树讲义.pdf', type: 'pdf', status: 'ready', chunks: 24 },
+    { id: 'd502', name: '插入删除演示.jpg', type: 'image', status: 'ready', chunks: 6 }
+  ],
+  n6: [
+    { id: 'd601', name: '损失函数综述.pdf', type: 'pdf', status: 'ready', chunks: 31 },
+    { id: 'd602', name: '课件截图.png', type: 'image', status: 'parsing', chunks: 0, progress: 45 },
+    { id: 'd603', name: '课程录音_第4讲.mp3', type: 'audio', status: 'ready', chunks: 12 }
+  ],
+  n7: [{ id: 'd701', name: '听力真题_Week3.mp3', type: 'audio', status: 'ready', chunks: 15 }],
+  n8: [
+    { id: 'd801', name: '大数定律.pdf', type: 'pdf', status: 'ready', chunks: 20 },
+    { id: 'd802', name: '公式推导手写稿.jpg', type: 'image', status: 'failed', chunks: 0, error: 'IMAGE_TOO_BLURRY' }
+  ]
+};
+
+const STATUS_CLS = { ready: 'dot-ok', parsing: 'dot-run', queue: 'dot-queue', failed: 'dot-err' };
+
+let NOTES = JSON.parse(JSON.stringify(SEED_NOTES));
+let DOCS = JSON.parse(JSON.stringify(SEED_DOCS));
+let lang = localStorage.getItem('zjxt.lang') || 'zh';
+let currentFilter = 'all';
+let currentNoteId = 'n1';
+let keyword = '';
+let demoEmpty = false;
+let uploadTimer = null;
+
+const $ = (s) => document.querySelector(s);
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+/* ============================================================
+ * 3. i18n 运行时
+ * ------------------------------------------------------------
+ * key 说明：静态文本写在元素的 data-i18n 上；
+ * 输入框占位文本用 data-i18n-placeholder；
+ * 动态渲染的内容在 t() 里取值后塞进 DOM，同样保留 data-i18n 属性。
+ * 切换流程：setLang() → 替换静态文案 → 触发 renderSidebar/renderDetail 重渲染动态部分。
+ * 语言偏好写入 localStorage['zjxt.lang']，刷新后保持。
+ * ============================================================ */
+function t(key, vars) {
+  let s = (I18N[lang] && I18N[lang][key]) || I18N.zh[key] || key;
+  if (vars) Object.keys(vars).forEach(k => { s = s.replace('{' + k + '}', vars[k]); });
+  return s;
+}
+
+function setLang(next) {
+  lang = next;
+  localStorage.setItem('zjxt.lang', next);
+  document.documentElement.lang = next === 'en' ? 'en' : 'zh-CN';
+  document.querySelectorAll('[data-i18n]').forEach(el => { el.textContent = t(el.dataset.i18n); });
+  document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+    el.setAttribute('placeholder', t(el.dataset.i18nPlaceholder));
+  });
+  $('#langToggle').textContent = next === 'zh' ? 'EN' : '中';
+  renderSidebar();
+  renderDetail();
+}
+
+/* ============================================================
+ * 4. 渲染：侧边栏
+ * ============================================================ */
+function renderSidebar() {
+  const list = $('#noteList');
+  const data = NOTES.filter(n =>
+    (currentFilter === 'all' || n.tag === currentFilter) &&
+    (!keyword || (t('note.' + n.id) + t('tag.' + n.tag)).toLowerCase().includes(keyword.toLowerCase()))
+  );
+  $('#countText').textContent = t('count.notes', { n: data.length });
+  list.innerHTML = data.length === 0
+    ? `<div class="px-3 py-6 text-center text-xs tm">${t('sidebar.noMatch')}</div>`
+    : data.map(n => `
+      <div data-id="${n.id}"
+        class="nav-item w-full text-left px-3 py-2 rounded-lg cursor-pointer ${n.id === currentNoteId ? 'active' : ''}">
+        <div class="flex items-center justify-between gap-2">
+          <div class="text-sm font-medium truncate" data-i18n="note.${n.id}">${t('note.' + n.id)}</div>
+          <span class="chip text-xs px-2 py-0.5 rounded-full shrink-0" data-i18n="tag.${n.tag}">${t('tag.' + n.tag)}</span>
+        </div>
+        <div class="text-xs tm mt-1">${n.updated}</div>
+      </div>`).join('');
+  list.querySelectorAll('.nav-item').forEach(el => {
+    el.addEventListener('click', () => { currentNoteId = el.dataset.id; renderSidebar(); renderDetail(); });
+  });
+}
+
+/* ============================================================
+ * 5. 渲染：笔记详情 + 文档表（失败红行 + 重试）
+ * ============================================================ */
+function renderDetail() {
+  if (!NOTES.length) return;
+  const note = NOTES.find(n => n.id === currentNoteId) || NOTES[0];
+  currentNoteId = note.id;
+  $('#noteTitle').value = t('note.' + note.id);
+  $('#remarkInput').value = t('remark.' + note.id);
+  $('#metaCreated').textContent = note.created;
+  $('#metaUpdated').textContent = note.updated;
+  $('#metaTag').textContent = t('tag.' + note.tag);
+  const docs = DOCS[currentNoteId] || [];
+  $('#metaDocs').textContent = docs.length + (lang === 'zh' ? ' 个' : '');
+
+  $('#docTableBody').innerHTML = docs.map(d => {
+    const failed = d.status === 'failed';
+    const retryBtn = failed
+      ? `<button data-retry="${d.id}" class="text-xs px-2 py-1 rounded border btn-danger">${t('action.retry')}</button>`
+      : `<button class="text-xs tm hover:underline">${t('action.preview')}</button>`;
+    return `
+      <tr class="border-b bd ${failed ? 'row-failed' : ''}">
+        <td class="px-5 py-3">${d.name}</td>
+        <td class="px-5 py-3 tm" data-i18n="doctype.${d.type}">${t('doctype.' + d.type)}</td>
+        <td class="px-5 py-3">
+          <span class="inline-flex items-center gap-2">
+            <span class="w-2 h-2 rounded-full ${STATUS_CLS[d.status]}"></span>
+            <span data-i18n="status.${d.status}">${t('status.' + d.status)}</span>
+            ${d.status === 'parsing' && d.progress ? `<span class="text-xs tm">${d.progress}%</span>` : ''}
+          </span>
+        </td>
+        <td class="px-5 py-3 tm">${d.chunks || '—'}</td>
+        <td class="px-5 py-3">${retryBtn}</td>
+      </tr>`;
+  }).join('');
+
+  $('#docTableBody').querySelectorAll('[data-retry]').forEach(btn => {
+    btn.addEventListener('click', () => retryDocument(btn.dataset.retry, btn));
+  });
+
+  const chunks = [
+    { id: '#01', src: '第2章 极限与连续.pdf · P12', text: t('chunk.c1') },
+    { id: '#02', src: '第2章 极限与连续.pdf · P14', text: t('chunk.c2') },
+    { id: '#03', src: '课堂板书_0912.jpg · OCR', text: t('chunk.c3') }
+  ];
+  $('#chunkPreview').innerHTML = chunks.map(c => `
+    <div class="border bd rounded-lg p-3 text-sm">
+      <div class="flex items-center justify-between mb-1">
+        <span class="text-xs tm">${c.id}</span>
+        <span class="text-xs tm">${c.src}</span>
+      </div>
+      <div>${c.text}</div>
+    </div>`).join('');
+}
+
+/* ============================================================
+ * 6. 演示态 2：解析失败 → 重试 → 排队中 → 解析中 → 已入库
+ * ============================================================ */
+function retryDocument(docId, btn) {
+  const doc = (DOCS[currentNoteId] || []).find(d => d.id === docId);
+  if (!doc) return;
+  btn.disabled = true;
+  btn.textContent = t('action.retrying');
+  doc.status = 'queue';
+  renderDetail();
+  setTimeout(() => { doc.status = 'parsing'; doc.progress = 18; renderDetail(); }, 700);
+  setTimeout(() => { doc.progress = 74; renderDetail(); }, 1500);
+  setTimeout(() => {
+    doc.status = 'ready'; doc.progress = 100; doc.chunks = 16; delete doc.error;
+    renderDetail();
+  }, 2600);
+}
+
+/* ============================================================
+ * 7. 演示态 3：导入弹窗上传进度动画
+ * ============================================================ */
+const DEMO_FILES = [
+  { name: '第3章 导数与微分.pdf', size: '2.4 MB' },
+  { name: '课堂板书_0920.jpg', size: '1.1 MB' },
+  { name: '习题课录音_0920.mp3', size: '8.7 MB' }
+];
+
+function openModal() {
+  $('#importModal').classList.remove('hidden');
+  $('#importModal').classList.add('flex');
+  $('#uploadQueue').classList.add('hidden');
+  $('#uploadDone').classList.add('hidden');
+  $('#dropZone').classList.remove('hidden');
+  if (uploadTimer) clearInterval(uploadTimer);
+}
+
+function closeModal() {
+  $('#importModal').classList.add('hidden');
+  $('#importModal').classList.remove('flex');
+  if (uploadTimer) clearInterval(uploadTimer);
+}
+
+function startUpload() {
+  $('#dropZone').classList.add('hidden');
+  $('#uploadQueue').classList.remove('hidden');
+  $('#uploadDone').classList.add('hidden');
+  $('#uploadRows').innerHTML = DEMO_FILES.map((f, i) => `
+    <div>
+      <div class="flex items-center justify-between text-xs mb-1">
+        <span class="truncate">${f.name}</span>
+        <span class="tm" id="pct${i}">0%</span>
+      </div>
+      <div class="h-2 rounded-full chip overflow-hidden">
+        <div id="bar${i}" class="bar-fill h-full btn-p" style="width:0%"></div>
+      </div>
+    </div>`).join('');
+
+  const progress = [0, 0, 0];
+  const speed = [7, 11, 4];
+  uploadTimer = setInterval(() => {
+    let allDone = true;
+    progress.forEach((p, i) => {
+      if (p < 100) {
+        allDone = false;
+        p = Math.min(100, p + speed[i]);
+        progress[i] = p;
+        $('#bar' + i).style.width = p + '%';
+        $('#pct' + i).textContent = Math.round(p) + '%';
+      }
+    });
+    if (allDone) {
+      clearInterval(uploadTimer);
+      $('#uploadDone').classList.remove('hidden');
+      setTimeout(() => {
+        if (!DOCS[currentNoteId]) DOCS[currentNoteId] = [];
+        DOCS[currentNoteId].push(
+          { id: 'new' + Date.now(), name: DEMO_FILES[0].name, type: 'pdf', status: 'parsing', chunks: 0, progress: 12 },
+          { id: 'new' + (Date.now() + 1), name: DEMO_FILES[1].name, type: 'image', status: 'queue', chunks: 0 },
+          { id: 'new' + (Date.now() + 2), name: DEMO_FILES[2].name, type: 'audio', status: 'queue', chunks: 0 }
+        );
+        closeModal();
+        renderDetail();
+      }, 900);
+    }
+  }, 220);
+}
+
+/* ============================================================
+ * 8. 演示态 1：空知识库
+ * ============================================================ */
+function setEmptyMode(flag) {
+  demoEmpty = flag;
+  $('#emptyState').classList.toggle('hidden', !flag);
+  $('#contentArea').classList.toggle('hidden', flag);
+  document.querySelector('.filter-chip').parentElement.classList.toggle('hidden', flag);
+  if (flag) NOTES = []; else NOTES = JSON.parse(JSON.stringify(SEED_NOTES));
+  renderSidebar();
+}
+
+/* ============================================================
+ * 9. 事件绑定
+ * ============================================================ */
+$('#langToggle').addEventListener('click', () => setLang(lang === 'zh' ? 'en' : 'zh'));
+
+$('#themeToggle').addEventListener('click', () => {
+  const root = document.documentElement;
+  const next = root.dataset.theme === 'light' ? 'dark' : 'light';
+  root.dataset.theme = next;
+  localStorage.setItem('zjxt.theme', next);
+  $('#themeToggle').textContent = next === 'dark' ? '☀️' : '🌙';
+});
+
+$('#searchInput').addEventListener('input', (e) => { keyword = e.target.value.trim(); renderSidebar(); });
+
+document.querySelectorAll('.filter-chip').forEach(btn => {
+  btn.addEventListener('click', () => {
+    currentFilter = btn.dataset.filter;
+    document.querySelectorAll('.filter-chip').forEach(b => { b.classList.remove('chip-active'); b.classList.add('chip'); });
+    btn.classList.add('chip-active'); btn.classList.remove('chip');
+    renderSidebar();
+  });
+});
+
+$('#importBtnTop').addEventListener('click', openModal);
+$('#fabImport').addEventListener('click', openModal);
+$('#emptyImport').addEventListener('click', openModal);
+$('#modalClose').addEventListener('click', closeModal);
+$('#modalCancel').addEventListener('click', closeModal);
+$('#dropZone').addEventListener('click', startUpload);
+$('#modalConfirm').addEventListener('click', startUpload);
+$('#importModal').addEventListener('click', (e) => { if (e.target === $('#importModal')) closeModal(); });
+
+$('#demoEmptyBtn').addEventListener('click', () => setEmptyMode(!demoEmpty));
+$('#demoResetBtn').addEventListener('click', () => {
+  DOCS = JSON.parse(JSON.stringify(SEED_DOCS));
+  setEmptyMode(false);
+  currentFilter = 'all';
+  document.querySelectorAll('.filter-chip').forEach((b, i) => {
+    b.classList.toggle('chip-active', i === 0); b.classList.toggle('chip', i !== 0);
+  });
+  $('#searchInput').value = ''; keyword = '';
+  currentNoteId = 'n1';
+  renderSidebar(); renderDetail();
+});
+$('#demoFailBtn').addEventListener('click', () => {
+  const docs = DOCS[currentNoteId] || (DOCS[currentNoteId] = []);
+  docs.push({ id: 'fail' + Date.now(), name: '手写笔记_模糊页.jpg', type: 'image', status: 'failed', chunks: 0, error: 'IMAGE_TOO_BLURRY' });
+  renderDetail();
+});
+
+$('#saveRemark').addEventListener('click', () => {
+  const hint = $('#saveHint');
+  hint.classList.remove('opacity-0');
+  setTimeout(() => hint.classList.add('opacity-0'), 1600);
+});
+
+/* ============================================================
+ * 10. 初始化
+ * ============================================================ */
+setLang(lang);
+(function () {
+  var cur = document.documentElement.dataset.theme;
+  $('#themeToggle').textContent = cur === 'dark' ? '☀️' : '🌙';
+})();
+</script>
+</body>
+</html>
