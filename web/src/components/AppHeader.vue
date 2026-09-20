@@ -41,7 +41,7 @@ const isMock = () => props.mode?.mode === 'mock'
           {{ isMock() ? '📦' : '🤖' }}
           {{ mode.label || '读取中…' }}
           <em>{{ isMock() ? '内置数据，无需 API' : '调用在线大模型' }}</em>
-          <span class="pill-cta">{{ needsKey ? '填入 API Key' : '切换' }} ›</span>
+          <span class="pill-cta">{{ needsKey ? '填入 API Key' : '设置 ›' }}</span>
         </button>
 
         <div class="hero-actions">
@@ -50,8 +50,8 @@ const isMock = () => props.mode?.mode === 'mock'
           </button>
           <button class="hero-btn" @click="emit('open-history')">🕘 历史</button>
           <button class="hero-btn" @click="emit('open-trace')">📜 日志</button>
-          <button class="hero-btn solid" @click="emit('open-settings')">⚙ 设置</button>
         </div>
+        <!-- 设置入口只保留左侧模式角标（点击即打开设置），不再重复放一个「⚙ 设置」按钮 -->
 
         <!-- 明确说明「为什么不是 LLM 模式」，不用让用户去猜 -->
         <div v-if="mode.reason" class="mode-reason">ⓘ {{ mode.reason }}</div>

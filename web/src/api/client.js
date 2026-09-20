@@ -8,10 +8,29 @@
 
 const BASE = import.meta.env.VITE_API_BASE || '/api'
 
+/**
+ * 浏览器身份标识 —— 历史记录按浏览器隔离。
+ * 首次访问生成并写入 localStorage，之后每次请求通过
+ * X-Client-Id 头（SSE 走 client_id 查询参数）告诉后端"我是谁"，
+ * 避免所有人共享同一个 progress.json 里的历史。
+ */
+export function clientId() {
+  let id = localStorage.getItem('study-liu-client-id')
+  if (!id) {
+    id = 'c-' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36)
+    localStorage.setItem('study-liu-client-id', id)
+  }
+  return id
+}
+
 async function request(path, options = {}) {
   const res = await fetch(`${BASE}${path}`, {
-    headers: { 'Content-Type': 'application/json' },
     ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Client-Id': clientId(),
+      ...(options.headers || {}),
+    },
   })
   if (!res.ok) {
     let msg = `请求失败（${res.status}）`
@@ -125,6 +144,7 @@ export function planStreamUrl(course, profile = {}, useCache = true) {
     goal: profile.goal || '兴趣',
     deadline: profile.deadline || '',
     use_cache: useCache ? '1' : '0',
+    client_id: clientId(), // EventSource 无法自定义请求头，走查询参数
   })
   return `${BASE}/plan/stream?${qs.toString()}`
 }

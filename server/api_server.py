@@ -196,6 +196,81 @@ DATA_DIR = _data_dir()
 
 
 # ============================================================
+# 3.1 客户端历史隔离（修复"所有人共享同一份历史"）
+# ============================================================
+# progress.json 是全局的（沿用桌面版存储），这里在上层加一个
+# client_id → [course] 的映射文件：历史列表/详情都按浏览器隔离。
+CLIENT_HISTORY_FILE = os.path.join(DATA_DIR, "client_history.json")
+
+# 同一浏览器最多保留的历史课程数（防止无限膨胀）
+_MAX_CLIENT_COURSES = 50
+
+
+def load_client_history() -> dict:
+    try:
+        with open(CLIENT_HISTORY_FILE, "r", encoding="utf-8") as f:
+            d = json.load(f)
+            return d if isinstance(d, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def save_client_history(d: dict) -> None:
+    try:
+        os.makedirs(DATA_DIR, exist_ok=True)
+        with open(CLIENT_HISTORY_FILE, "w", encoding="utf-8") as f:
+            json.dump(d, f, ensure_ascii=False, indent=2)
+    except OSError:
+        pass
+
+
+def record_client_course(client_id: str, course: str) -> None:
+    """生成方案成功后，把课程记到该客户端名下（置顶 + 去重 + 截断）。"""
+    if not client_id or not course:
+        return
+    d = load_client_history()
+    lst = d.get(client_id, [])
+    if course in lst:
+        lst.remove(course)
+    lst.insert(0, course)
+    d[client_id] = lst[:_MAX_CLIENT_COURSES]
+    save_client_history(d)
+
+
+def client_courses(client_id: str) -> set:
+    if not client_id:
+        return set()
+    return set(load_client_history().get(client_id, []))
+
+
+# ============================================================
+# 3.2 敏感词过滤（修复"无敏感词校验"）
+# ============================================================
+# 覆盖违法/色情/作弊/欺诈等明显不适合"学习助手"场景的输入。
+# 命中即拒绝（HTTP 400），不做改写、不上送大模型。
+SENSITIVE_WORDS = [
+    # 赌博 / 毒品
+    "赌博", "博彩", "赌场", "六合彩", "毒品", "吸毒", "制毒", "冰毒", "大麻",
+    # 武器 / 暴力
+    "枪支", "弹药", "军火", "炸药", "爆炸物", "管制刀具",
+    # 色情
+    "色情", "裸聊", "援交", "嫖娼", "卖淫",
+    # 学术不端 / 网络违法
+    "代考", "替考", "代写论文", "外挂", "洗钱", "诈骗", "传销", "黑客攻击", "DDoS",
+    # 其他
+    "人体器官", "代办证件",
+]
+
+
+def check_sensitive(text: str) -> list:
+    """返回文本中命中的敏感词列表（不区分大小写）。"""
+    if not text:
+        return []
+    low = text.lower()
+    return [w for w in SENSITIVE_WORDS if w in low]
+
+
+# ============================================================
 # 3. 工具函数
 # ============================================================
 def _j(obj) -> bytes:
@@ -311,9 +386,10 @@ def mode_info() -> dict:
     }
 
 
-def bootstrap() -> dict:
+def bootstrap(client_id: str = "") -> dict:
     """一次性返回前端启动所需的全部元信息。"""
     profile = load_profile()
+    allowed = client_courses(client_id)
     return {
         "app": "study-liu-web",
         "version": "1.0.0",
@@ -329,7 +405,10 @@ def bootstrap() -> dict:
         "profile_preview": format_profile_text(profile),
         "suggested_days": suggest_plan_length(profile),
         "cache": cache_store.cache_stats(),
-        "history": progress_store.list_courses()[:20],
+        # 历史按客户端隔离：只返回当前浏览器自己生成过的课程
+        "history": [
+            c for c in progress_store.list_courses() if c.get("course") in allowed
+        ][:20],
     }
 
 
@@ -572,6 +651,13 @@ class ApiHandler(BaseHTTPRequestHandler):
             return
         sys.stderr.write("[api] %s\n" % (fmt % args))
 
+    def _client_id(self, query=None) -> str:
+        """取客户端标识：优先 X-Client-Id 请求头，SSE 场景回落 client_id 查询参数。"""
+        cid = (self.headers.get("X-Client-Id") or "").strip()
+        if not cid and query:
+            cid = (query.get("client_id") or [""])[0].strip()
+        return cid[:64] or "anonymous"
+
     # ---------- SSE ----------
     def _sse_open(self):
         self.send_response(200)
@@ -623,7 +709,7 @@ class ApiHandler(BaseHTTPRequestHandler):
                 })
 
             if path == "/api/bootstrap":
-                return self._send_json(bootstrap())
+                return self._send_json(bootstrap(self._client_id(query)))
 
             if path == "/api/mode":
                 return self._send_json(mode_info())
@@ -633,10 +719,18 @@ class ApiHandler(BaseHTTPRequestHandler):
                 return self._send_json({"lines": tail_trace(limit)})
 
             if path == "/api/history":
-                return self._send_json({"courses": progress_store.list_courses()})
+                allowed = client_courses(self._client_id(query))
+                courses = [
+                    c for c in progress_store.list_courses()
+                    if c.get("course") in allowed
+                ]
+                return self._send_json({"courses": courses})
 
             if path.startswith("/api/history/"):
                 course = urllib.parse.unquote(path[len("/api/history/"):])
+                if course not in client_courses(self._client_id(query)):
+                    return self._send_json(
+                        {"ok": False, "error": "该课程不在你的历史记录中"}, 404)
                 result = progress_store.load_result(course)
                 if not result:
                     return self._send_json({"ok": False, "error": "未找到该课程"}, 404)
@@ -684,12 +778,19 @@ class ApiHandler(BaseHTTPRequestHandler):
                 course = (body.get("course") or "").strip()
                 if not course:
                     return self._send_json({"ok": False, "error": "请先输入课程名"}, 400)
+                hits = check_sensitive(course)
+                if hits:
+                    return self._send_json(
+                        {"ok": False,
+                         "error": f"课程名包含敏感词（{'、'.join(hits)}），请修改后重试"},
+                        400)
                 profile = body.get("profile") or load_profile()
                 use_cache = bool(body.get("use_cache", True))
                 t0 = time.time()
                 result = run_plan_pipeline(course, profile=profile, use_cache=use_cache)
                 try:
                     progress_store.save_result(course, result)
+                    record_client_course(self._client_id(), course)
                 except Exception:
                     pass
                 payload = build_payload(course, result, int((time.time() - t0) * 1000))
@@ -699,6 +800,12 @@ class ApiHandler(BaseHTTPRequestHandler):
                 question = (body.get("question") or "").strip()
                 if not question:
                     return self._send_json({"ok": False, "error": "请输入问题"}, 400)
+                hits = check_sensitive(question)
+                if hits:
+                    return self._send_json(
+                        {"ok": False,
+                         "error": f"提问包含敏感词（{'、'.join(hits)}），请修改后重试"},
+                        400)
                 intent = parse_intent(question)
                 if intent.get("type") == "generate":
                     return self._send_json({
@@ -774,6 +881,13 @@ class ApiHandler(BaseHTTPRequestHandler):
         course = (query.get("course") or [""])[0].strip()
         if not course:
             return self._send_json({"ok": False, "error": "缺少 course 参数"}, 400)
+        hits = check_sensitive(course)
+        if hits:
+            return self._send_json(
+                {"ok": False,
+                 "error": f"课程名包含敏感词（{'、'.join(hits)}），请修改后重试"},
+                400)
+        client_id = self._client_id(query)
 
         profile = load_profile()
         if query.get("level"):
@@ -812,6 +926,10 @@ class ApiHandler(BaseHTTPRequestHandler):
                 "started_at": time.strftime("%Y-%m-%d %H:%M:%S"),
             })
             stream_pipeline(course, profile, use_cache, emit)
+            try:
+                record_client_course(client_id, course)
+            except Exception:
+                pass
             emit("done", {"ok": True, "duration_ms": int((time.time() - started) * 1000)})
         except (BrokenPipeError, ConnectionResetError):
             pass
