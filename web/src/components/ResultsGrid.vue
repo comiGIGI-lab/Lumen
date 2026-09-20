@@ -79,6 +79,7 @@ const dayNo = (item, i) => item?.day ?? i + 1
 
       <template #footer>
         来源：{{ result?.degraded ? '内置资源库（LLM 不可用时兜底）' : 'Searcher Agent' }}
+        <span class="res-disclaimer">· AI 推荐可能存在偏差，链接请自行核实</span>
       </template>
     </ResultPanel>
 
@@ -191,6 +192,11 @@ const dayNo = (item, i) => item?.day ?? i + 1
 }
 
 .res-url.muted {
+  color: var(--text-faint);
+}
+
+.res-disclaimer {
+  font-size: 11px;
   color: var(--text-faint);
 }
 
