@@ -50,6 +50,9 @@ const isMock = () => props.mode?.mode === 'mock'
           </button>
           <button class="hero-btn" @click="emit('open-history')">🕘 历史</button>
           <button class="hero-btn" @click="emit('open-trace')">📜 日志</button>
+          <a class="hero-btn as-link" href="/prototypes/" target="_blank" rel="noopener">
+            🎨 原型
+          </a>
         </div>
         <!-- 设置入口只保留左侧模式角标（点击即打开设置），不再重复放一个「⚙ 设置」按钮 -->
 
@@ -211,6 +214,15 @@ const isMock = () => props.mode?.mode === 'mock'
 
 .hero-btn:hover:not(:disabled) {
   background: rgba(255, 255, 255, 0.24);
+}
+
+/* 用 <a> 当按钮：补上按钮天然自带、链接没有的样式 */
+.hero-btn.as-link {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.2);
 }
 
 .hero-btn:disabled {
