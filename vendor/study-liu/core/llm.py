@@ -3,9 +3,25 @@
 """大模型封装模块：调 DeepSeek API，失败返回错误说明。"""
 
 import json
+import os
+
 import requests
 
 from core.config import get_api_key, get_base_url, get_model, is_mock
+
+# 单次 LLM 请求的超时秒数。
+# 原来是写死的 30 秒 —— 对官方 API（通常 2~8 秒返回）够用，
+# 但第三方中转网关常见 10~45 秒甚至更慢，30 秒会导致 Agent 全部超时降级，
+# 界面上只显示「内置资源库（LLM 不可用时兜底）」，很难看出是超时导致的。
+# 可用环境变量 LLM_TIMEOUT 覆盖。
+def _llm_timeout() -> float:
+    try:
+        return float(os.environ.get("LLM_TIMEOUT", "90"))
+    except (TypeError, ValueError):
+        return 90.0
+
+
+LLM_TIMEOUT = _llm_timeout()
 
 
 def generate(prompt):
@@ -71,7 +87,19 @@ def chat(messages):
 
     base_url = get_base_url()
     model = get_model()
-    url = f"{base_url.rstrip('/')}/chat/completions"
+    # Base URL 兼容两种填法（以前只支持第 1 种，填成第 2 种会拼出
+    # .../chat/completions/chat/completions → 404）：
+    #   1) 只填到版本号 —— https://api.deepseek.com
+    #                      https://open.bigmodel.cn/api/paas/v4
+    #      → 自动补 /chat/completions
+    #   2) 直接填完整端点 —— 很多第三方网关的文档就是直接给完整地址，
+    #                       如 https://cpa.aqor.io/v1/chat/completions
+    #      → 原样使用，不再拼接
+    _base = (base_url or "").rstrip("/")
+    if _base.endswith("/chat/completions"):
+        url = _base
+    else:
+        url = f"{_base}/chat/completions"
 
     headers = {
         "Content-Type": "application/json",
@@ -113,11 +141,15 @@ def chat(messages):
         pass
 
     try:
-        response = requests.post(url, headers=headers, json=payload, timeout=30)
+        response = requests.post(url, headers=headers, json=payload, timeout=LLM_TIMEOUT)
         response.raise_for_status()
         data = response.json()
         # OpenAI 兼容格式：choices[0].message.content
         content = data["choices"][0]["message"]["content"]
+        # 有些中转网关会返回 200 但内容为空（上游模型没起来/被限流却不报错）。
+        # 静默当成功的话，下游会拿到空大纲，而且日志里看不出原因，所以这里显式判失败。
+        if not (content or "").strip():
+            return _fail("模型返回空内容（网关未正常响应，请检查模型名是否可用）")
         LAST_ERROR = ""   # 成功即清空失败标记
         return content.strip()
     except requests.exceptions.Timeout:

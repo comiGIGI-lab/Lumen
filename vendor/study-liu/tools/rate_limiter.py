@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+import os
 import threading
 import time
 from collections import deque
@@ -98,11 +99,30 @@ _SINGLETON_LOCK = threading.Lock()
 
 
 def get_limiter() -> RateLimiter:
-    """获取（或复用）默认限流器：10 次 / 60 秒。"""
+    """获取（或复用）默认限流器。
+
+    默认 **30 次 / 60 秒**（原为 10 次 / 60 秒），可用环境变量覆盖：
+        LLM_RATE_MAX     调用次数上限（默认 30）
+        LLM_RATE_WINDOW  窗口秒数（默认 60）
+
+    为什么从 10 提到 30：
+    一次「生成方案」要调 4~8 次 LLM（Planner / Searcher / Writer / Reviewer，
+    Reviewer 不达标还会自动重跑）。10 次/60 秒意味着**连续生成 2 次就可能被限流**，
+    而限流后 Agent 会静默降级到内置兜底 —— 前端只显示「内置资源库（LLM 不可用时兜底）」，
+    看起来像"模型变笨了"，很难排查。30 次足够支撑连续 4~6 次生成。
+    """
     global _DEFAULT_LIMITER
     with _SINGLETON_LOCK:
         if _DEFAULT_LIMITER is None:
-            _DEFAULT_LIMITER = RateLimiter(max_calls=10, window_sec=60.0)
+            try:
+                max_calls = int(os.environ.get("LLM_RATE_MAX", "30"))
+            except (TypeError, ValueError):
+                max_calls = 30
+            try:
+                window_sec = float(os.environ.get("LLM_RATE_WINDOW", "60"))
+            except (TypeError, ValueError):
+                window_sec = 60.0
+            _DEFAULT_LIMITER = RateLimiter(max_calls=max_calls, window_sec=window_sec)
         return _DEFAULT_LIMITER
 
 
