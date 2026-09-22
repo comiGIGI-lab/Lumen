@@ -324,9 +324,45 @@ pm2 list
 - **没有 HTTPS / 域名**，仅 `IP:80`。比赛演示建议挂域名 + 免费证书。
 - `vendor/study-liu/data/knowledge.json` 是**部署时手动拷贝**的，`git pull` 不会更新它。
   改了 `docs/seed/knowledge.json` 后要重新拷一次。
-- **`tools/rate_limiter.py` 是死代码**：文件在，但 `api_server.py` 里 import 不到它，
-  也就是说应用层从来没生效过。要么接进去，要么删掉。
-- 公网 22 端口是开放的。建议在阿里云安全组里限制来源 IP，或改用密钥登录并关闭密码认证。
+- ~~**`tools/rate_limiter.py` 是死代码**~~ ← **这条是错的，已更正**。
+  它**一直在生效**：`core/llm.py` 的 `chat()` 每次调用前都会 `acquire()`，
+  滑动窗口默认 30 次/60 秒（可用环境变量 `LLM_RATE_MAX` / `LLM_RATE_WINDOW` 覆盖）。
+  当初只查了 `api_server.py` 就下了结论，没查 `vendor/study-liu/core/`，属于取证不全。
+- **公网 22 端口是开放的**。建议在阿里云安全组里限制来源 IP，或改用密钥登录并关闭密码认证。
+  （另：`sshd_config` 里 `PermitRootLogin yes` 是开着的，建议关掉。）
+
+### 10.3 排查：生成结果里出现「内置资源库（LLM 不可用时兜底）」
+
+界面上出现这句话 = 某个 Agent 拿到的是内置兜底内容，而不是模型生成的。
+这是**降级**，不是报错，所以很容易被误判成"模型变笨了"。按下面顺序查：
+
+**① 先看 trace.log 里的 `degraded` 行**（它会写明确原因）：
+
+```bash
+grep degraded /home/admin/ai-coding/vendor/study-liu/data/trace.log | tail -5
+```
+
+**② 对照错误信息定位：**
+
+| trace 里的 error | 真实原因 | 处理 |
+|---|---|---|
+| `模型推理占满了 max_tokens(4000)，未产出正式回答` | **最常见**。思考模型（DeepSeek V4 系、GLM 等）先在 `reasoning_content` 里推理再产出 `content`；prompt 一复杂，推理就把 `max_tokens` 吃光，`content` 为空 | 调大 `LLM_MAX_TOKENS` |
+| `请求过于频繁` | 应用层限流（默认 30 次/60 秒）。一次生成要调 4~8 次 LLM | 调大 `LLM_RATE_MAX` |
+| `请求超时` | 第三方网关常见 10~45 秒；超时默认 90 秒 | 调大 `LLM_TIMEOUT`，或换更快的模型 |
+| `模型返回空内容（网关未正常响应…）` | 网关对某个模型名不可用时会返回 HTTP 200 + 空内容 | 核对模型名 |
+
+**③ 环境变量怎么加**（PM2）：
+
+```bash
+pm2 restart my-api --update-env     # 加完变量后必须带 --update-env
+# 或在 ecosystem 配置里加 env: { LLM_MAX_TOKENS: "8000" }
+```
+
+**★ 2026-09-22 就踩过这个坑**：`max_tokens` 原本写死 2000，导致
+searcher / writer 长期静默降级，而 planner 正常（它的 prompt 简单、推理短）——
+表现为"有的 Agent 好、有的不好"，查了很久才定位到。
+当时还一度误判成"第三方网关坏了"，其实**和供应商无关**。
+同类现象出现时，**先怀疑 max_tokens，再怀疑网关**。
 
 ## 11. 快速体检命令
 
