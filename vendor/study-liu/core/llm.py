@@ -23,6 +23,23 @@ def _llm_timeout() -> float:
 
 LLM_TIMEOUT = _llm_timeout()
 
+# 单次请求的 max_tokens 上限。
+# 原来是写死的 2000 —— 对「非思考模型」够用，但 DeepSeek V4 系列、GLM 等
+# 思考模型会先在 reasoning_content 里推理、再产出 content。实测：
+#   max_tokens=2000 时，一个「列 8 个学习资源」的请求推理就用掉 2000 token
+#   （reasoning_content 6289 字），finish_reason=length，**content 直接为空** ——
+#   于是 searcher / writer 静默降级，而 planner（prompt 简单、推理短）却正常，
+#   表现为"有的 Agent 好有的不好"，极难排查。4000 时同一请求正常结束。
+# 可用环境变量 LLM_MAX_TOKENS 覆盖。
+def _llm_max_tokens() -> int:
+    try:
+        return int(os.environ.get("LLM_MAX_TOKENS", "4000"))
+    except (TypeError, ValueError):
+        return 4000
+
+
+LLM_MAX_TOKENS = _llm_max_tokens()
+
 
 def generate(prompt):
     """
@@ -124,7 +141,7 @@ def chat(messages):
         "model": model,
         "messages": safe_messages,
         "temperature": 0.7,
-        "max_tokens": 2000,
+        "max_tokens": LLM_MAX_TOKENS,
     }
 
     # 滑动窗口限流：保护 API 额度，避免演示时误点把配额刷爆/被平台限流。
@@ -145,10 +162,20 @@ def chat(messages):
         response.raise_for_status()
         data = response.json()
         # OpenAI 兼容格式：choices[0].message.content
-        content = data["choices"][0]["message"]["content"]
-        # 有些中转网关会返回 200 但内容为空（上游模型没起来/被限流却不报错）。
-        # 静默当成功的话，下游会拿到空大纲，而且日志里看不出原因，所以这里显式判失败。
+        choice = (data.get("choices") or [{}])[0]
+        msg = choice.get("message") or {}
+        content = msg.get("content")
+        # 内容为空时必须显式判失败：静默当成功的话下游会拿到空大纲，
+        # 而且日志里看不出原因（以前就是这样，表现为「某个 Agent 莫名降级」）。
         if not (content or "").strip():
+            # 思考模型（DeepSeek V4 系、GLM 等）把 token 全用在推理上时，
+            # content 会是空的但 reasoning_content 有大量内容 —— 这是最常见的原因，
+            # 单独报出来，免得又被误判成"网关坏了"。
+            if (msg.get("reasoning_content") or "").strip() or choice.get("finish_reason") == "length":
+                return _fail(
+                    f"模型推理占满了 max_tokens({LLM_MAX_TOKENS})，未产出正式回答"
+                    f"（可调大环境变量 LLM_MAX_TOKENS）"
+                )
             return _fail("模型返回空内容（网关未正常响应，请检查模型名是否可用）")
         LAST_ERROR = ""   # 成功即清空失败标记
         return content.strip()
