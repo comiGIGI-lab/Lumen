@@ -51,6 +51,8 @@ from safety_gate import (                                           # noqa: E402
     # check_sensitive 保持可用（签名与返回结构不变），供外部脚本与后续接口直接复用
     check_detail, check_sensitive, log_safety_hit, set_audit_log,
 )
+# B30 危机干预复用规则层现成的语境豁免，避免和安全层写成两套判断
+from safety_rules import is_exempted                                 # noqa: E402
 
 
 def _looks_like_source(path: str) -> bool:
@@ -269,6 +271,116 @@ def client_courses(client_id: str) -> set:
 # 统一成一句固定文案的原因：原实现把命中词直接拼进 error 回显，
 # 等于向调用方暴露词表内容，可被用来反向探测词表边界。
 SAFETY_ERROR_MESSAGE = "该请求未通过内容安全审核"
+
+
+# ============================================================
+# 3.3 B30 危机干预：固定话术 + 前置短路（独立于内容安全层）
+# ============================================================
+# 设计原则：
+# 1) 危机优先级高于内容安全 —— detect_crisis 在三处调用点的 check_detail() 之前
+#    短路，自伤求助永远拿到 200 + 热线，不会被 400 推走。
+# 2) 话术固定、不上送 LLM —— 危机时刻不赌大模型即兴发挥。
+# 3) 热线只放可核验来源 —— 12356（国家卫健委全国统一心理援助热线）+
+#    北京心理危机研究与干预中心 010-82951332。
+# 4) 危机判定默认【不】复用语境豁免 —— 自伤信号宁可误报，不可漏报。
+#    复用豁免的风险：像「我想自杀，学校有心理辅导吗」这种既含危机词、又含
+#    学术/防护词（"辅导"在 ACADEMIC_CONTEXT_TERMS 里）的输入会被豁免掉，
+#    转而落到内容安全层拿到 400 —— 对一个正在求助的人来说这是最糟的响应。
+#    不复用的代价：「文学作品里"我想死"这种表达有什么意义」这类教学提问会
+#    拿到热线话术，属于"多说了几句"，不是安全问题。
+#    若团队更看重教学语境的准确性，把下面的开关改成 True 即可，接口不变。
+CRISIS_RESPECT_CONTEXT_EXEMPTION = False
+
+CRISIS_PATTERNS = [
+    # 自杀意念
+    "我想死", "我要死", "想死", "不想活", "活不下去", "活够了",
+    "我想自杀", "我要自杀", "想自杀",
+    "我想结束生命", "我要结束生命", "结束生命",
+    # 自残倾向
+    # 注意「想自残」这种不带主语的写法必须单独列 —— 手册给的词表只有
+    # 「我想自残 / 我要自残」，而手册自己的用例 3 就是「我最近很累，想自残」，
+    # 只写带主语的版本会漏掉它（本地单元检查已复现）。
+    "我想自残", "我要自残", "想自残", "割腕",
+    # 求助 / 求方法
+    "教我怎么死", "帮我自杀", "怎么自杀", "自杀方法",
+    # 网络欺凌 / 二次伤害
+    "你怎么不去死",
+]
+
+CRISIS_HOTLINES = (
+    "【全国统一心理援助热线 12356】"
+    "（国家卫生健康委员会主管 · 24 小时 · 免费 · 保密）\n"
+    "【北京心理危机研究与干预中心 010-82951332】"
+    "（24 小时 · 免费 · 保密）"
+)
+
+CRISIS_BODY_TEXT = (
+    "我听到你现在很痛苦。生命很珍贵，你不需要独自面对。\n\n"
+    "请你立刻拨打下方任一热线，专业人员 24 小时在线、保密、免费：\n\n"
+    + CRISIS_HOTLINES + "\n\n"
+    "如果暂时不方便打电话，也可以告诉身边最信任的人，让他们陪你度过这一刻。"
+)
+
+
+def detect_crisis(text: str) -> bool:
+    """判断文本是否含危机信号。优先级高于内容安全校验。
+
+    默认只看危机词，不看语境（见 CRISIS_RESPECT_CONTEXT_EXEMPTION 的说明）。
+    这里不做任何改写、也不上送 LLM —— 只回答"是不是危机信号"这一个问题。
+    """
+    if not text:
+        return False
+    low = str(text).lower()
+    if not any(p.lower() in low for p in CRISIS_PATTERNS):
+        return False
+    if CRISIS_RESPECT_CONTEXT_EXEMPTION and is_exempted(text):
+        return False
+    return True
+
+
+def _crisis_response_plan(course: str) -> dict:
+    """plan / plan-stream 接口的危机话术 payload。
+
+    注意 outline / resources / plan 三个字段必须存在且是数组 ——
+    前端的方案视图会直接读 .length，缺字段会抛异常导致话术显示不出来。
+    """
+    return {
+        "ok": True,
+        "type": "crisis",
+        "course": course,
+        "outline": [],
+        "resources": [],
+        "plan": [],
+        "answer": CRISIS_BODY_TEXT,
+        "source": "crisis_intervention",
+        "ms": 0,
+    }
+
+
+def _crisis_response_chat(question: str) -> dict:
+    """chat 接口的危机话术 payload。"""
+    return {
+        "ok": True,
+        "type": "crisis",
+        "question": question,
+        "answer": CRISIS_BODY_TEXT,
+        "source": "crisis_intervention",
+    }
+
+
+def log_crisis(source: str, text: str, client_id: str = "") -> None:
+    """危机命中写审计日志。
+
+    与内容安全共用同一份 JSONL，用 action=CRISIS 区分 ——
+    这样「谁在什么时间触发了危机通道」在同一个文件里就能复盘，
+    也让 content安全 与 危机干预 两件事的审计口径一致。
+    """
+    log_safety_hit(source, text, {
+        "action": "CRISIS",
+        "layer": "B30",
+        "hits": [],
+        "reason": "危机干预·已返回热线话术",
+    }, client_id)
 
 
 # ============================================================
@@ -779,6 +891,10 @@ class ApiHandler(BaseHTTPRequestHandler):
                 course = (body.get("course") or "").strip()
                 if not course:
                     return self._send_json({"ok": False, "error": "请先输入课程名"}, 400)
+                # B30: 危机干预前置短路——优先级高于内容安全校验
+                if detect_crisis(course):
+                    log_crisis("plan", course, self._client_id())
+                    return self._send_json(_crisis_response_plan(course))
                 detail = check_detail(course)
                 if detail["action"] == "BLOCK":
                     log_safety_hit("plan", course, detail, self._client_id())
@@ -800,6 +916,10 @@ class ApiHandler(BaseHTTPRequestHandler):
                 question = (body.get("question") or "").strip()
                 if not question:
                     return self._send_json({"ok": False, "error": "请输入问题"}, 400)
+                # B30: 危机干预前置短路——优先级高于内容安全校验
+                if detect_crisis(question):
+                    log_crisis("chat", question, self._client_id())
+                    return self._send_json(_crisis_response_chat(question))
                 detail = check_detail(question)
                 if detail["action"] == "BLOCK":
                     log_safety_hit("chat", question, detail, self._client_id())
@@ -881,6 +1001,22 @@ class ApiHandler(BaseHTTPRequestHandler):
         if not course:
             return self._send_json({"ok": False, "error": "缺少 course 参数"}, 400)
         client_id = self._client_id(query)
+        # B30: 危机干预前置短路——SSE 通道必须发事件流，不能直接 return JSON。
+        # 注意发的是 meta + result + done 三个事件，而不是「meta + done」：
+        # 前端只认 result 事件来渲染结果（done 仅做收尾，见 usePlanStream.js），
+        # 只发 done 的话危机话术会被前端丢掉。
+        if detect_crisis(course):
+            log_crisis("plan_stream", course, client_id)
+            self._sse_open()
+            self.close_connection = True
+            self._sse_send("meta", {
+                "course": course,
+                "source": "crisis_intervention",
+                "type": "crisis",
+            })
+            self._sse_send("result", _crisis_response_plan(course))
+            self._sse_send("done", {"ok": True, "type": "crisis"})
+            return
         detail = check_detail(course)
         if detail["action"] == "BLOCK":
             log_safety_hit("plan_stream", course, detail, client_id)
