@@ -112,7 +112,9 @@ function clear() {
                   ? '大模型'
                   : m.source === 'intent'
                     ? '意图识别'
-                    : '错误'
+                    : m.source === 'crisis_intervention'
+                      ? '危机干预'
+                      : '错误'
             }}
           </span>
         </div>

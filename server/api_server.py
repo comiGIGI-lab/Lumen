@@ -307,11 +307,23 @@ CRISIS_PATTERNS = [
     "你怎么不去死",
 ]
 
-CRISIS_HOTLINES = (
-    "【全国统一心理援助热线 12356】"
-    "（国家卫生健康委员会主管 · 24 小时 · 免费 · 保密）\n"
-    "【北京心理危机研究与干预中心 010-82951332】"
-    "（24 小时 · 免费 · 保密）"
+# 热线只放可核验来源。结构化一份给前端做可点击拨号，文本版本由它生成，
+# 避免「文案改了但结构化数据没改」的两处不一致。
+CRISIS_HOTLINE_ITEMS = [
+    {
+        "name": "全国统一心理援助热线",
+        "tel": "12356",
+        "note": "国家卫生健康委员会主管 · 24 小时 · 免费 · 保密",
+    },
+    {
+        "name": "北京心理危机研究与干预中心",
+        "tel": "010-82951332",
+        "note": "24 小时 · 免费 · 保密",
+    },
+]
+
+CRISIS_HOTLINES = "\n".join(
+    "【%s %s】（%s）" % (h["name"], h["tel"], h["note"]) for h in CRISIS_HOTLINE_ITEMS
 )
 
 CRISIS_BODY_TEXT = (
@@ -343,6 +355,7 @@ def _crisis_response_plan(course: str) -> dict:
 
     注意 outline / resources / plan 三个字段必须存在且是数组 ——
     前端的方案视图会直接读 .length，缺字段会抛异常导致话术显示不出来。
+    frontend 靠 type=="crisis" 识别并改走热线卡片，不再渲染三栏结果。
     """
     return {
         "ok": True,
@@ -352,6 +365,7 @@ def _crisis_response_plan(course: str) -> dict:
         "resources": [],
         "plan": [],
         "answer": CRISIS_BODY_TEXT,
+        "hotlines": CRISIS_HOTLINE_ITEMS,
         "source": "crisis_intervention",
         "ms": 0,
     }
@@ -364,6 +378,7 @@ def _crisis_response_chat(question: str) -> dict:
         "type": "crisis",
         "question": question,
         "answer": CRISIS_BODY_TEXT,
+        "hotlines": CRISIS_HOTLINE_ITEMS,
         "source": "crisis_intervention",
     }
 

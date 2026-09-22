@@ -17,6 +17,17 @@ const outline = computed(() => props.result?.outline || [])
 const resources = computed(() => props.result?.resources || [])
 const planItems = computed(() => props.result?.plan_items || [])
 
+// ---- B30 危机干预：后端返回 type=crisis 时不渲染三栏结果，改展示热线卡片 ----
+const isCrisis = computed(() => props.result?.type === 'crisis')
+const hotlines = computed(() => props.result?.hotlines || [])
+const crisisLines = computed(() =>
+  (props.result?.answer || '')
+    .split('\n')
+    .map((s) => s.trim())
+    // 以「【」开头的是热线那两行，由下面的热线卡片单独渲染，正文里去掉避免重复
+    .filter((s) => s && !s.startsWith('【')),
+)
+
 /** 资源类型 → 颜色 */
 const typeChip = (t) => {
   const map = {
@@ -35,7 +46,36 @@ const dayNo = (item, i) => item?.day ?? i + 1
 </script>
 
 <template>
-  <section class="grid">
+  <!-- B30 危机干预：后端判定为危机时，不展示三栏结果，只给热线 ——
+       话术由后端固定下发，前端不做任何改写，也不上送大模型。 -->
+  <section v-if="isCrisis" class="crisis">
+    <div class="crisis-head">
+      <div class="crisis-mark">♡</div>
+      <div>
+        <h3 class="crisis-title">先不着急做学习计划</h3>
+        <p class="crisis-sub">我们检测到你可能正在经历很困难的时刻，这件事比课程更重要</p>
+      </div>
+    </div>
+
+    <div class="crisis-body">
+      <p v-for="(line, i) in crisisLines" :key="i" class="crisis-line">{{ line }}</p>
+    </div>
+
+    <div v-if="hotlines.length" class="crisis-hotlines">
+      <a
+        v-for="h in hotlines"
+        :key="h.tel"
+        class="crisis-hotline"
+        :href="`tel:${h.tel.replace(/-/g, '')}`"
+      >
+        <span class="ch-name">{{ h.name }}</span>
+        <span class="ch-tel">{{ h.tel }}</span>
+        <span class="ch-note">{{ h.note }}</span>
+      </a>
+    </div>
+  </section>
+
+  <section v-else class="grid">
     <!-- ① 课程大纲 -->
     <ResultPanel
       title="课程大纲"
@@ -256,6 +296,106 @@ const dayNo = (item, i) => item?.day ?? i + 1
   padding-left: 16px;
   font-size: 12px;
   color: var(--text-muted);
+}
+
+/* ---------- B30 危机干预 ---------- */
+.crisis {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-left: 4px solid #dc2626;
+  border-radius: 12px;
+  padding: 22px 24px;
+}
+
+.crisis-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.crisis-mark {
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: #fee2e2;
+  color: #dc2626;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.crisis-title {
+  margin: 0 0 4px;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.crisis-sub {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+
+.crisis-body {
+  margin-bottom: 18px;
+}
+
+.crisis-line {
+  margin: 0 0 8px;
+  font-size: 13.5px;
+  line-height: 1.75;
+  color: var(--text-secondary);
+}
+
+.crisis-line:last-child {
+  margin-bottom: 0;
+}
+
+.crisis-hotlines {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.crisis-hotline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  text-decoration: none;
+  transition: background 0.15s;
+}
+
+.crisis-hotline:hover {
+  background: #fee2e2;
+}
+
+.ch-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #991b1b;
+}
+
+.ch-tel {
+  font-size: 16px;
+  font-weight: 700;
+  color: #dc2626;
+  font-variant-numeric: tabular-nums;
+}
+
+.ch-note {
+  font-size: 11.5px;
+  color: #b91c1c;
+  opacity: 0.85;
 }
 
 @media (max-width: 1080px) {
