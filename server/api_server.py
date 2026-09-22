@@ -414,6 +414,28 @@ def _mask(key: str) -> str:
     return f"{key[:4]}{'*' * 6}{key[-4:]}"
 
 
+def _rel(path: str) -> str:
+    """把绝对路径转成相对项目根目录的展示路径。
+
+    为什么要转：/api/health、/api/mode、/api/bootstrap 会把这些路径返回给浏览器，
+    而前端把 source_dir 直接显示在界面上（「业务逻辑来源：…」）。
+    返回绝对路径等于把服务器的用户名与目录结构公开出去 ——
+    对一个暴露在公网、日志里已经能看到有人在扫 /api/.env 的站点来说没必要。
+    转成相对路径后界面上依然有意义（vendor/study-liu），但不再泄露绝对位置。
+
+    基准是 WEB_ROOT（项目根）而不是 WORKSPACE —— WORKSPACE 是项目上一级目录，
+    在服务器上会得到 ai-coding/vendor/... 这种结果，仍然多带了一层目录名。
+    """
+    if not path:
+        return ""
+    try:
+        rel = os.path.relpath(path, WEB_ROOT)
+    except ValueError:                      # 跨盘符（Windows）等异常情况
+        return os.path.basename(path)
+    # 路径不在项目根目录之下时会得到一堆 ..，此时退化成纯文件名
+    return rel if not rel.startswith("..") else os.path.basename(path)
+
+
 def test_llm_connection(payload: dict) -> dict:
     """测试 LLM 连接 —— 与桌面版「测试连接」按钮等价，但只用标准库实现。
 
@@ -508,8 +530,8 @@ def mode_info() -> dict:
         "api_key_masked": _mask(key),
         "reason": reason,
         "env_loaded": ENV_LOADED,
-        "source_dir": SOURCE_DIR,
-        "env_file": os.path.join(SOURCE_DIR, ".env"),
+        "source_dir": _rel(SOURCE_DIR),
+        "env_file": _rel(os.path.join(SOURCE_DIR, ".env")),
         "env_file_exists": os.path.isfile(os.path.join(SOURCE_DIR, ".env")),
     }
 
@@ -521,8 +543,8 @@ def bootstrap(client_id: str = "") -> dict:
     return {
         "app": "study-liu-web",
         "version": "1.0.0",
-        "source_dir": SOURCE_DIR,
-        "trace_file": TRACE_FILE,
+        "source_dir": _rel(SOURCE_DIR),
+        "trace_file": _rel(TRACE_FILE),
         "mode": mode_info(),
         "profile": profile,
         "options": {
@@ -830,9 +852,9 @@ class ApiHandler(BaseHTTPRequestHandler):
             if path == "/api/health":
                 return self._send_json({
                     "ok": True,
-                    "source_dir": SOURCE_DIR,
-                    "trace_file": TRACE_FILE,
-                    "data_dir": DATA_DIR,          # 历史/设置实际落盘的位置
+                    "source_dir": _rel(SOURCE_DIR),
+                    "trace_file": _rel(TRACE_FILE),
+                    "data_dir": _rel(DATA_DIR),          # 历史/设置实际落盘的位置
                     "env_loaded": ENV_LOADED,      # 从 .env 读到哪些键
                 })
 

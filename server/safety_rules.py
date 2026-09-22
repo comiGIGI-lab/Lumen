@@ -73,14 +73,27 @@ PROTECTIVE_CONTEXT_PATTERNS = [
 ACADEMIC_CONTEXT_RE = re.compile("|".join(ACADEMIC_CONTEXT_TERMS))
 PROTECTIVE_CONTEXT_RE = re.compile("|".join(PROTECTIVE_CONTEXT_PATTERNS))
 
+# 2.3 分析 / 比喻用法
+#     与 2.1 / 2.2 的区别：那两类判断的是「提问处在什么语境」，
+#     这里判断的是「该词在这句话里是不是那个意思」。
+#     由「肢解」引申而来 —— 这个词既是暴力词，也是「拆解分析」的常用隐喻。
+ANALYTICAL_USAGE_PATTERNS = [
+    # 写成「抽象对象在前 + 距离限制」，而不是简单的 肢解(成|为)，
+    # 是为了挡住「肢解成块的人体器官」这类把暴力用法混进来骗豁免的写法。
+    r"(问题|题目|任务|需求|系统|模块|逻辑|流程|概念|知识点|方案|架构).{0,8}肢解",
+]
+
+ANALYTICAL_USAGE_RE = re.compile("|".join(ANALYTICAL_USAGE_PATTERNS))
+
 
 def is_exempted(raw_text: str) -> bool:
-    """命中词 / 命中模式后，判断该输入是否处于学术或防护语境。"""
+    """命中词 / 命中模式后，判断该输入是否处于学术、防护或分析语境。"""
     if not ENABLE_CONTEXT_EXEMPTION:
         return False
     return bool(
         PROTECTIVE_CONTEXT_RE.search(raw_text)
         or ACADEMIC_CONTEXT_RE.search(raw_text)
+        or ANALYTICAL_USAGE_RE.search(raw_text)
     )
 
 
