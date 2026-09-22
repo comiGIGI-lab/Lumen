@@ -42,6 +42,16 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 WEB_ROOT = os.path.dirname(HERE)                 # study-liu-web/
 WORKSPACE = os.path.dirname(WEB_ROOT)            # 竞赛/
 
+# 内容安全模块与本文件同目录。把 HERE 加进 sys.path，使
+# `python server/api_server.py` 与 `python -m server.api_server` 两种启动方式都能 import 到。
+# 必须在 SOURCE_DIR 插进 sys.path 之前导入，避免被源码目录里的同名模块遮蔽。
+if HERE not in sys.path:
+    sys.path.insert(0, HERE)
+from safety_gate import (                                           # noqa: E402
+    # check_sensitive 保持可用（签名与返回结构不变），供外部脚本与后续接口直接复用
+    check_detail, check_sensitive, log_safety_hit, set_audit_log,
+)
+
 
 def _looks_like_source(path: str) -> bool:
     """判断目录是否是 study-liu 源码根（含 core/agent_loop.py 与 agents/planner.py）。"""
@@ -193,6 +203,9 @@ from core.paths import data_dir as _data_dir                        # noqa: E402
 TRACE_FILE = agent_loop_mod._TRACE_FILE
 # 历史 / 设置 / 缓存的实际落盘目录（源码运行时 = <源码>/data，不可写时回退 ~/.study-liu/data）
 DATA_DIR = _data_dir()
+# 内容安全命中明细的落盘位置（JSONL），与 client_history.json 同目录；
+# 写失败时 safety_gate 会静默降级为只打控制台，不影响主流程。
+set_audit_log(os.path.join(DATA_DIR, "safety_audit.jsonl"))
 
 
 # ============================================================
@@ -244,40 +257,18 @@ def client_courses(client_id: str) -> set:
 
 
 # ============================================================
-# 3.2 敏感词过滤（修复"无敏感词校验"）
+# 3.2 内容安全校验
 # ============================================================
-# 覆盖违法/色情/作弊/欺诈等明显不适合"学习助手"场景的输入。
-# 命中即拒绝（HTTP 400），不做改写、不上送大模型。
-SENSITIVE_WORDS = [
-    # 赌博 / 毒品
-    "赌博", "博彩", "赌场", "六合彩", "毒品", "吸毒", "制毒", "冰毒", "大麻",
-    "贩毒", "毒贩", "摇头丸",
-    # 武器 / 暴力 —— 用组合词（如"自制枪"）而非单字（"枪"），
-    # 避免误伤《枪械设计原理》、军事历史等合法学习内容
-    "枪支", "弹药", "军火", "炸药", "爆炸物", "管制刀具",
-    "自制枪", "造枪", "做枪", "配枪弹", "自制炸弹", "造炸弹", "做炸弹",
-    "制爆", "土制炸", "燃烧瓶", "自制武器",
-    "杀人", "杀死", "谋杀", "暗杀", "行凶", "砍人", "投毒", "下毒",
-    "自杀", "轻生", "自残",
-    # 色情
-    "色情", "裸聊", "援交", "嫖娼", "卖淫",
-    # 学术不端 / 网络违法
-    "代考", "替考", "代写论文", "外挂", "洗钱", "诈骗", "传销", "黑客攻击", "DDoS",
-    "作弊", "考试作弊", "买答案", "买考题", "卖答案", "窃题", "包过",
-    "开挂", "入侵系统", "盗号", "钓鱼网站",
-    # 隐私侵犯
-    "人肉搜索", "开盒", "查住址", "查身份证号", "定位某人", "监控他人", "偷拍",
-    # 其他
-    "人体器官", "买卖器官", "代办证件", "假钞", "假币", "套现",
-]
-
-
-def check_sensitive(text: str) -> list:
-    """返回文本中命中的敏感词列表（不区分大小写）。"""
-    if not text:
-        return []
-    low = text.lower()
-    return [w for w in SENSITIVE_WORDS if w in low]
+# 判定逻辑已拆到同目录的三个模块，本文件只负责调用：
+#   safety_words.py  词表层（A1 复合操作词组 / A2 议题名词 / 补充变体 / 旧 78 词对照）
+#   safety_rules.py  规则层（拼音键、学术与防护语境豁免、意图模式正则，全部可配置）
+#   safety_gate.py   判定引擎（check_sensitive / check_detail / log_safety_hit）
+#
+# check_sensitive(text) -> list 的签名与返回结构与拆分前一致，三处调用点不变。
+# 命中后对外只返回固定文案，命中明细写后端日志，不回显给用户。
+# 统一成一句固定文案的原因：原实现把命中词直接拼进 error 回显，
+# 等于向调用方暴露词表内容，可被用来反向探测词表边界。
+SAFETY_ERROR_MESSAGE = "该请求未通过内容安全审核"
 
 
 # ============================================================
@@ -788,12 +779,11 @@ class ApiHandler(BaseHTTPRequestHandler):
                 course = (body.get("course") or "").strip()
                 if not course:
                     return self._send_json({"ok": False, "error": "请先输入课程名"}, 400)
-                hits = check_sensitive(course)
-                if hits:
+                detail = check_detail(course)
+                if detail["action"] == "BLOCK":
+                    log_safety_hit("plan", course, detail, self._client_id())
                     return self._send_json(
-                        {"ok": False,
-                         "error": f"课程名包含敏感词（{'、'.join(hits)}），请修改后重试"},
-                        400)
+                        {"ok": False, "error": SAFETY_ERROR_MESSAGE}, 400)
                 profile = body.get("profile") or load_profile()
                 use_cache = bool(body.get("use_cache", True))
                 t0 = time.time()
@@ -810,12 +800,11 @@ class ApiHandler(BaseHTTPRequestHandler):
                 question = (body.get("question") or "").strip()
                 if not question:
                     return self._send_json({"ok": False, "error": "请输入问题"}, 400)
-                hits = check_sensitive(question)
-                if hits:
+                detail = check_detail(question)
+                if detail["action"] == "BLOCK":
+                    log_safety_hit("chat", question, detail, self._client_id())
                     return self._send_json(
-                        {"ok": False,
-                         "error": f"提问包含敏感词（{'、'.join(hits)}），请修改后重试"},
-                        400)
+                        {"ok": False, "error": SAFETY_ERROR_MESSAGE}, 400)
                 intent = parse_intent(question)
                 if intent.get("type") == "generate":
                     return self._send_json({
@@ -891,13 +880,12 @@ class ApiHandler(BaseHTTPRequestHandler):
         course = (query.get("course") or [""])[0].strip()
         if not course:
             return self._send_json({"ok": False, "error": "缺少 course 参数"}, 400)
-        hits = check_sensitive(course)
-        if hits:
-            return self._send_json(
-                {"ok": False,
-                 "error": f"课程名包含敏感词（{'、'.join(hits)}），请修改后重试"},
-                400)
         client_id = self._client_id(query)
+        detail = check_detail(course)
+        if detail["action"] == "BLOCK":
+            log_safety_hit("plan_stream", course, detail, client_id)
+            return self._send_json(
+                {"ok": False, "error": SAFETY_ERROR_MESSAGE}, 400)
 
         profile = load_profile()
         if query.get("level"):
