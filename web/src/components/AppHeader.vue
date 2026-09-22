@@ -23,10 +23,8 @@ const isMock = () => props.mode?.mode === 'mock'
       <div class="hero-left">
         <div class="logo">📘</div>
         <div>
-          <h1 class="hero-title">study-liu</h1>
-          <p class="hero-sub">
-            输入课程名 · 一键生成 <b>大纲</b> + <b>资源</b> + <b>个性化计划</b>
-          </p>
+          <h1 class="hero-title">智识有方</h1>
+          <p class="hero-sub">多模态教学智能体</p>
         </div>
       </div>
 

@@ -11,6 +11,7 @@
  */
 import { computed, onMounted, ref, watch } from 'vue'
 import AppHeader from './components/AppHeader.vue'
+import WelcomeScreen from './components/WelcomeScreen.vue'
 import PipelineStepper from './components/PipelineStepper.vue'
 import CourseForm from './components/CourseForm.vue'
 import ResultsGrid from './components/ResultsGrid.vue'
@@ -24,6 +25,41 @@ import { api } from './api/client'
 
 // ---------- 基础状态 ----------
 const booted = ref(false)
+
+// ---------- 首访欢迎层 ----------
+// 首访（localStorage 无标记）显示 WelcomeScreen；深链（?course= / ?auto=1）不弹，
+// 避免打断可分享的演示链接；?welcome=1 可强制重新打开（演示 / 截图用）。
+function shouldShowWelcome() {
+  try {
+    const qs = new URLSearchParams(window.location.search)
+    if (qs.get('welcome') === '1') return true
+    if (qs.get('welcome') === '0') return false
+    if (qs.get('course') || qs.get('auto') === '1') return false
+    return !localStorage.getItem('zjxt.welcomed')
+  } catch (_) {
+    return false
+  }
+}
+const showWelcome = ref(shouldShowWelcome())
+
+function onWelcomeDone() {
+  try {
+    localStorage.setItem('zjxt.welcomed', '1')
+  } catch (_) {
+    /* 存不上也不阻塞进入 */
+  }
+  showWelcome.value = false
+}
+
+// 欢迎层显示期间锁住 body 滚动，避免底层工具界面跟着滚
+watch(
+  showWelcome,
+  (v) => {
+    document.body.style.overflow = v ? 'hidden' : ''
+  },
+  { immediate: true },
+)
+
 const mode = ref({})
 const options = ref({ levels: [], daily_hours: [], goals: [] })
 const suggestedDays = ref(7)
@@ -312,6 +348,9 @@ const degradedBanner = computed(() => {
 
 <template>
   <div class="app">
+    <!-- 首访欢迎层：关闭后进入下方工具界面 -->
+    <WelcomeScreen v-if="showWelcome" @start="onWelcomeDone" />
+
     <AppHeader
       :mode="mode"
       :has-result="!!result"
