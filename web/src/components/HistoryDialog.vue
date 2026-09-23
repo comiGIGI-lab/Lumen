@@ -106,8 +106,9 @@ async function pick(course) {
 }
 
 .name {
-  font-size: 13.5px;
-  font-weight: 700;
+  font-family: var(--font-serif);
+  font-size: 14.5px;
+  font-weight: 400;
   color: var(--text-primary);
 }
 

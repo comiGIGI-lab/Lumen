@@ -70,7 +70,16 @@
   .dot-queue { background: var(--muted); }
   .dot-err { background: var(--err); }
   .row-failed { background: var(--err-bg); }
-  .bar-fill { transition: width .35s ease; }
+
+  .snake { width: 100%; height: 16px; }
+  .snake svg { width: 100%; height: 16px; display: block; overflow: visible; }
+  .snake-rail { fill: none; stroke: var(--chip); stroke-width: 4; }
+  .snake-body { fill: none; stroke: var(--accent); stroke-width: 4; stroke-linecap: round;
+    stroke-dasharray: 38 278; transition: stroke-dashoffset .28s linear; }
+  .snake.is-run .snake-body { animation: snake-crawl 1.15s linear infinite; }
+  .snake.is-done .snake-body { stroke: var(--ok); stroke-dasharray: 316 0; stroke-dashoffset: 0; animation: none; }
+  @keyframes snake-crawl { to { stroke-dashoffset: -316; } }
+
   @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
   @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
   .fade-in { animation: fadeIn .25s ease both; }
@@ -92,7 +101,15 @@
   /* 留白节奏：区块间距 32px，内容区 40px 内边距 */
   .space-y-6 > * + * { margin-top: 32px !important; }
   #contentArea { padding: 40px !important; max-width: 1180px; margin: 0 auto; }
-  .surface { box-shadow: 0 1px 2px rgba(0,0,0,.04); }
+  .surface { box-shadow: none; }
+  .nav-item { border-radius: 0 !important; }
+  .nav-item:hover { background: var(--band); }
+  .drop-zone {
+    border: 1px dashed var(--border); background: var(--band);
+    transition: border-color .18s ease, background .18s ease;
+  }
+  .drop-zone:hover, .drop-zone.on { border-color: var(--accent); background: var(--peach); }
+  #fabImport { box-shadow: var(--shadow-btn) !important; }
 
   /* 顶部三页导航（公共片段） */
   nav.zj-nav a { font-size: 12px; letter-spacing: .12em; text-transform: uppercase; white-space: nowrap; }
@@ -180,7 +197,7 @@
 <header class="surface border-b bd h-16 flex items-center px-5 gap-5 shrink-0">
   <!-- 左：logo + 副标题 -->
   <div class="zj-logo-block flex items-center gap-3 w-60 shrink-0">
-    <div class="w-9 h-9 rounded-lg btn-p flex items-center justify-center text-sm font-bold">ZJ</div>
+    <div class="px-2 py-1 text-xs" style="font-family:Georgia,'Times New Roman','Songti SC',serif; letter-spacing:.22em; color:var(--accent); border:1px solid var(--border);">LUMEN</div>
     <div class="leading-tight">
       <div class="font-semibold" data-i18n="app.name">智识有方</div>
       <div class="text-xs tm" data-i18n="app.slogan">多模态教学智能体</div>
@@ -274,22 +291,21 @@
     <!-- ===== 演示态 1：空知识库引导页 ===== -->
     <div id="emptyState" class="hidden p-6">
       <div class="surface border bd rounded-xl p-12 flex flex-col items-center text-center fade-in max-w-2xl mx-auto mt-10">
-        <div class="text-5xl mb-4">📚</div>
-        <div class="text-lg font-semibold mb-2" data-i18n="empty.title">知识库还是空的</div>
-        <div class="text-sm tm mb-8" data-i18n="empty.desc">上传第一份课件，AI 会自动解析、分块并建立可提问的知识库</div>
+        <div class="text-lg font-semibold mb-2" style="font-family:var(--font-serif); font-weight:400; font-size:28px;" data-i18n="empty.title">知识库还是空的</div>
+        <div class="text-sm tm mb-8" data-i18n="empty.desc">上传第一份课件，系统会解析、分块并建立可提问的知识库</div>
         <div class="grid grid-cols-3 gap-4 w-full mb-8 text-left grid-stack-3">
           <div class="border bd rounded-lg p-4">
-            <div class="text-xl mb-2">⬆️</div>
+            <div class="text-xs mb-2" style="font-family:var(--font-serif); letter-spacing:.1em; color:var(--accent);">01</div>
             <div class="text-sm font-medium mb-1" data-i18n="empty.step1">上传课件</div>
             <div class="text-xs tm" data-i18n="empty.step1desc">支持 PDF / 图片 / 音频</div>
           </div>
           <div class="border bd rounded-lg p-4">
-            <div class="text-xl mb-2">⚙️</div>
+            <div class="text-xs mb-2" style="font-family:var(--font-serif); letter-spacing:.1em; color:var(--accent);">02</div>
             <div class="text-sm font-medium mb-1" data-i18n="empty.step2">自动解析</div>
             <div class="text-xs tm" data-i18n="empty.step2desc">OCR + 转写 + 分块索引</div>
           </div>
           <div class="border bd rounded-lg p-4">
-            <div class="text-xl mb-2">💬</div>
+            <div class="text-xs mb-2" style="font-family:var(--font-serif); letter-spacing:.1em; color:var(--accent);">03</div>
             <div class="text-sm font-medium mb-1" data-i18n="empty.step3">开始提问</div>
             <div class="text-xs tm" data-i18n="empty.step3desc">答案可溯源到原文</div>
           </div>
@@ -412,9 +428,8 @@
     </div>
 
     <!-- 拖拽区 -->
-    <div id="dropZone" class="border-2 border-dashed bd rounded-xl h-36 flex flex-col items-center justify-center tm text-sm">
-      <div class="text-2xl mb-2">📄</div>
-      <div data-i18n="modal.drop">拖拽文件到此处，或点击选择</div>
+    <div id="dropZone" class="drop-zone h-40 flex flex-col items-center justify-center tm text-sm cursor-pointer">
+      <div class="body-15 mb-2" style="color:var(--text);" data-i18n="modal.drop">把文件拖到这里，或点击选择</div>
       <div class="text-xs mt-1" data-i18n="modal.support">支持 PDF / 图片 / 音频</div>
     </div>
 
@@ -426,7 +441,7 @@
 
     <!-- 完成态 -->
     <div id="uploadDone" class="hidden mt-4 rounded-lg border bd p-3 text-sm">
-      ✅ <span data-i18n="modal.doneHint">3 个文档已加入解析队列</span>
+      <span data-i18n="modal.doneHint">3 个文档已加入解析队列</span>
     </div>
 
     <div class="mt-5 flex justify-end gap-3">
@@ -498,12 +513,12 @@ const I18N = {
     'status.ready': '已入库', 'status.parsing': '解析中',
     'status.queue': '排队中', 'status.failed': '解析失败',
     'doctype.pdf': 'PDF', 'doctype.image': '图片', 'doctype.audio': '音频',
-    'modal.title': '导入文档', 'modal.drop': '拖拽文件到此处，或点击选择',
+    'modal.title': '导入文档', 'modal.drop': '把文件拖到这里，或点击选择',
     'modal.support': '支持 PDF / 图片 / 音频', 'modal.cancel': '取消',
     'modal.confirm': '开始解析', 'modal.uploading': '正在上传并解析…',
     'modal.doneHint': '3 个文档已加入解析队列',
     'empty.title': '知识库还是空的',
-    'empty.desc': '上传第一份课件，AI 会自动解析、分块并建立可提问的知识库',
+    'empty.desc': '上传第一份课件，系统会解析、分块并建立可提问的知识库',
     'empty.step1': '上传课件', 'empty.step1desc': '支持 PDF / 图片 / 音频',
     'empty.step2': '自动解析', 'empty.step2desc': 'OCR + 转写 + 分块索引',
     'empty.step3': '开始提问', 'empty.step3desc': '答案可溯源到原文',
@@ -742,6 +757,7 @@ function renderDetail() {
             <span data-i18n="status.${d.status}">${t('status.' + d.status)}</span>
             ${d.status === 'parsing' && d.progress ? `<span class="text-xs tm">${d.progress}%</span>` : ''}
           </span>
+          ${d.status === 'parsing' ? `<div class="mt-2" style="width:120px">${snakeBar(d.progress, 'parsing')}</div>` : ''}
         </td>
         <td class="px-5 py-3 tm">${d.chunks || '—'}</td>
         <td class="px-5 py-3">${retryBtn}</td>
@@ -794,6 +810,21 @@ const DEMO_FILES = [
   { name: '习题课录音_0920.mp3', size: '8.7 MB' }
 ];
 
+
+function snakeBar(progress, status) {
+  const p = Math.max(0, Math.min(100, Number(progress) || 0));
+  const run = status === 'uploading' || status === 'parsing';
+  const done = status === 'ready';
+  const cls = run ? 'is-run' : (done ? 'is-done' : '');
+  const off = ((100 - p) / 100) * 316;
+  return `<div class="snake ${cls}" aria-hidden="true">
+    <svg viewBox="0 0 160 16" preserveAspectRatio="none">
+      <rect class="snake-rail" x="2" y="2" width="156" height="12" rx="6"/>
+      <rect class="snake-body" x="2" y="2" width="156" height="12" rx="6" style="stroke-dashoffset:${off}"/>
+    </svg>
+  </div>`;
+}
+
 function openModal() {
   $('#importModal').classList.remove('hidden');
   $('#importModal').classList.add('flex');
@@ -819,9 +850,7 @@ function startUpload() {
         <span class="truncate">${f.name}</span>
         <span class="tm" id="pct${i}">0%</span>
       </div>
-      <div class="h-2 rounded-full chip overflow-hidden">
-        <div id="bar${i}" class="bar-fill h-full btn-p" style="width:0%"></div>
-      </div>
+      <div id="bar${i}">${snakeBar(0, 'uploading')}</div>
     </div>`).join('');
 
   const progress = [0, 0, 0];
@@ -833,7 +862,7 @@ function startUpload() {
         allDone = false;
         p = Math.min(100, p + speed[i]);
         progress[i] = p;
-        $('#bar' + i).style.width = p + '%';
+        $('#bar' + i).innerHTML = snakeBar(p, p >= 100 ? 'ready' : 'uploading');
         $('#pct' + i).textContent = Math.round(p) + '%';
       }
     });
@@ -926,6 +955,22 @@ $('#modalCancel').addEventListener('click', closeModal);
 $('#dropZone').addEventListener('click', startUpload);
 $('#modalConfirm').addEventListener('click', startUpload);
 $('#importModal').addEventListener('click', (e) => { if (e.target === $('#importModal')) closeModal(); });
+
+['dragenter', 'dragover'].forEach((ev) => {
+  $('#dropZone').addEventListener(ev, (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    $('#dropZone').classList.add('on');
+  });
+});
+['dragleave', 'drop'].forEach((ev) => {
+  $('#dropZone').addEventListener(ev, (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    $('#dropZone').classList.remove('on');
+    if (ev === 'drop') startUpload();
+  });
+});
 
 $('#demoEmptyBtn').addEventListener('click', () => setEmptyMode(!demoEmpty));
 $('#demoResetBtn').addEventListener('click', () => {

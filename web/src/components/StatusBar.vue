@@ -16,9 +16,13 @@ defineProps({
     <div class="left">
       <span class="bullet"></span>
       <span class="msg">{{ text }}</span>
+      <span class="motto" title="LUMEN, Latin for light. ZhiShiYouFang: where the light reaches, learning finds its way.">
+        LUMEN，拉丁语意为光。智识有方：光之所至，学有其方。
+      </span>
     </div>
 
     <div class="right">
+      <span class="motto-en">LUMEN, Latin for light.</span>
       <span v-if="fromCache" class="pill cache">⚡ 缓存命中</span>
       <span v-if="stats" class="pill">
         大纲 {{ stats.outline }} 章 · 资源 {{ stats.resources }} 项 · 计划 {{ stats.plan }} 天
@@ -34,16 +38,18 @@ defineProps({
   left: 0;
   right: 0;
   bottom: 0;
-  height: 32px;
-  background: #1e293b;
-  color: #cbd5e1;
+  min-height: 32px;
+  height: auto;
+  background: #191919;
+  color: #d2c9bc;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 0 16px;
+  padding: 6px 16px;
   font-size: 11.5px;
   z-index: 70;
+  flex-wrap: wrap;
 }
 
 .left {
@@ -58,7 +64,7 @@ defineProps({
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: #64748b;
+  background: #808080;
 }
 
 .t-warn .bullet {
@@ -78,6 +84,26 @@ defineProps({
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.motto,
+.motto-en {
+  font-family: var(--font-serif);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  color: #a39b92;
+}
+
+.motto {
+  margin-left: 10px;
+  padding-left: 10px;
+  border-left: 1px solid #3a3a3a;
+}
+
+.motto-en {
+  font-style: italic;
+  opacity: 0.85;
+  white-space: nowrap;
 }
 
 .t-warn .msg {
@@ -110,6 +136,21 @@ defineProps({
 
 .mono {
   font-family: var(--font-mono);
+}
+
+@media (max-width: 860px) {
+  .motto-en {
+    display: none;
+  }
+  .left {
+    flex-wrap: wrap;
+  }
+  .motto {
+    margin-left: 0;
+    padding-left: 0;
+    border-left: none;
+    flex-basis: 100%;
+  }
 }
 
 @media (max-width: 760px) {

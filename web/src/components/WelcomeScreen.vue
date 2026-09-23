@@ -2,465 +2,588 @@
 /**
  * WelcomeScreen —— 首访欢迎层（全屏覆盖，关闭后进入工具界面）
  *
- * 定位：项目语言内的「产品入口页」，五段结构
- *   HERO（渐变头图）→ 三项功能卡 → 三步流程 → CTA → 页脚（联系方式 + 隐私说明）
+ * 结构：HERO → 三项功能卡 → CTA → 页脚（联系方式 + 隐私说明）
+ * HERO：全幅书桌摄影（/hero-desk.jpg 本地文件）+ 遮罩 + LUMEN 刊名
+ * 功能卡：CSS 3D 纵深叠卡（perspective / translateZ / rotateY），不引入 React
+ * 视觉令牌：米底 #FBF9F6 / 衬线 / 强调色 #E51520 / 胶囊按钮
  *
- * 视觉完全复用 global.css 现有令牌（indigo→紫渐变 / slate 文字 / 8-12-18 圆角 / 柔和阴影）
- * 与 .card / .chip / .btn 通用类，保证与主应用无缝。
- *
- * 显示时机由 App.vue 控制：首访（localStorage 无 zjxt.welcomed）时出现；
- * 深链（?course= / ?auto=1）不弹，避免打断可分享的演示链接。
+ * 显示时机由 App.vue 控制：本组件不读写 zjxt.welcomed。
  */
 import { ref } from 'vue'
 
 const emit = defineEmits(['start'])
-
 const showPrivacy = ref(false)
+const activeCard = ref(0)
+
+const cards = [
+  {
+    num: '01',
+    title: '图文素材智能解析',
+    body: '课件 PDF、板书照片与课堂录音统一导入，自动识别文字与语音，切成可检索的内容块',
+  },
+  {
+    num: '02',
+    title: '知识点结构化抽取',
+    body: '从解析结果中抽取知识点，整理为课程大纲与知识结构，并标注薄弱环节',
+  },
+  {
+    num: '03',
+    title: '交互式答疑辅导',
+    body: '基于你自己的课程内容作答，答案标注出处，可以继续追问与逐条核对',
+  },
+]
 
 function onStart() {
   emit('start')
+}
+
+function cardStyle(i) {
+  const offset = i - activeCard.value
+  const abs = Math.abs(offset)
+  return {
+    transform: [
+      'translate(-50%, -50%)',
+      `translateX(${offset * 92}px)`,
+      `translateZ(${-abs * 220}px)`,
+      `rotateY(${offset * -22}deg)`,
+    ].join(' '),
+    opacity: abs > 1 ? 0.28 : 1 - abs * 0.18,
+    filter: abs === 0 ? 'none' : `blur(${abs * 1.2}px) saturate(${1 - abs * 0.18})`,
+    zIndex: String(10 - abs),
+  }
 }
 </script>
 
 <template>
   <div class="welcome" role="dialog" aria-label="欢迎页">
-    <!-- 右上角：直接跳过 -->
-    <button class="skip" type="button" @click="onStart">直接进入 →</button>
-
-    <!-- ① HERO -->
+    <!-- ① HERO：全幅书桌摄影 + 遮罩 + LUMEN 刊名 -->
     <section class="wl-hero">
-      <div class="wl-hero-bg" aria-hidden="true"></div>
-      <div class="wl-hero-in">
-        <div class="wl-logo">📘</div>
+      <div class="wl-hero-photo" aria-hidden="true">
+        <img src="/hero-desk.jpg" alt="" />
+      </div>
+      <div class="wl-hero-scrim" aria-hidden="true"></div>
+      <div class="wl-hero-inner">
+        <p class="wl-wordmark">LUMEN</p>
         <h1 class="wl-title">智识有方</h1>
         <p class="wl-sub">多模态教学智能体</p>
         <p class="wl-desc">
-          输入课程名与学习画像，Agent 链路生成课程大纲、推荐资源与个性化学习计划
+          把课件 PDF、课堂板书照片和录音丢进来，随后输入课程名与学习画像，
+          生成课程大纲、推荐资源与个性化学习计划。答案可溯源回原文位置。
         </p>
-        <div class="wl-hero-actions">
-          <button class="wl-btn-solid" type="button" @click="onStart">开始使用</button>
-          <a class="wl-btn-ghost" href="/prototypes/" target="_blank" rel="noopener">
-            界面原型
-          </a>
+        <button class="wl-btn wl-btn-light" type="button" @click="onStart">开始使用</button>
+      </div>
+    </section>
+
+    <!-- ② 三项功能：CSS 3D 纵深叠卡 -->
+    <section class="wl-band">
+      <div class="wl-inner">
+        <p class="wl-eyebrow">Core capabilities</p>
+        <h2 class="wl-h2">三项能力，覆盖一次完整的学习准备</h2>
+        <p class="wl-lead">从素材解析到知识抽取，再到答疑核对，都建立在课程内容之上</p>
+        <div
+          class="wl-stage"
+          @mouseleave="activeCard = 0"
+        >
+          <div class="wl-stack">
+            <article
+              v-for="(card, i) in cards"
+              :key="card.num"
+              class="wl-card"
+              :class="{ 'is-front': activeCard === i }"
+              :style="cardStyle(i)"
+              @mouseenter="activeCard = i"
+              @focus="activeCard = i"
+              tabindex="0"
+            >
+              <div class="wl-num">{{ card.num }}</div>
+              <h3>{{ card.title }}</h3>
+              <p>{{ card.body }}</p>
+            </article>
+          </div>
+        </div>
+        <div class="wl-dots" role="tablist" aria-label="三项能力">
+          <button
+            v-for="(card, i) in cards"
+            :key="'dot-' + card.num"
+            type="button"
+            class="wl-dot"
+            :class="{ on: activeCard === i }"
+            :aria-label="card.title"
+            @click="activeCard = i"
+          />
         </div>
       </div>
     </section>
 
-    <!-- ② 三项功能（对齐赛题原文） -->
-    <section class="wl-sec">
-      <h2 class="wl-sec-title">三项能力，覆盖一次完整的学习准备</h2>
-      <p class="wl-sec-sub">从素材解析到知识抽取，再到答疑核对，都建立在课程内容之上</p>
-      <div class="wl-grid">
-        <div class="card card-pad wl-feat">
-          <div class="wl-feat-ico ico-indigo">🖼️</div>
-          <h3>图文素材智能解析</h3>
-          <p>课件 PDF、板书照片与课堂录音统一导入，自动识别文字与语音，切成可检索的内容块</p>
-        </div>
-        <div class="card card-pad wl-feat">
-          <div class="wl-feat-ico ico-cyan">🧩</div>
-          <h3>知识点结构化抽取</h3>
-          <p>从解析结果中抽取知识点，整理为课程大纲与知识结构，并标注薄弱环节</p>
-        </div>
-        <div class="card card-pad wl-feat">
-          <div class="wl-feat-ico ico-slate">💬</div>
-          <h3>交互式答疑辅导</h3>
-          <p>基于你自己的课程内容作答，答案标注出处，可以继续追问与逐条核对</p>
-        </div>
+    <!-- ③ CTA -->
+    <section class="wl-cta">
+      <div class="wl-inner">
+        <h2 class="wl-h2">从一门课程开始</h2>
+        <p class="wl-lead">不需要预先整理资料，进入后输入课程名即可生成</p>
+        <button class="wl-btn" type="button" @click="onStart">开始使用</button>
       </div>
     </section>
 
-    <!-- ③ 三步流程 -->
-    <section class="wl-sec">
-      <h2 class="wl-sec-title">三步拿到一份可执行的学习方案</h2>
-      <div class="wl-grid">
-        <div class="card card-pad wl-step">
-          <span class="chip chip-indigo">第 1 步</span>
-          <h3>输入课程名与画像</h3>
-          <p>课程名，加上水平、每日时长与目标，几项选择即可完成设定</p>
-        </div>
-        <div class="card card-pad wl-step">
-          <span class="chip chip-cyan">第 2 步</span>
-          <h3>Agent 链路执行</h3>
-          <p>Planner → Searcher → Writer → Reviewer 依次规划、检索、成稿与校验</p>
-        </div>
-        <div class="card card-pad wl-step">
-          <span class="chip chip-slate">第 3 步</span>
-          <h3>三栏结果与答疑</h3>
-          <p>大纲、推荐资源、学习计划一次呈现，支持导出，也可继续提问</p>
-        </div>
-      </div>
-    </section>
-
-    <!-- ④ CTA -->
-    <section class="wl-sec">
-      <div class="card card-pad wl-cta">
-        <h2>从一门课程开始</h2>
-        <p>不需要预先整理资料，进入后输入课程名即可生成</p>
-        <button class="btn btn-primary wl-cta-btn" type="button" @click="onStart">
-          开始使用
-        </button>
-      </div>
-    </section>
-
-    <!-- ⑤ 页脚 -->
+    <!-- ④ 页脚 -->
     <footer class="wl-foot">
-      <p>粤港澳大湾区 AI Coding 创新大赛 · 方向一 多模态教学智能体</p>
-      <p class="wl-foot-links">
-        <a href="mailto:team@zhishiyoufang.example">team@zhishiyoufang.example</a>
-        <button class="wl-privacy-btn" type="button" @click="showPrivacy = true">
-          隐私说明
-        </button>
-      </p>
+      <div class="wl-inner">
+        <div class="wl-foot-name">智识有方</div>
+        <p class="wl-foot-lumen">LUMEN，拉丁语意为光。智识有方：光之所至，学有其方。</p>
+        <p class="wl-foot-lumen en">LUMEN, Latin for light. ZhiShiYouFang: where the light reaches, learning finds its way.</p>
+        <p class="wl-foot-links">
+          <a href="https://gitee.com/zhang-binxiang666/ai-coding" target="_blank" rel="noopener">Gitee</a>
+          <button class="wl-privacy-btn" type="button" @click="showPrivacy = true">隐私说明</button>
+        </p>
+      </div>
     </footer>
 
-    <!-- 隐私说明弹层（文案沿用原型页既定版本） -->
+    <Teleport to="body">
     <div v-if="showPrivacy" class="wl-modal" @click.self="showPrivacy = false">
-      <div class="card card-pad wl-modal-card">
+      <div class="wl-modal-card">
         <h3>隐私说明</h3>
         <p>本页面为参赛原型演示，不收集任何个人信息。</p>
         <p>演示所用的笔记、文档与学习记录均保存在你本机浏览器中，不会上传到服务器。</p>
         <p>页面上的解析状态、分块数量与统计数字均为演示用示例数据。</p>
         <div class="wl-modal-foot">
-          <button class="btn btn-ghost" type="button" @click="showPrivacy = false">
-            知道了
-          </button>
+          <button class="wl-btn-ghost" type="button" @click="showPrivacy = false">知道了</button>
         </div>
       </div>
     </div>
+    </Teleport>
   </div>
 </template>
 
 <style scoped>
-/* ---------- 覆盖层 ---------- */
 .welcome {
+  --bg: #fbf9f6;
+  --surface: #ffffff;
+  --band: #f8f3ec;
+  --text: #191919;
+  --border: #e4ded5;
+  --primary: #191919;
+  --primary-ink: #ffffff;
+  --accent: #e51520;
+  --muted: #808080;
+  --chip: #f1ece4;
+  --font-serif: Georgia, "Times New Roman", "Songti SC", "Noto Serif CJK SC",
+    "Source Han Serif SC", serif;
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC",
+    "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --shadow-btn: 0 5px 10px rgba(0, 0, 0, 0.15);
+
   position: fixed;
   inset: 0;
-  z-index: 90; /* Toast(100) 之下，其余界面之上 */
+  z-index: 90;
   overflow-y: auto;
-  background: var(--bg-app);
+  overflow-x: hidden;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
   animation: fade-up 0.24s ease both;
 }
 
-.skip {
-  position: fixed;
-  top: 14px;
-  right: 16px;
-  z-index: 95;
-  border: 1px solid var(--border);
-  background: var(--bg-card);
-  color: var(--text-muted);
-  border-radius: var(--radius-sm);
-  padding: 6px 12px;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-
-.skip:hover {
-  background: var(--bg-hover);
-  color: var(--text-primary);
-}
-
-/* ---------- ① HERO：与 AppHeader 同一条渐变 ---------- */
-.wl-hero {
-  position: relative;
-  overflow: hidden;
-  background: linear-gradient(120deg, #6366f1 0%, #7c5cf6 50%, #8b5cf6 100%);
-  color: #fff;
-  text-align: center;
-  padding: 72px 24px 64px;
-}
-
-.wl-hero-bg {
-  position: absolute;
-  inset: 0;
-  background-image: radial-gradient(
-      circle at 12% 20%,
-      rgba(255, 255, 255, 0.24),
-      transparent 42%
-    ),
-    radial-gradient(circle at 88% 90%, rgba(6, 182, 212, 0.34), transparent 46%);
-}
-
-.wl-hero-in {
-  position: relative;
+.wl-inner {
   max-width: 720px;
   margin: 0 auto;
 }
 
-.wl-logo {
-  width: 64px;
-  height: 64px;
-  margin: 0 auto 18px;
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.18);
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  display: grid;
-  place-items: center;
-  font-size: 32px;
-  backdrop-filter: blur(6px);
+.wl-hero {
+  position: relative;
+  min-height: 92vh;
+  min-height: 100svh;
+  display: flex;
+  align-items: flex-end;
+  padding: 0;
+  color: #f7f2ea;
+  overflow: hidden;
+}
+
+.wl-hero-photo {
+  position: absolute;
+  inset: 0;
+}
+
+.wl-hero-photo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 58% 42%;
+  display: block;
+}
+
+.wl-hero-scrim {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, rgba(18, 12, 8, 0.18) 0%, rgba(18, 12, 8, 0.28) 38%, rgba(18, 12, 8, 0.78) 100%),
+    linear-gradient(90deg, rgba(18, 12, 8, 0.55) 0%, rgba(18, 12, 8, 0.12) 52%, rgba(18, 12, 8, 0.08) 100%);
+}
+
+.wl-hero-inner {
+  position: relative;
+  z-index: 1;
+  max-width: 760px;
+  padding: 72px 32px 64px;
+}
+
+.wl-wordmark {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: clamp(64px, 14vw, 132px);
+  font-weight: 400;
+  letter-spacing: 0.08em;
+  line-height: 0.86;
+  color: #fff;
+  text-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
 }
 
 .wl-title {
-  font-size: 40px;
-  font-weight: 800;
-  letter-spacing: 0.5px;
+  font-family: var(--font-serif);
+  font-size: clamp(28px, 5vw, 40px);
+  font-weight: 400;
+  letter-spacing: 0.18em;
   line-height: 1.2;
+  margin: 18px 0 0;
 }
 
 .wl-sub {
-  margin-top: 6px;
-  font-size: 16px;
-  font-weight: 600;
-  opacity: 0.92;
+  margin: 10px 0 0;
+  font-size: 14px;
+  letter-spacing: 0.22em;
+  color: rgba(247, 242, 234, 0.78);
 }
 
 .wl-desc {
-  margin-top: 14px;
-  font-size: 14px;
-  line-height: 1.8;
-  opacity: 0.88;
+  margin: 24px 0 0;
+  font-size: 17px;
+  line-height: 1.75;
+  color: rgba(247, 242, 234, 0.82);
   max-width: 34em;
-  margin-left: auto;
-  margin-right: auto;
 }
 
-.wl-hero-actions {
-  margin-top: 26px;
+.wl-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 36px;
+  height: 48px;
+  padding: 0 28px;
+  border: none;
+  border-radius: 1000px;
+  background: var(--primary);
+  color: var(--primary-ink);
+  font-size: 14px;
+  letter-spacing: 0.06em;
+  box-shadow: var(--shadow-btn);
+  cursor: pointer;
+  transition: transform 0.18s ease, opacity 0.18s ease;
+}
+
+.wl-btn-light {
+  background: #fff;
+  color: #191919;
+}
+
+.wl-btn:hover {
+  transform: translateY(-1px);
+  opacity: 0.92;
+}
+
+.wl-band {
+  background: var(--band);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  padding: 72px 32px 48px;
+  overflow: hidden;
+}
+
+.wl-h2 {
+  font-family: var(--font-serif);
+  font-size: 32px;
+  font-weight: 400;
+  line-height: 1.3;
+  margin: 0 0 12px;
+}
+
+.wl-lead {
+  font-size: 16px;
+  line-height: 1.75;
+  color: var(--muted);
+  margin: 0;
+  max-width: 34em;
+}
+
+.wl-eyebrow {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: 13px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin: 0 0 20px;
+}
+
+.wl-stage {
+  margin: 36px auto 0;
+  height: 300px;
+  perspective: 1400px;
+  perspective-origin: 50% 48%;
+}
+
+.wl-stack {
+  position: relative;
+  height: 100%;
+  transform-style: preserve-3d;
+}
+
+.wl-card {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: min(280px, 78vw);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  padding: 28px 24px;
+  transform-style: preserve-3d;
+  transform-origin: center center;
+  transition: transform 0.55s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.45s ease, filter 0.45s ease;
+  box-shadow: 0 18px 40px rgba(25, 25, 25, 0.12);
+  cursor: pointer;
+  outline: none;
+}
+
+.wl-card.is-front {
+  box-shadow: 0 22px 48px rgba(25, 25, 25, 0.16);
+}
+
+.wl-card h3 {
+  font-family: var(--font-serif);
+  font-size: 18px;
+  font-weight: 400;
+  margin: 0 0 10px;
+}
+
+.wl-card p {
+  font-size: 15px;
+  line-height: 1.7;
+  color: var(--muted);
+  margin: 0;
+}
+
+.wl-num {
+  font-family: var(--font-serif);
+  font-size: 13px;
+  letter-spacing: 0.1em;
+  color: var(--accent);
+  margin-bottom: 14px;
+}
+
+.wl-dots {
   display: flex;
   justify-content: center;
-  gap: 12px;
-  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
 }
 
-.wl-btn-solid {
-  border: 1px solid #fff;
-  background: #fff;
-  color: var(--primary-dark);
-  border-radius: var(--radius-sm);
-  padding: 10px 26px;
-  font-size: 14px;
-  font-weight: 700;
+.wl-dot {
+  width: 8px;
+  height: 8px;
+  border: none;
+  border-radius: 999px;
+  background: var(--border);
+  padding: 0;
   cursor: pointer;
-  transition: all 0.15s;
 }
 
-.wl-btn-solid:hover {
-  filter: brightness(0.96);
-  transform: translateY(-1px);
+.wl-dot.on {
+  background: var(--accent);
+  width: 22px;
 }
 
-.wl-btn-ghost {
-  border: 1px solid rgba(255, 255, 255, 0.32);
-  background: rgba(255, 255, 255, 0.12);
-  color: #fff;
-  border-radius: var(--radius-sm);
-  padding: 10px 20px;
-  font-size: 14px;
-  font-weight: 600;
-  text-decoration: none;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-
-.wl-btn-ghost:hover {
-  background: rgba(255, 255, 255, 0.24);
-}
-
-/* ---------- 通用区块 ---------- */
-.wl-sec {
-  max-width: 1080px;
-  margin: 0 auto;
-  padding: 44px 26px 8px;
-}
-
-.wl-sec-title {
-  font-size: 20px;
-  font-weight: 700;
-  color: var(--text-primary);
-  text-align: center;
-}
-
-.wl-sec-sub {
-  margin-top: 6px;
-  font-size: 13px;
-  color: var(--text-muted);
-  text-align: center;
-}
-
-.wl-grid {
-  margin-top: 22px;
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: var(--gap-lg);
-}
-
-.wl-feat h3,
-.wl-step h3 {
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--text-primary);
-  margin: 10px 0 6px;
-}
-
-.wl-feat p,
-.wl-step p {
-  font-size: 13px;
-  line-height: 1.75;
-  color: var(--text-muted);
-}
-
-/* 功能卡图标：沿用 chip 的三组柔和底色 */
-.wl-feat-ico {
-  width: 42px;
-  height: 42px;
-  border-radius: 12px;
-  display: grid;
-  place-items: center;
-  font-size: 20px;
-}
-
-.ico-indigo {
-  background: var(--primary-soft);
-  border: 1px solid #c7d2fe;
-}
-
-.ico-cyan {
-  background: var(--accent-soft);
-  border: 1px solid #a5f3fc;
-}
-
-.ico-slate {
-  background: var(--bg-disabled);
-  border: 1px solid var(--border);
-}
-
-/* ---------- ④ CTA ---------- */
 .wl-cta {
-  text-align: center;
-  padding: 34px 24px;
+  padding: 80px 32px;
+  text-align: left;
 }
 
-.wl-cta h2 {
-  font-size: 20px;
-  font-weight: 700;
-  color: var(--text-primary);
+.wl-cta .wl-btn {
+  margin-top: 28px;
 }
 
-.wl-cta p {
-  margin-top: 6px;
-  font-size: 13px;
-  color: var(--text-muted);
-}
-
-.wl-cta-btn {
-  margin-top: 18px;
-}
-
-/* ---------- ⑤ 页脚 ---------- */
 .wl-foot {
-  max-width: 1080px;
-  margin: 0 auto;
-  padding: 36px 26px 40px;
-  text-align: center;
-  font-size: 12px;
-  color: var(--text-faint);
-  line-height: 2;
+  background: #191919;
+  color: #ffffff;
+  padding: 48px 32px 40px;
+}
+
+.wl-foot-name {
+  font-family: var(--font-serif);
+  font-size: 20px;
+  margin-bottom: 10px;
+}
+
+.wl-foot-lumen {
+  font-family: var(--font-serif);
+  font-size: 14px !important;
+  line-height: 1.75 !important;
+  opacity: 0.88 !important;
+  margin: 0 0 4px !important;
+  max-width: 34em;
+}
+
+.wl-foot-lumen.en {
+  font-style: italic;
+  opacity: 0.68 !important;
+  margin-bottom: 14px !important;
+}
+
+.wl-foot p {
+  font-size: 13px;
+  line-height: 1.8;
+  opacity: 0.7;
+  margin: 0;
 }
 
 .wl-foot-links {
   display: flex;
-  justify-content: center;
   gap: 18px;
   flex-wrap: wrap;
+  margin-top: 16px !important;
 }
 
-.wl-foot a {
-  color: var(--text-muted);
+.wl-foot a,
+.wl-privacy-btn {
+  color: inherit;
+  opacity: 0.85;
+  font-size: 13px;
 }
 
 .wl-privacy-btn {
   border: none;
   background: none;
   padding: 0;
-  font-size: 12px;
-  color: var(--text-muted);
   cursor: pointer;
   text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
-.wl-privacy-btn:hover {
-  color: var(--primary);
+.wl-privacy-btn:hover,
+.wl-foot a:hover {
+  opacity: 1;
 }
 
-/* ---------- 隐私弹层 ---------- */
 .wl-modal {
+  --surface: #ffffff;
+  --text: #191919;
+  --border: #e4ded5;
+  --muted: #808080;
+  --font-serif: Georgia, "Times New Roman", "Songti SC", "Noto Serif CJK SC", serif;
   position: fixed;
   inset: 0;
-  z-index: 96;
+  z-index: 170;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 20px;
-  background: rgba(15, 23, 42, 0.45);
+  background: rgba(0, 0, 0, 0.45);
 }
 
 .wl-modal-card {
-  width: 480px;
+  width: 520px;
   max-width: 100%;
-  box-shadow: var(--shadow-lg);
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  padding: 28px;
 }
 
 .wl-modal-card h3 {
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--text-primary);
-  margin-bottom: 10px;
+  font-family: var(--font-serif);
+  font-size: 18px;
+  font-weight: 400;
+  margin: 0 0 14px;
 }
 
 .wl-modal-card p {
-  font-size: 13px;
-  line-height: 1.8;
-  color: var(--text-muted);
-  margin-bottom: 8px;
+  font-size: 15px;
+  line-height: 1.7;
+  color: var(--muted);
+  margin: 0 0 10px;
 }
 
 .wl-modal-foot {
-  margin-top: 14px;
+  margin-top: 18px;
   display: flex;
   justify-content: flex-end;
 }
 
-/* ---------- 响应式（与主应用同断点 860px） ---------- */
+.wl-btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 36px;
+  padding: 0 16px;
+  border-radius: 1000px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
 @media (max-width: 860px) {
-  .wl-hero {
-    padding: 56px 18px 48px;
+  .wl-hero-inner {
+    padding: 56px 20px 48px;
+  }
+
+  .wl-wordmark {
+    letter-spacing: 0.04em;
   }
 
   .wl-title {
-    font-size: 30px;
+    letter-spacing: 0.12em;
+    font-size: 28px;
   }
 
-  .wl-sec {
-    padding: 34px 16px 6px;
+  .wl-desc {
+    font-size: 15px;
   }
 
-  .wl-grid {
-    grid-template-columns: 1fr;
-    gap: var(--gap);
+  .wl-band,
+  .wl-cta,
+  .wl-foot {
+    padding-left: 20px;
+    padding-right: 20px;
   }
 
-  .wl-btn-solid,
-  .wl-btn-ghost {
+  .wl-h2 {
+    font-size: 26px;
+  }
+
+  .wl-btn {
     width: 100%;
   }
 
-  .wl-hero-actions {
-    flex-direction: column;
-    max-width: 320px;
-    margin-left: auto;
-    margin-right: auto;
+  .wl-stage {
+    height: 280px;
+  }
+}
+
+@media (max-width: 390px) {
+  .wl-stage {
+    height: 300px;
   }
 }
 </style>

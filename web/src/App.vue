@@ -20,6 +20,8 @@ import TraceDrawer from './components/TraceDrawer.vue'
 import StatusBar from './components/StatusBar.vue'
 import SettingsDialog from './components/SettingsDialog.vue'
 import HistoryDialog from './components/HistoryDialog.vue'
+import SceneBackdrop from './components/SceneBackdrop.vue'
+import SpaceLayer from './components/SpaceLayer.vue'
 import { usePlanStream } from './composables/usePlanStream'
 import { api } from './api/client'
 
@@ -76,6 +78,11 @@ const showSettings = ref(false)
 const needsKey = ref(false)
 const showHistory = ref(false)
 const showTrace = ref(false)
+const activeScene = ref(null)
+
+watch(activeScene, (s) => {
+  document.documentElement.classList.toggle('has-scene', !!s)
+})
 
 // ---------- 状态栏 ----------
 const statusText = ref('就绪')
@@ -347,11 +354,15 @@ const degradedBanner = computed(() => {
 </script>
 
 <template>
-  <div class="app">
+  <div class="app" :class="{ 'has-scene': !!activeScene }">
+    <SceneBackdrop :scene="activeScene" />
+    <SpaceLayer @scene-change="activeScene = $event" />
+
     <!-- 首访欢迎层：关闭后进入下方工具界面 -->
     <WelcomeScreen v-if="showWelcome" @start="onWelcomeDone" />
 
     <AppHeader
+      v-show="!showWelcome"
       :mode="mode"
       :has-result="!!result"
       :busy="busy"
@@ -473,11 +484,28 @@ const degradedBanner = computed(() => {
 
 <style scoped>
 .app {
+  position: relative;
   min-height: 100vh;
-  padding-bottom: 44px;
+  padding-bottom: 52px;
+  z-index: 1;
+}
+
+.app.has-scene {
+  background: transparent;
+}
+
+.app.has-scene :deep(.card),
+.app.has-scene :deep(.form-card),
+.app.has-scene :deep(.pipeline),
+.app.has-scene :deep(.chat),
+.app.has-scene :deep(.panel) {
+  background: rgba(255, 255, 255, 0.86);
+  backdrop-filter: blur(8px);
 }
 
 .main {
+  position: relative;
+  z-index: 1;
   max-width: 1360px;
   margin: 0 auto;
   padding: 16px 26px 26px;

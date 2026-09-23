@@ -32,7 +32,7 @@ const crisisLines = computed(() =>
 const typeChip = (t) => {
   const map = {
     视频: 'chip-cyan',
-    书籍: 'chip-indigo',
+    书籍: 'chip-brand',
     教程: 'chip-success',
     社区: 'chip-slate',
     平台: 'chip-warn',
@@ -84,7 +84,7 @@ const dayNo = (item, i) => item?.day ?? i + 1
       :count="outline.length"
       :loading="loading"
       empty-text="输入课程名并点击「生成方案」，Planner 会输出章节结构"
-      accent="#6366f1"
+      accent="#e51520"
     >
       <div v-for="(ch, i) in outline" :key="i" class="outline-item">
         <span class="outline-no">{{ String(i + 1).padStart(2, '0') }}</span>
@@ -104,7 +104,7 @@ const dayNo = (item, i) => item?.day ?? i + 1
       :count="resources.length"
       :loading="loading"
       empty-text="Searcher 会为课程检索书籍 / 视频 / 网站等学习资源"
-      accent="#06b6d4"
+      accent="#191919"
     >
       <div v-for="(r, i) in resources" :key="i" class="res-item">
         <div class="res-top">
@@ -131,7 +131,7 @@ const dayNo = (item, i) => item?.day ?? i + 1
       :count="planItems.length"
       :loading="loading"
       empty-text="Writer 会结合大纲与用户画像编排每日学习任务"
-      accent="#8b5cf6"
+      accent="#c4101a"
     >
       <div v-for="(item, i) in planItems" :key="i" class="plan-item">
         <div class="plan-day">Day {{ dayNo(item, i) }}</div>
@@ -207,7 +207,7 @@ const dayNo = (item, i) => item?.day ?? i + 1
   border-radius: var(--radius-sm);
   background: var(--bg-soft);
   border: 1px solid var(--border);
-  border-left: 3px solid #67e8f9;
+  border-left: 3px solid var(--border-strong);
 }
 
 .res-top {
@@ -248,7 +248,7 @@ const dayNo = (item, i) => item?.day ?? i + 1
   border-radius: var(--radius-sm);
   background: var(--bg-soft);
   border: 1px solid var(--border);
-  border-left: 3px solid #c4b5fd;
+  border-left: 3px solid var(--primary-light);
 }
 
 .plan-day {
@@ -257,7 +257,7 @@ const dayNo = (item, i) => item?.day ?? i + 1
   font-weight: 800;
   color: var(--primary-dark);
   background: #fff;
-  border: 1px solid #ddd6fe;
+  border: 1px solid #f3c4c7;
   border-radius: 6px;
   padding: 2px 7px;
   height: fit-content;
@@ -330,8 +330,9 @@ const dayNo = (item, i) => item?.day ?? i + 1
 
 .crisis-title {
   margin: 0 0 4px;
-  font-size: 16px;
-  font-weight: 600;
+  font-family: var(--font-serif);
+  font-size: 18px;
+  font-weight: 400;
   color: var(--text-primary);
 }
 

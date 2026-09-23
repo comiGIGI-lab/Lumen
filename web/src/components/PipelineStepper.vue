@@ -63,7 +63,7 @@ function desc(key, stage) {
 
       <div class="pipe-meta">
         <template v-if="meta">
-          <span class="chip chip-indigo">{{ meta.course }}</span>
+          <span class="chip chip-brand">{{ meta.course }}</span>
           <span v-if="meta.profile_text" class="pipe-profile">{{ meta.profile_text }}</span>
         </template>
         <template v-else>
@@ -141,8 +141,9 @@ function desc(key, stage) {
 }
 
 .pipe-title {
-  font-size: 14px;
-  font-weight: 700;
+  font-family: var(--font-serif);
+  font-size: 15px;
+  font-weight: 400;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -153,7 +154,7 @@ function desc(key, stage) {
   height: 8px;
   border-radius: 50%;
   background: var(--primary);
-  box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.14);
+  box-shadow: 0 0 0 4px rgba(229, 21, 32, 0.14);
 }
 
 .stage-count {
@@ -161,7 +162,7 @@ function desc(key, stage) {
   font-weight: 700;
   color: var(--primary-dark);
   background: var(--primary-soft);
-  border: 1px solid #c7d2fe;
+  border: 1px solid #f3c4c7;
   border-radius: 999px;
   padding: 1px 9px;
 }
@@ -195,7 +196,7 @@ function desc(key, stage) {
 .pipe-progress-bar {
   height: 100%;
   border-radius: 3px;
-  background: linear-gradient(90deg, var(--grad-from), var(--grad-to));
+  background: var(--primary);
   transition: width 0.4s ease;
 }
 
@@ -235,7 +236,7 @@ function desc(key, stage) {
 .node.is-running {
   border-color: var(--primary-light);
   background: var(--primary-soft);
-  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.12);
+  box-shadow: 0 0 0 3px rgba(229, 21, 32, 0.12);
 }
 
 .node.is-done {
@@ -272,7 +273,7 @@ function desc(key, stage) {
   width: 12px;
   height: 12px;
   border-radius: 50%;
-  border: 2px solid rgba(99, 102, 241, 0.28);
+  border: 2px solid rgba(229, 21, 32, 0.28);
   border-top-color: var(--primary);
   animation: spin 0.7s linear infinite;
 }

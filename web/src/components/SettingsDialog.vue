@@ -375,8 +375,9 @@ async function clearCache() {
 
 .block-head h4 {
   margin: 0;
-  font-size: 14.5px;
-  font-weight: 700;
+  font-family: var(--font-serif);
+  font-size: 15px;
+  font-weight: 400;
   color: var(--text-primary);
 }
 
@@ -395,7 +396,7 @@ async function clearCache() {
 .seg-btn {
   border: 1px solid var(--border);
   background: var(--bg-soft);
-  border-radius: var(--radius-sm);
+  border-radius: 1000px;
   padding: 14px 10px;
   font-size: 14px;
   font-weight: 700;

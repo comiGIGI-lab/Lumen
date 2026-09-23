@@ -103,10 +103,10 @@ const fileBase = computed(() => (props.traceFile || '').split(/[\\/]/).pop() || 
   position: fixed;
   top: 0;
   right: 0;
-  bottom: 32px;
+  bottom: 44px;
   width: min(560px, 92vw);
-  background: #0f172a;
-  color: #cbd5e1;
+  background: #191919;
+  color: #e4ded5;
   z-index: 60;
   display: flex;
   flex-direction: column;
@@ -119,18 +119,19 @@ const fileBase = computed(() => (props.traceFile || '').split(/[\\/]/).pop() || 
   justify-content: space-between;
   gap: 10px;
   padding: 14px 16px;
-  border-bottom: 1px solid #1e293b;
+  border-bottom: 1px solid #2c2c2c;
 }
 
 .drawer-title {
-  font-size: 14px;
-  font-weight: 700;
-  color: #f1f5f9;
+  font-family: var(--font-serif);
+  font-size: 15px;
+  font-weight: 400;
+  color: #f7f2ea;
 }
 
 .drawer-sub {
   font-size: 11px;
-  color: #64748b;
+  color: #808080;
   font-family: var(--font-mono);
 }
 
@@ -148,21 +149,21 @@ const fileBase = computed(() => (props.traceFile || '').split(/[\\/]/).pop() || 
   display: flex;
   gap: 6px;
   padding: 10px 16px;
-  border-bottom: 1px solid #1e293b;
+  border-bottom: 1px solid #2c2c2c;
 }
 
 .filter {
-  border: 1px solid #334155;
+  border: 1px solid #3a3a3a;
   background: transparent;
-  color: #94a3b8;
+  color: #a39b92;
   border-radius: 999px;
   padding: 3px 12px;
   font-size: 11.5px;
 }
 
 .filter.on {
-  background: #6366f1;
-  border-color: #6366f1;
+  background: #e51520;
+  border-color: #e51520;
   color: #fff;
 }
 
@@ -179,7 +180,7 @@ const fileBase = computed(() => (props.traceFile || '').split(/[\\/]/).pop() || 
   flex-direction: column;
   align-items: center;
   gap: 8px;
-  color: #475569;
+  color: #808080;
   padding: 60px 20px;
   text-align: center;
   font-family: var(--font);
@@ -222,7 +223,7 @@ const fileBase = computed(() => (props.traceFile || '').split(/[\\/]/).pop() || 
 }
 
 .ts {
-  color: #475569;
+  color: #6b6560;
   flex: none;
 }
 
@@ -232,11 +233,11 @@ const fileBase = computed(() => (props.traceFile || '').split(/[\\/]/).pop() || 
 }
 
 .ev-pipe {
-  color: #a5b4fc;
+  color: #f08a8f;
 }
 
 .ev-agent {
-  color: #67e8f9;
+  color: #f3d2a8;
 }
 
 .ev-warn {
@@ -248,7 +249,7 @@ const fileBase = computed(() => (props.traceFile || '').split(/[\\/]/).pop() || 
 }
 
 .payload {
-  color: #94a3b8;
+  color: #a39b92;
   word-break: break-all;
 }
 

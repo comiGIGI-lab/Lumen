@@ -71,7 +71,7 @@ function clear() {
   <section class="card card-pad chat">
     <div class="chat-head">
       <div class="lead">💬 课程问答</div>
-      <span v-if="courseContext" class="chip chip-indigo">当前课程：{{ courseContext }}</span>
+      <span v-if="courseContext" class="chip chip-brand">当前课程：{{ courseContext }}</span>
       <span v-else class="muted">先「生成方案」，AI 会围绕该课程作答</span>
       <button class="btn-link right" @click="clear">🗑 清空对话</button>
     </div>
@@ -142,8 +142,9 @@ function clear() {
 }
 
 .lead {
-  font-size: 13.5px;
-  font-weight: 700;
+  font-family: var(--font-serif);
+  font-size: 15px;
+  font-weight: 400;
 }
 
 .muted {
@@ -228,7 +229,7 @@ function clear() {
 
 .msg.is-user .bubble {
   background: var(--primary-soft);
-  border-color: #c7d2fe;
+  border-color: #f3c4c7;
 }
 
 .text {

@@ -1,44 +1,44 @@
 /* ============================================================
-   study-liu Web · 全局样式
-   配色直接沿用桌面版 ui/theme.py 的 light 主题，保证两端观感一致
+   智识有方 Web · 全局样式
+   令牌对齐欢迎层：米底 #FBF9F6 / 强调色 #E51520 / 标题衬线
    ============================================================ */
 
 :root {
-  /* 背景 */
-  --bg-app: #f6f7fb;
+  /* 背景：米底，对齐欢迎层 */
+  --bg-app: #fbf9f6;
   --bg-card: #ffffff;
-  --bg-hover: #eef2f7;
-  --bg-soft: #f8fafc;
-  --bg-disabled: #f1f5f9;
+  --bg-hover: #f3eee6;
+  --bg-soft: #f8f3ec;
+  --bg-disabled: #f1ece4;
 
-  /* 品牌色 */
-  --grad-from: #6366f1;
-  --grad-to: #8b5cf6;
-  --primary: #6366f1;
-  --primary-dark: #4f46e5;
-  --primary-light: #a5b4fc;
-  --primary-soft: #eef2ff;
-  --accent: #06b6d4;
-  --accent-dark: #0891b2;
-  --accent-soft: #ecfeff;
+  /* 品牌色：强调红，不再用 indigo 紫 */
+  --grad-from: #e51520;
+  --grad-to: #c4101a;
+  --primary: #e51520;
+  --primary-dark: #c4101a;
+  --primary-light: #f08a8f;
+  --primary-soft: #fdecee;
+  --accent: #e51520;
+  --accent-dark: #c4101a;
+  --accent-soft: #fdecee;
 
   /* 文字 */
-  --text-primary: #1e293b;
-  --text-secondary: #475569;
-  --text-muted: #64748b;
-  --text-faint: #94a3b8;
+  --text-primary: #191919;
+  --text-secondary: #4a4540;
+  --text-muted: #808080;
+  --text-faint: #a39b92;
 
   /* 边框 */
-  --border: #e2e8f0;
-  --border-strong: #cbd5e1;
+  --border: #e4ded5;
+  --border-strong: #d2c9bc;
 
   /* 状态 */
   --success: #10b981;
   --success-soft: #ecfdf5;
   --warning: #f59e0b;
   --warning-soft: #fffbeb;
-  --error: #ef4444;
-  --error-soft: #fef2f2;
+  --error: #e51520;
+  --error-soft: #fdecee;
 
   /* 尺寸 */
   --radius: 12px;
@@ -47,12 +47,15 @@
   --pad-card: 18px;
   --gap: 12px;
   --gap-lg: 18px;
-  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05);
-  --shadow: 0 4px 16px rgba(15, 23, 42, 0.07);
-  --shadow-lg: 0 18px 46px rgba(15, 23, 42, 0.16);
+  --shadow-sm: 0 1px 2px rgba(25, 25, 25, 0.05);
+  --shadow: 0 4px 16px rgba(25, 25, 25, 0.07);
+  --shadow-lg: 0 18px 46px rgba(25, 25, 25, 0.16);
+  --shadow-btn: 0 5px 10px rgba(0, 0, 0, 0.15);
 
   --font: "Microsoft YaHei UI", "PingFang SC", "Hiragino Sans GB",
     "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-serif: Georgia, "Times New Roman", "Songti SC", "Noto Serif CJK SC",
+    "Source Han Serif SC", serif;
   --font-mono: "JetBrains Mono", Consolas, "Courier New", monospace;
 }
 
@@ -72,6 +75,11 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+html.has-scene,
+html.has-scene body {
+  background: transparent;
+}
+
 #app {
   min-height: 100vh;
 }
@@ -82,6 +90,13 @@ h3,
 h4,
 p {
   margin: 0;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-serif);
+  font-weight: 400;
 }
 
 button {
@@ -119,8 +134,9 @@ a:hover {
 }
 
 .card-title {
-  font-size: 15px;
-  font-weight: 700;
+  font-family: var(--font-serif);
+  font-size: 16px;
+  font-weight: 400;
   color: var(--text-primary);
   display: flex;
   align-items: center;
@@ -147,9 +163,10 @@ a:hover {
 }
 
 .btn-primary {
-  background: linear-gradient(135deg, var(--grad-from), var(--grad-to));
+  background: var(--primary);
   color: #fff;
-  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.32);
+  border-radius: 1000px;
+  box-shadow: var(--shadow-btn);
 }
 
 .btn-primary:not(:disabled):hover {
@@ -161,6 +178,7 @@ a:hover {
   background: var(--bg-card);
   border-color: var(--border);
   color: var(--text-secondary);
+  border-radius: 1000px;
 }
 
 .btn-ghost:not(:disabled):hover {
@@ -171,12 +189,13 @@ a:hover {
 
 .btn-accent {
   background: var(--accent-soft);
-  border-color: #a5f3fc;
+  border-color: #f3c4c7;
   color: var(--accent-dark);
+  border-radius: 1000px;
 }
 
 .btn-accent:not(:disabled):hover {
-  background: #cffafe;
+  background: #f8d7d9;
 }
 
 .btn-link {
@@ -214,7 +233,7 @@ a:hover {
 .input:focus,
 .select:focus {
   border-color: var(--primary-light);
-  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.12);
+  box-shadow: 0 0 0 3px rgba(229, 21, 32, 0.12);
 }
 
 .input::placeholder {
@@ -242,16 +261,17 @@ a:hover {
   line-height: 1.7;
 }
 
-.chip-indigo {
+.chip-indigo,
+.chip-brand {
   background: var(--primary-soft);
-  border-color: #c7d2fe;
+  border-color: #f3c4c7;
   color: var(--primary-dark);
 }
 
 .chip-cyan {
-  background: var(--accent-soft);
-  border-color: #a5f3fc;
-  color: var(--accent-dark);
+  background: var(--bg-soft);
+  border-color: var(--border);
+  color: var(--text-secondary);
 }
 
 .chip-slate {
@@ -279,12 +299,12 @@ a:hover {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
+  background: #d2c9bc;
   border-radius: 8px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+  background: #a39b92;
 }
 
 ::-webkit-scrollbar-track {

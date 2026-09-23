@@ -84,7 +84,7 @@
     border: 1px dashed var(--border); background: var(--band);
     transition: border-color .18s ease, background .18s ease;
   }
-  .drop-zone:hover { border-color: var(--accent); }
+  .drop-zone:hover, .drop-zone.on { border-color: var(--accent); background: var(--peach); }
 
   .step-chip { border: 1px solid var(--border); border-radius: 1000px; padding: 6px 16px; font-size: 12px; letter-spacing: .08em; }
   .step-chip.on { border-color: var(--accent); color: var(--accent); }
@@ -113,7 +113,16 @@
   .dot-wait { background: var(--muted); }
   .dot-run { background: var(--accent); animation: pulse 1.2s infinite; }
   .dot-ok { background: var(--ok); }
-  .bar-fill { transition: width .3s ease; }
+
+  .snake { width: 100%; height: 16px; }
+  .snake svg { width: 100%; height: 16px; display: block; overflow: visible; }
+  .snake-rail { fill: none; stroke: var(--chip); stroke-width: 4; }
+  .snake-body { fill: none; stroke: var(--accent); stroke-width: 4; stroke-linecap: round;
+    stroke-dasharray: 38 278; transition: stroke-dashoffset .28s linear; }
+  .snake.is-run .snake-body { animation: snake-crawl 1.15s linear infinite; }
+  .snake.is-done .snake-body { stroke: var(--ok); stroke-dasharray: 316 0; stroke-dashoffset: 0; animation: none; }
+  @keyframes snake-crawl { to { stroke-dashoffset: -316; } }
+
   @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
   @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
   .fade-in { animation: fadeIn .35s ease both; }
@@ -181,8 +190,8 @@
 <header class="card border-b bd sticky top-0 z-20" style="border-radius:0;">
   <div class="wrap h-16 flex items-center gap-8">
     <div class="flex items-center gap-3 shrink-0">
-      <div class="w-9 h-9 flex items-center justify-center text-sm font-bold"
-           style="background:var(--primary); color:var(--primary-ink);">ZJ</div>
+      <div class="px-2 py-1 text-xs"
+           style="font-family:var(--font-serif); letter-spacing:.22em; color:var(--accent); border:1px solid var(--border);">LUMEN</div>
       <div class="leading-tight">
         <div class="font-medium" style="font-family:var(--font-serif); font-size:16px;" data-i18n="app.name">智识有方</div>
         <div class="text-xs tm" data-i18n="app.slogan">多模态教学智能体</div>
@@ -233,7 +242,7 @@
   <div class="eyebrow mb-3" data-i18n="imp.eyebrow">Step 1 · Upload</div>
   <h1 class="h-sec mb-3" data-i18n="imp.title">导入文档</h1>
   <p class="lead mb-10" style="max-width:640px;" data-i18n="imp.desc">
-    支持课件 PDF、板书照片与课堂录音。上传后系统自动 OCR、转写、分块入库，完成后即可在知识库里提问。
+    支持课件 PDF、板书照片与课堂录音。上传后系统会识别文字与语音、分块入库，完成后即可在知识库里提问。
   </p>
 
   <!-- 步骤条 -->
@@ -249,10 +258,9 @@
     <!-- ===== 左：主流程 ===== -->
     <div>
       <!-- 拖拽区 -->
-      <div id="dropZone" class="drop-zone p-12 text-center cursor-pointer">
-        <div style="font-size:28px; margin-bottom:14px;">&#8681;</div>
-        <div class="body-15 mb-2" data-i18n="drop.title">把文件拖到这里</div>
-        <div class="text-xs tm mb-6" data-i18n="drop.hint">或点击选择，支持 PDF / 图片 / 音频，单个 ≤ 50 MB</div>
+      <div id="dropZone" class="drop-zone p-16 text-center cursor-pointer">
+        <div class="h-card mb-3" data-i18n="drop.title">把文件拖到这里</div>
+        <div class="text-xs tm mb-8" data-i18n="drop.hint">或点击选择。支持 PDF / 图片 / 音频，单个 ≤ 50 MB</div>
         <button id="pickBtn" class="btn-main" style="height:40px; font-size:13px;" data-i18n="drop.btn">选择文件</button>
       </div>
 
@@ -342,7 +350,7 @@
     <div>
       <div style="font-family:var(--font-serif); font-size:20px;" data-i18n="app.name">智识有方</div>
       <p class="text-sm mt-3" style="opacity:.7; max-width:340px;" data-i18n="footer.desc">
-        大湾区 AI Coding 创新大赛 · 方向一 AI + 教学管理助手参赛作品
+        粤港澳大湾区 AI Coding 创新大赛 · 方向一 多模态教学智能体
       </p>
     </div>
     <div>
@@ -409,10 +417,10 @@ const I18N = {
     'nav.home': '首页', 'nav.kb': '知识库', 'nav.import': '导入', 'nav.menu': '菜单',
     'theme.toggle': '暗色', 'theme.dark': '暗色', 'theme.light': '亮色',
     'imp.eyebrow': 'Step 1 · Upload', 'imp.title': '导入文档',
-    'imp.desc': '支持课件 PDF、板书照片与课堂录音。上传后系统自动 OCR、转写、分块入库，完成后即可在知识库里提问。',
+    'imp.desc': '支持课件 PDF、板书照片与课堂录音。上传后系统会识别文字与语音、分块入库，完成后即可在知识库里提问。',
     'step.1': '01 选择文件', 'step.2': '02 解析分块', 'step.3': '03 入库可提问',
     'drop.title': '把文件拖到这里',
-    'drop.hint': '或点击选择，支持 PDF / 图片 / 音频，单个 ≤ 50 MB',
+    'drop.hint': '或点击选择。支持 PDF / 图片 / 音频，单个 ≤ 50 MB',
     'drop.btn': '选择文件',
     'queue.title': '待导入文件', 'queue.count': '共 {n} 个文件',
     'status.waiting': '待开始', 'status.uploading': '上传中 {n}%', 'status.parsing': '解析中', 'status.ready': '已入库',
@@ -430,7 +438,7 @@ const I18N = {
     'sup.pdf': '课件 / 讲义 PDF', 'sup.image': '板书 / 题目截图', 'sup.audio': '课堂录音',
     'sup.limit': '单个文件 ≤ 50 MB，单次最多 20 个',
     'f1.name': '第3章 导数与微分.pdf', 'f2.name': '课堂板书_0920.jpg', 'f3.name': '习题课录音_0920.mp3',
-    'footer.desc': '大湾区 AI Coding 创新大赛 · 方向一 AI + 教学管理助手参赛作品',
+    'footer.desc': '粤港澳大湾区 AI Coding 创新大赛 · 方向一 多模态教学智能体',
     'footer.team': '智识有方团队', 'footer.stack': 'Vue3 · Python · 多模态解析',
     'footer.privacy': '隐私说明', 'footer.rights': '© 2026 智识有方 · 原型演示页面',
     'privacy.title': '隐私说明',
@@ -445,10 +453,10 @@ const I18N = {
     'nav.home': 'Home', 'nav.kb': 'Knowledge Base', 'nav.import': 'Import', 'nav.menu': 'Menu',
     'theme.toggle': 'Dark', 'theme.dark': 'Dark', 'theme.light': 'Light',
     'imp.eyebrow': 'Step 1 · Upload', 'imp.title': 'Import Documents',
-    'imp.desc': 'Courseware PDFs, board photos and lecture audio. Files are OCR-ed, transcribed, chunked and indexed automatically — then ready to query.',
+    'imp.desc': 'Courseware PDFs, board photos and lecture audio. Files are recognised, chunked and indexed — then ready to query.',
     'step.1': '01 Select files', 'step.2': '02 Parse & chunk', 'step.3': '03 Ready to ask',
     'drop.title': 'Drop your files here',
-    'drop.hint': 'Or click to select — PDF / image / audio, up to 50 MB each',
+    'drop.hint': 'Or click to select. PDF / image / audio, up to 50 MB each',
     'drop.btn': 'Select files',
     'queue.title': 'Files to import', 'queue.count': '{n} files',
     'status.waiting': 'Waiting', 'status.uploading': 'Uploading {n}%', 'status.parsing': 'Parsing', 'status.ready': 'Ready',
@@ -466,7 +474,7 @@ const I18N = {
     'sup.pdf': 'Courseware PDF', 'sup.image': 'Board notes / screenshots', 'sup.audio': 'Lecture audio',
     'sup.limit': 'Up to 50 MB each, 20 files per batch',
     'f1.name': 'Chapter 3 · Derivatives.pdf', 'f2.name': 'Board notes_0920.jpg', 'f3.name': 'Tutorial audio_0920.mp3',
-    'footer.desc': 'Greater Bay Area AI Coding Innovation Contest · Track 1: AI Teaching Assistant',
+    'footer.desc': 'Greater Bay Area AI Coding Innovation Contest · Track 1: Multimodal Teaching Agent',
     'footer.team': 'ZhiShiYouFang Team', 'footer.stack': 'Vue3 · Python · Multimodal parsing',
     'footer.privacy': 'Privacy', 'footer.rights': '© 2026 ZhiShiYouFang · Prototype demo page',
     'privacy.title': 'Privacy',
@@ -563,6 +571,21 @@ let running = false;
 const DOT = { waiting: 'dot-wait', uploading: 'dot-run', parsing: 'dot-run', ready: 'dot-ok' };
 const COLOR = { waiting: 'var(--muted)', uploading: 'var(--accent)', parsing: 'var(--accent)', ready: 'var(--ok)' };
 
+
+function snakeBar(progress, status) {
+  const p = Math.max(0, Math.min(100, Number(progress) || 0));
+  const run = status === 'uploading' || status === 'parsing';
+  const done = status === 'ready';
+  const cls = run ? 'is-run' : (done ? 'is-done' : '');
+  const off = ((100 - p) / 100) * 316;
+  return `<div class="snake ${cls}" aria-hidden="true">
+    <svg viewBox="0 0 160 16" preserveAspectRatio="none">
+      <rect class="snake-rail" x="2" y="2" width="156" height="12" rx="6"/>
+      <rect class="snake-body" x="2" y="2" width="156" height="12" rx="6" style="stroke-dashoffset:${off}"/>
+    </svg>
+  </div>`;
+}
+
 function statusText(f) {
   if (f.status === 'uploading') return t('status.uploading', { n: Math.round(f.progress) });
   return t('status.' + f.status);
@@ -576,11 +599,7 @@ function renderQueue() {
         <div class="body-15 truncate" data-i18n="${f.id}.name">${t(f.id + '.name')}</div>
         <div class="text-xs tm mt-1">${f.size} · ${f.type}</div>
       </div>
-      <div class="q-prog w-40 shrink-0">
-        <div class="h-1" style="background:var(--chip);">
-          <div class="bar-fill h-full" style="width:${f.progress}%; background:${COLOR[f.status]};"></div>
-        </div>
-      </div>
+      <div class="q-prog w-40 shrink-0">${snakeBar(f.progress, f.status)}</div>
       <div class="q-status w-32 text-right shrink-0">
         <span class="text-xs inline-flex items-center gap-2" style="color:${COLOR[f.status]};">
           <span class="dot ${DOT[f.status]}"></span><span>${statusText(f)}</span>
@@ -656,6 +675,21 @@ $$('.tag-chip').forEach(chip => {
   chip.addEventListener('click', () => {
     $$('.tag-chip').forEach(c => c.classList.remove('on'));
     chip.classList.add('on');
+  });
+});
+
+
+['dragenter', 'dragover'].forEach((ev) => {
+  $('#dropZone').addEventListener(ev, (e) => {
+    e.preventDefault(); e.stopPropagation();
+    $('#dropZone').classList.add('on');
+  });
+});
+['dragleave', 'drop'].forEach((ev) => {
+  $('#dropZone').addEventListener(ev, (e) => {
+    e.preventDefault(); e.stopPropagation();
+    $('#dropZone').classList.remove('on');
+    if (ev === 'drop') startParse();
   });
 });
 

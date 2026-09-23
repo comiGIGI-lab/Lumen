@@ -172,8 +172,9 @@ const deadlineHint = computed(() => {
 }
 
 .lead {
-  font-size: 13.5px;
-  font-weight: 700;
+  font-family: var(--font-serif);
+  font-size: 15px;
+  font-weight: 400;
   color: var(--text-primary);
   white-space: nowrap;
 }

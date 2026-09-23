@@ -42,7 +42,7 @@ const emit = defineEmits(['close'])
   inset: 0;
   background: rgba(15, 23, 42, 0.42);
   backdrop-filter: blur(2px);
-  z-index: 80;
+  z-index: 120;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -66,12 +66,13 @@ const emit = defineEmits(['close'])
   gap: 12px;
   padding: 14px 18px;
   border-bottom: 1px solid var(--border);
-  background: linear-gradient(180deg, #fbfcfe, #fff);
+  background: linear-gradient(180deg, #fbf9f6, #fff);
 }
 
 .dlg-title {
-  font-size: 15px;
-  font-weight: 700;
+  font-family: var(--font-serif);
+  font-size: 16px;
+  font-weight: 400;
   display: flex;
   align-items: center;
   gap: 8px;

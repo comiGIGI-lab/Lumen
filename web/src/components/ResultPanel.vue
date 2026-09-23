@@ -9,7 +9,7 @@ defineProps({
   unit: { type: String, default: '' },
   emptyText: { type: String, default: '暂无内容' },
   loading: { type: Boolean, default: false },
-  accent: { type: String, default: '#6366f1' },
+  accent: { type: String, default: '#e51520' },
 })
 </script>
 
@@ -20,7 +20,7 @@ defineProps({
         <span class="ico">{{ icon }}</span>
         {{ title }}
       </div>
-      <span v-if="count > 0" class="chip chip-indigo count">
+      <span v-if="count > 0" class="chip chip-brand count">
         {{ count }} {{ unit }}
       </span>
     </div>
@@ -63,12 +63,13 @@ defineProps({
   padding: 13px 16px;
   border-bottom: 1px solid var(--border);
   border-top: 3px solid var(--primary);
-  background: linear-gradient(180deg, #fbfcfe, #fff);
+  background: linear-gradient(180deg, #fbf9f6, #fff);
 }
 
 .panel-title {
-  font-size: 14px;
-  font-weight: 700;
+  font-family: var(--font-serif);
+  font-size: 15px;
+  font-weight: 400;
   display: flex;
   align-items: center;
   gap: 7px;

@@ -6,9 +6,110 @@
     <title>智识有方 · 多模态教学智能体</title>
     <meta name="description" content="智识有方——输入课程名，一键生成课程大纲 + 推荐资源 + 个性化学习计划" />
     <link rel="icon" href="/favicon.ico" />
+    <style>
+      #boot-hourglass {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        display: grid;
+        place-items: center;
+        background: #fbf9f6;
+        transition: opacity 0.35s ease;
+      }
+      #boot-hourglass.is-out {
+        opacity: 0;
+        pointer-events: none;
+      }
+      .hourglass {
+        width: 42px;
+        height: 64px;
+        position: relative;
+        overflow: visible;
+      }
+      .hourglass svg {
+        width: 42px;
+        height: 64px;
+        display: block;
+        overflow: visible;
+      }
+      .hg-sand-top {
+        transform-origin: 21px 22px;
+        animation: hg-drain 1.6s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+      }
+      .hg-sand-bot {
+        transform-origin: 21px 48px;
+        animation: hg-fill 1.6s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+      }
+      .hg-stream {
+        transform-origin: 21px 32px;
+        animation: hg-stream 1.6s linear infinite;
+      }
+      .hg-frame {
+        transform-origin: 21px 32px;
+        animation: hg-flip 1.6s cubic-bezier(0.33, 0.05, 0.2, 1) infinite;
+      }
+      /* 漏完 → 转 180° → 再漏完 → 再转 180°。第二段 180→360 只为循环接回 0° */
+      @keyframes hg-drain {
+        0% { transform: scaleY(1); }
+        32% { transform: scaleY(0.06); }
+        50% { transform: scaleY(0.06); }
+        82% { transform: scaleY(1); }
+        100% { transform: scaleY(1); }
+      }
+      @keyframes hg-fill {
+        0% { transform: scaleY(0.08); }
+        32% { transform: scaleY(1); }
+        50% { transform: scaleY(1); }
+        82% { transform: scaleY(0.08); }
+        100% { transform: scaleY(0.08); }
+      }
+      @keyframes hg-stream {
+        0%, 30% { opacity: 1; }
+        34%, 49% { opacity: 0; }
+        51%, 80% { opacity: 1; }
+        84%, 100% { opacity: 0; }
+      }
+      @keyframes hg-flip {
+        0%, 32% { transform: rotate(0deg); }
+        46%, 82% { transform: rotate(180deg); }
+        100% { transform: rotate(360deg); }
+      }
+    </style>
   </head>
   <body>
+    <div id="boot-hourglass" aria-hidden="true">
+      <div class="hourglass">
+        <svg viewBox="0 0 42 64" fill="none">
+          <g class="hg-frame">
+            <path d="M8 6h26v6c0 7-6 12-13 18C14 24 8 19 8 12V6z" stroke="#191919" stroke-width="2"/>
+            <path d="M8 58h26v-6c0-7-6-12-13-18C14 40 8 45 8 52v6z" stroke="#191919" stroke-width="2"/>
+            <path class="hg-sand-top" d="M12 10h18c0 5-5 9-9 13-4-4-9-8-9-13z" fill="#E51520"/>
+            <rect class="hg-stream" x="20" y="28" width="2" height="8" fill="#E51520"/>
+            <path class="hg-sand-bot" d="M14 54h14c0-4-3-7-7-10-4 3-7 6-7 10z" fill="#E51520"/>
+            <rect x="7" y="4" width="28" height="4" fill="#191919"/>
+            <rect x="7" y="56" width="28" height="4" fill="#191919"/>
+          </g>
+        </svg>
+      </div>
+    </div>
     <div id="app"></div>
+    <script>
+      (function () {
+        var shownAt = Date.now();
+        function hideHourglass() {
+          var el = document.getElementById('boot-hourglass');
+          if (!el || el.dataset.done) return;
+          var wait = Math.max(0, 1650 - (Date.now() - shownAt));
+          setTimeout(function () {
+            el.dataset.done = '1';
+            el.classList.add('is-out');
+            setTimeout(function () { el.remove(); }, 380);
+          }, wait);
+        }
+        window.addEventListener('load', hideHourglass);
+        setTimeout(hideHourglass, 1600);
+      })();
+    </script>
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>
