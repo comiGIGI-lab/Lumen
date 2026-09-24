@@ -8,12 +8,19 @@ import StudyDock from './StudyDock.vue'
 import TodoDock from './TodoDock.vue'
 import DateDock from './DateDock.vue'
 import SpacePanel from './SpacePanel.vue'
+import CountdownTimer from './CountdownTimer.vue'
+import { computed } from 'vue'
 import { useSpace } from '@/composables/useSpace'
 import { useStudyTimer } from '@/composables/useStudyTimer'
 
+defineProps({
+  floats: { type: Boolean, default: true },
+})
+
 const emit = defineEmits(['scene-change'])
-const { windows, panelOpen } = useSpace()
+const { windows, panelOpen, todos } = useSpace()
 const { clock } = useStudyTimer()
+const pinnedTodo = computed(() => todos.value.find((t) => t.pinned) || null)
 
 function openSpace() {
   panelOpen.value = true
@@ -22,18 +29,24 @@ function openSpace() {
 
 <template>
   <div class="space-layer">
-    <FloatWin v-if="windows.study.on" id="study">
+    <FloatWin v-if="floats && windows.study.on" id="study">
       <template #title-extra>
         <span class="mini">{{ clock }}</span>
       </template>
       <StudyDock @scene-change="emit('scene-change', $event)" />
     </FloatWin>
 
-    <FloatWin v-if="windows.todo.on" id="todo">
+    <FloatWin v-if="floats && windows.todo.on" id="todo">
+      <template #title-extra>
+        <span v-if="pinnedTodo" class="mini" :title="pinnedTodo.text">{{ pinnedTodo.text }}</span>
+      </template>
       <TodoDock />
     </FloatWin>
 
-    <FloatWin v-if="windows.date.on" id="date">
+    <FloatWin v-if="floats && windows.date.on" id="date">
+      <template #title-extra>
+        <CountdownTimer compact />
+      </template>
       <DateDock />
     </FloatWin>
 
@@ -61,6 +74,11 @@ function openSpace() {
 }
 
 .mini {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
 

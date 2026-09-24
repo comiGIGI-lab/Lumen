@@ -1,9 +1,9 @@
 /**
- * 自习计时器单例：自习坞与沙漏共用 remaining / running。
+ * 自习计时器单例：自习坞标题栏与正文共用 remaining / running。
  * 场景 UI 仍在自习坞；混音也挂在这里，关掉自习坞时声音不会断。
  */
 import { computed, reactive, ref } from 'vue'
-import { SOUNDS, soundSrc } from '@/study/catalog'
+import { SCENES, SOUNDS, scenePoster, sceneVideo, soundSrc } from '@/study/catalog'
 
 export const FOCUS_PRESETS = [5, 10, 15, 25, 50]
 const MIN_MIN = 1
@@ -16,6 +16,7 @@ const remaining = ref(25 * 60)
 const durationSec = ref(25 * 60)
 const running = ref(false)
 const volumes = reactive(Object.fromEntries(SOUNDS.map((s) => [s.id, 0])))
+const sceneId = ref('')
 const players = {}
 
 let tick = null
@@ -119,6 +120,10 @@ function toggle() {
   else start()
 }
 
+function pickScene(id) {
+  sceneId.value = sceneId.value === id ? '' : id
+}
+
 function onVolume(id, val) {
   volumes[id] = Number(val)
   if (running.value) playMix()
@@ -130,6 +135,19 @@ function onVolume(id, val) {
 
 const clock = computed(() => padClock(remaining.value))
 const mixCount = computed(() => SOUNDS.filter((s) => volumes[s.id] > 0).length)
+const scene = computed(() => {
+  const s = SCENES.find((item) => item.id === sceneId.value)
+  if (!s) return null
+  return {
+    id: s.id,
+    name: s.name,
+    sky: s.sky,
+    glow: s.glow,
+    mist: s.mist,
+    poster: scenePoster(s.id),
+    video: sceneVideo(s.id),
+  }
+})
 const ratio = computed(() => {
   if (durationSec.value <= 0) return 0
   return Math.min(1, Math.max(0, remaining.value / durationSec.value))
@@ -146,9 +164,12 @@ export function useStudyTimer() {
     durationSec,
     running,
     volumes,
+    sceneId,
+    scene,
     clock,
     mixCount,
     ratio,
+    pickScene,
     pickPreset,
     applyCustom,
     start,

@@ -34,8 +34,12 @@ watch(
 
 async function pick(course) {
   try {
+    const item = courses.value.find((c) => c.course === course) || {}
     const res = await api.historyDetail(course)
-    emit('load', res)
+    emit('load', {
+      ...res,
+      generated_at: item.created_at || item.last_seen_at || '',
+    })
   } catch (e) {
     emit('notify', { type: 'error', text: `加载失败：${e.message}` })
   }
@@ -57,7 +61,7 @@ async function pick(course) {
           <span class="name">{{ c.course }}</span>
           <span class="time">最近：{{ c.last_seen_at || '—' }}</span>
         </div>
-        <span class="go">载入 →</span>
+        <span class="go">打开预览 →</span>
       </button>
     </div>
   </ModalDialog>

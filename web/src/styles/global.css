@@ -351,3 +351,42 @@ a:hover {
 .fade-up {
   animation: fade-up 0.28s ease both;
 }
+
+/* ---------- 方案讲义打印 ---------- */
+@media print {
+  @page {
+    size: A4;
+    margin: 14mm 16mm 16mm;
+  }
+
+  html,
+  body {
+    background: #fff !important;
+  }
+
+  html.export-preview-open {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  html.export-preview-open #app,
+  html.export-preview-open .wl-nav,
+  html.export-preview-open .welcome,
+  html.export-preview-open .space-layer,
+  html.export-preview-open .hero,
+  html.export-preview-open .status,
+  html.export-preview-open .backdrop,
+  html.export-preview-open .toasts {
+    display: none !important;
+  }
+
+  html.export-preview-open .export-preview {
+    position: static !important;
+    overflow: visible !important;
+    background: #fff !important;
+  }
+
+  html.export-preview-open .no-print {
+    display: none !important;
+  }
+}

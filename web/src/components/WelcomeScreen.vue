@@ -10,8 +10,22 @@
  * 显示时机由 App.vue 控制：本组件不读写 zjxt.welcomed。
  */
 import { ref } from 'vue'
+import TopNav from './TopNav.vue'
 
-const emit = defineEmits(['start'])
+defineProps({
+  needsKey: { type: Boolean, default: false },
+})
+
+const emit = defineEmits([
+  'start',
+  'open-knowledge',
+  'open-import',
+  'open-chat',
+  'open-study',
+  'open-settings',
+  'open-history',
+  'open-trace',
+])
 const showPrivacy = ref(false)
 const activeCard = ref(0)
 
@@ -56,6 +70,22 @@ function cardStyle(i) {
 
 <template>
   <div class="welcome" role="dialog" aria-label="欢迎页">
+    <Teleport to="body">
+      <div class="wl-nav">
+        <TopNav
+          current=""
+          :needs-key="needsKey"
+          @go-course="onStart"
+          @open-knowledge="emit('open-knowledge')"
+          @open-import="emit('open-import')"
+          @open-chat="emit('open-chat')"
+          @open-study="emit('open-study')"
+          @open-settings="emit('open-settings')"
+          @open-history="emit('open-history')"
+          @open-trace="emit('open-trace')"
+        />
+      </div>
+    </Teleport>
     <!-- ① HERO：全幅书桌摄影 + 遮罩 + LUMEN 刊名 -->
     <section class="wl-hero">
       <div class="wl-hero-photo" aria-hidden="true">
@@ -70,7 +100,11 @@ function cardStyle(i) {
           把课件 PDF、课堂板书照片和录音丢进来，随后输入课程名与学习画像，
           生成课程大纲、推荐资源与个性化学习计划。答案可溯源回原文位置。
         </p>
-        <button class="wl-btn wl-btn-light" type="button" @click="onStart">开始使用</button>
+        <div class="wl-actions">
+          <button class="wl-btn wl-btn-light" type="button" @click="onStart">学习方案生成</button>
+          <button class="wl-btn wl-btn-light" type="button" @click="emit('open-knowledge')">知识库</button>
+          <button class="wl-btn wl-btn-light" type="button" @click="emit('open-import')">文档导入</button>
+        </div>
       </div>
     </section>
 
@@ -120,7 +154,11 @@ function cardStyle(i) {
       <div class="wl-inner">
         <h2 class="wl-h2">从一门课程开始</h2>
         <p class="wl-lead">不需要预先整理资料，进入后输入课程名即可生成</p>
-        <button class="wl-btn" type="button" @click="onStart">开始使用</button>
+        <div class="wl-actions">
+          <button class="wl-btn" type="button" @click="onStart">学习方案生成</button>
+          <button class="wl-btn" type="button" @click="emit('open-knowledge')">知识库</button>
+          <button class="wl-btn" type="button" @click="emit('open-import')">文档导入</button>
+        </div>
       </div>
     </section>
 
@@ -181,6 +219,7 @@ function cardStyle(i) {
   font-family: var(--font-sans);
   animation: fade-up 0.24s ease both;
 }
+
 
 .wl-inner {
   max-width: 720px;
@@ -261,13 +300,22 @@ function cardStyle(i) {
   max-width: 34em;
 }
 
+.wl-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 36px;
+  max-width: 34em;
+}
+
 .wl-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  margin-top: 36px;
+  flex: 1 1 auto;
+  min-width: 9.5em;
   height: 48px;
-  padding: 0 28px;
+  padding: 0 22px;
   border: none;
   border-radius: 1000px;
   background: var(--primary);
@@ -406,7 +454,7 @@ function cardStyle(i) {
   text-align: left;
 }
 
-.wl-cta .wl-btn {
+.wl-cta .wl-actions {
   margin-top: 28px;
 }
 
@@ -572,18 +620,64 @@ function cardStyle(i) {
     font-size: 26px;
   }
 
-  .wl-btn {
-    width: 100%;
-  }
-
   .wl-stage {
     height: 280px;
   }
 }
 
 @media (max-width: 390px) {
+  .wl-hero-inner {
+    padding: 88px 16px 40px;
+  }
+  .wl-wordmark {
+    font-size: 48px;
+  }
+  .wl-title {
+    font-size: 22px;
+    letter-spacing: 0.1em;
+  }
   .wl-stage {
     height: 300px;
+  }
+  .wl-actions {
+    gap: 8px;
+    margin-top: 24px;
+  }
+  .wl-btn {
+    min-width: calc(50% - 4px);
+    padding: 0 14px;
+    font-size: 13px;
+  }
+}
+</style>
+
+<style>
+.wl-nav {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  left: auto;
+  z-index: 132;
+  display: flex;
+  justify-content: flex-end;
+  pointer-events: none;
+  max-width: min(520px, calc(100vw - 24px));
+}
+
+.wl-nav .top-nav {
+  pointer-events: auto;
+}
+
+.wl-nav .nav-link {
+  background: rgba(255, 255, 255, 0.92);
+}
+
+@media (max-width: 390px) {
+  .wl-nav {
+    top: 8px;
+    right: 8px;
+    left: 8px;
+    max-width: none;
   }
 }
 </style>

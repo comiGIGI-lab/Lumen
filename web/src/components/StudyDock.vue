@@ -4,8 +4,8 @@
  * 场景只换背景；声音在「专注设置」里叠加。
  * 定时器开始才播当前组合，暂停静音，再开始接着响。
  */
-import { computed, ref } from 'vue'
-import { SCENES, scenePoster, sceneVideo } from '@/study/catalog'
+import { ref, watch } from 'vue'
+import { SCENES } from '@/study/catalog'
 import { useStudyTimer } from '@/composables/useStudyTimer'
 
 const emit = defineEmits(['scene-change'])
@@ -18,37 +18,30 @@ const {
   usingCustom,
   running,
   volumes,
+  sceneId,
+  scene,
   clock,
   mixCount,
+  pickScene,
   pickPreset,
   applyCustom,
   toggle,
   onVolume,
 } = useStudyTimer()
 
-const sceneId = ref('')
 const panel = ref('') // '' | scene | focus
 const customDraft = ref(String(customMin.value))
 
-const scene = computed(() => SCENES.find((s) => s.id === sceneId.value) || null)
+watch(
+  scene,
+  (s) => {
+    emit('scene-change', s)
+  },
+  { immediate: true },
+)
 
-function pickScene(id) {
-  sceneId.value = sceneId.value === id ? '' : id
-  const s = scene.value
-  emit(
-    'scene-change',
-    s
-      ? {
-          id: s.id,
-          name: s.name,
-          sky: s.sky,
-          glow: s.glow,
-          mist: s.mist,
-          poster: scenePoster(s.id),
-          video: sceneVideo(s.id),
-        }
-      : null,
-  )
+function onPickScene(id) {
+  pickScene(id)
 }
 
 function togglePanel(name) {
@@ -131,7 +124,7 @@ function commitCustom() {
         class="tile"
         :class="{ on: sceneId === s.id }"
         :style="{ '--sky': s.sky, '--glow': s.glow }"
-        @click="pickScene(s.id)"
+        @click="onPickScene(s.id)"
       >
         <span class="tile-swatch"></span>
         <span>{{ s.name }}</span>

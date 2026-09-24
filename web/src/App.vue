@@ -22,7 +22,14 @@ import SettingsDialog from './components/SettingsDialog.vue'
 import HistoryDialog from './components/HistoryDialog.vue'
 import SceneBackdrop from './components/SceneBackdrop.vue'
 import SpaceLayer from './components/SpaceLayer.vue'
+import KnowledgePage from './components/KnowledgePage.vue'
+import ImportPage from './components/ImportPage.vue'
+import ChatPage from './components/ChatPage.vue'
+import StudySpacePage from './components/StudySpacePage.vue'
+import ExportPreview from './components/ExportPreview.vue'
 import { usePlanStream } from './composables/usePlanStream'
+import { useSpace } from './composables/useSpace'
+import { useStudyTimer } from './composables/useStudyTimer'
 import { api } from './api/client'
 
 // ---------- 基础状态 ----------
@@ -53,11 +60,57 @@ function onWelcomeDone() {
   showWelcome.value = false
 }
 
+const { applyLayout, layoutMode } = useSpace()
+const { scene: activeScene } = useStudyTimer()
+const appView = ref('course')
+
+function goCourse() {
+  if (showWelcome.value) onWelcomeDone()
+  appView.value = 'course'
+}
+
+function openSettings() {
+  if (showWelcome.value) onWelcomeDone()
+  showSettings.value = true
+}
+
+function openHistory() {
+  if (showWelcome.value) onWelcomeDone()
+  showHistory.value = true
+}
+
+function openLogs() {
+  if (showWelcome.value) onWelcomeDone()
+  openTrace()
+}
+
+function goKnowledge() {
+  if (showWelcome.value) onWelcomeDone()
+  appView.value = 'knowledge'
+}
+
+function goImport() {
+  if (showWelcome.value) onWelcomeDone()
+  appView.value = 'import'
+}
+
+function goChat() {
+  if (showWelcome.value) onWelcomeDone()
+  appView.value = 'chat'
+}
+
+function goStudy() {
+  if (showWelcome.value) onWelcomeDone()
+  appView.value = 'study'
+}
+
 // 欢迎层显示期间锁住 body 滚动，避免底层工具界面跟着滚
 watch(
   showWelcome,
   (v) => {
     document.body.style.overflow = v ? 'hidden' : ''
+    const mode = v ? 'welcome' : 'app'
+    if (layoutMode.value !== mode) applyLayout(mode)
   },
   { immediate: true },
 )
@@ -78,11 +131,12 @@ const showSettings = ref(false)
 const needsKey = ref(false)
 const showHistory = ref(false)
 const showTrace = ref(false)
-const activeScene = ref(null)
+const showExport = ref(false)
+const exportAt = ref('')
 
 watch(activeScene, (s) => {
   document.documentElement.classList.toggle('has-scene', !!s)
-})
+}, { immediate: true })
 
 // ---------- 状态栏 ----------
 const statusText = ref('就绪')
@@ -141,6 +195,14 @@ watch(
     if (!r) return
     const head = r.from_cache ? '⚡ 命中缓存！' : '✓ 完成！'
     statusText.value = `${head}课程「${r.course}」方案已生成`
+    const fromHistory = (r.generated_at || r.created_at || '').trim()
+    if (fromHistory) {
+      exportAt.value = fromHistory
+    } else {
+      const d = new Date()
+      const p = (n) => String(n).padStart(2, '0')
+      exportAt.value = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
+    }
   },
 )
 
@@ -260,27 +322,22 @@ function fallbackCopy(text, done) {
   document.body.removeChild(ta)
 }
 
-function download(filename, content, mime = 'text/markdown;charset=utf-8') {
-  const blob = new Blob([content], { type: mime })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  document.body.appendChild(a)
-  a.click()
-  document.body.removeChild(a)
-  URL.revokeObjectURL(url)
+function canExportPlan() {
+  return !!result.value && result.value.type !== 'crisis'
+}
+
+function openExport() {
+  if (!canExportPlan()) return
+  if (!exportAt.value) {
+    const d = new Date()
+    const p = (n) => String(n).padStart(2, '0')
+    exportAt.value = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
+  }
+  showExport.value = true
 }
 
 async function onExport() {
-  if (!result.value) return
-  try {
-    const res = await api.exportMarkdown(result.value.course, null)
-    download(res.filename || '学习方案.md', res.markdown)
-    notify({ type: 'success', text: `已导出 ${res.filename}` })
-  } catch (e) {
-    notify({ type: 'error', text: `导出失败：${e.message}` })
-  }
+  openExport()
 }
 
 function onCopyOutline() {
@@ -314,6 +371,7 @@ function onLoadHistory(payload) {
   statusText.value = `📜 已载入历史方案：${payload.course}（大纲 ${payload.stats.outline} 章 / 计划 ${payload.stats.plan} 天）`
   statusTone.value = 'success'
   notify({ type: 'success', text: `已载入「${payload.course}」的历史方案` })
+  if (payload.type !== 'crisis') showExport.value = true
 }
 
 function onSettingsSaved(newMode) {
@@ -355,11 +413,22 @@ const degradedBanner = computed(() => {
 
 <template>
   <div class="app" :class="{ 'has-scene': !!activeScene }">
-    <SceneBackdrop :scene="activeScene" />
-    <SpaceLayer @scene-change="activeScene = $event" />
+    <SceneBackdrop v-if="appView !== 'study'" :scene="activeScene" />
+    <SpaceLayer :floats="appView !== 'study'" />
 
     <!-- 首访欢迎层：关闭后进入下方工具界面 -->
-    <WelcomeScreen v-if="showWelcome" @start="onWelcomeDone" />
+    <WelcomeScreen
+      v-if="showWelcome"
+      :needs-key="needsKey"
+      @start="onWelcomeDone"
+      @open-knowledge="goKnowledge"
+      @open-import="goImport"
+      @open-chat="goChat"
+      @open-study="goStudy"
+      @open-settings="openSettings"
+      @open-history="openHistory"
+      @open-trace="openLogs"
+    />
 
     <AppHeader
       v-show="!showWelcome"
@@ -367,13 +436,40 @@ const degradedBanner = computed(() => {
       :has-result="!!result"
       :busy="busy"
       :needs-key="needsKey"
+      :current="appView"
       @export="onExport"
-      @open-trace="openTrace"
-      @open-settings="showSettings = true"
-      @open-history="showHistory = true"
+      @go-course="goCourse"
+      @open-trace="openLogs"
+      @open-settings="openSettings"
+      @open-history="openHistory"
+      @open-knowledge="goKnowledge"
+      @open-import="goImport"
+      @open-chat="goChat"
+      @open-study="goStudy"
     />
 
-    <main class="main">
+    <main class="main" :class="{ 'under-wins': !showWelcome && appView !== 'study', 'study-main': appView === 'study' }">
+      <KnowledgePage
+        v-if="appView === 'knowledge'"
+        @back="goCourse"
+        @open-import="goImport"
+        @go-course="goCourse"
+      />
+      <ImportPage
+        v-else-if="appView === 'import'"
+        @back="goCourse"
+        @open-knowledge="goKnowledge"
+        @go-course="goCourse"
+      />
+      <ChatPage
+        v-else-if="appView === 'chat'"
+        :course-context="result?.course || course"
+        :mode="mode"
+        @notify="notify"
+        @go-course="goCourse"
+      />
+      <StudySpacePage v-else-if="appView === 'study'" />
+      <template v-else>
       <!-- ① 课程名 + 画像 -->
       <CourseForm
         v-model:course="course"
@@ -433,12 +529,21 @@ const degradedBanner = computed(() => {
         @copy-plan="onCopyPlan"
       />
 
+      <div v-if="canExportPlan()" class="export-bar">
+        <div>
+          <p class="export-title">导出方案</p>
+          <p class="export-desc">先打开固定排版的讲义预览，再选择 Markdown、打印为 PDF，或查看 Word 入口。</p>
+        </div>
+        <button type="button" class="btn btn-primary" @click="openExport">导出方案</button>
+      </div>
+
       <!-- ④ 课程问答 -->
       <ChatPanel
         :course-context="result?.course || course"
         :mode="mode"
         @notify="notify"
       />
+      </template>
     </main>
 
     <!-- 抽屉 / 弹窗 -->
@@ -463,6 +568,14 @@ const degradedBanner = computed(() => {
       @close="showHistory = false"
       @load="onLoadHistory"
       @notify="notify"
+    />
+
+    <ExportPreview
+      :open="showExport"
+      :result="result"
+      :profile="profile"
+      :generated-at="exportAt"
+      @close="showExport = false"
     />
 
     <!-- Toast -->
@@ -512,6 +625,17 @@ const degradedBanner = computed(() => {
   display: flex;
   flex-direction: column;
   gap: 14px;
+}
+
+.main.under-wins {
+  padding-top: 56px;
+}
+
+.main.study-main {
+  max-width: none;
+  margin: 0;
+  padding: 16px 26px 26px;
+  gap: 0;
 }
 
 .opts {
@@ -585,6 +709,30 @@ const degradedBanner = computed(() => {
   color: #991b1b;
 }
 
+.export-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 16px 18px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.export-title {
+  font-family: var(--font-serif);
+  font-size: 16px;
+  letter-spacing: 0.06em;
+}
+
+.export-desc {
+  margin-top: 4px;
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+
 .b-ico {
   flex: none;
   width: 22px;
@@ -635,6 +783,12 @@ const degradedBanner = computed(() => {
 
 @media (max-width: 860px) {
   .main {
+    padding: 14px 16px 22px;
+  }
+  .main.under-wins {
+    padding-top: 56px;
+  }
+  .main.study-main {
     padding: 14px 16px 22px;
   }
   .src-path {

@@ -10,14 +10,17 @@ const props = defineProps({
   id: { type: String, required: true },
 })
 
-const { windows, zOrder, WIN_META, shrink, grow, moveTo, bringFront } = useSpace()
+const { windows, zOrder, WIN_META, shrink, grow, moveTo, bringFront, barWidth } = useSpace()
 
 const win = computed(() => windows[props.id])
 const title = WIN_META[props.id]?.title || props.id
 
 const boxStyle = computed(() => {
   const w = win.value
-  const width = w.collapsed ? 176 : 216 + (w.size - 1) * 64
+  const compact = typeof window !== 'undefined' && window.innerWidth <= 430
+  let width = barWidth(w.collapsed, w.size, compact)
+  if (props.id === 'todo' && w.collapsed) width = compact ? 196 : 248
+  if (props.id === 'date' && w.collapsed) width = compact ? 196 : 248
   return {
     left: `${Math.round(w.x)}px`,
     top: `${Math.round(w.y)}px`,
@@ -118,6 +121,7 @@ onBeforeUnmount(() => {
 .win-extra {
   flex: 1;
   min-width: 0;
+  overflow: hidden;
   font-variant-numeric: tabular-nums;
   font-size: 12px;
   color: var(--text-muted);

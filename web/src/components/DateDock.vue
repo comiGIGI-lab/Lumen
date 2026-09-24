@@ -4,6 +4,7 @@
  */
 import { computed, ref } from 'vue'
 import { useSpace } from '@/composables/useSpace'
+import CountdownTimer from './CountdownTimer.vue'
 
 const { dateNotes } = useSpace()
 
@@ -61,6 +62,7 @@ function onNote(e) {
 
 <template>
   <div class="cal">
+    <CountdownTimer />
     <div class="nav">
       <button type="button" class="nav-btn" @click="prevMonth">‹</button>
       <span>{{ monthLabel }}</span>
