@@ -513,6 +513,13 @@ aside {
   width: 100%;
   margin-top: 8px;
 }
+/* 「没有匹配的笔记」原来只共享了颜色规则，没有内边距 ——
+   .note-list 是 flex 容器、自身无 padding，所以这行字会贴着侧栏左边缘，
+   和上面 .note 按钮里的文字对不齐。这里补上与 .note 一致的内缩。 */
+.none {
+  padding: 6px 12px;
+  line-height: 1.6;
+}
 .detail {
   min-width: 0;
   display: flex;
@@ -690,7 +697,9 @@ th, td {
 .modal-hint { margin: 10px 0 0; font-size: 12px; color: var(--text-muted); line-height: 1.6; }
 .up-meta em.err { color: #c62828; }
 
-@media (max-width: 860px) {
+/* 断点从 860 下调到 760：860 偏高，窗口稍窄（或系统缩放 150%）就压成一栏，
+   侧栏变成横向滚动条、右侧详情挤到下面，页面看着很空。 */
+@media (max-width: 760px) {
   .shell { grid-template-columns: 1fr; }
   .note-list { flex-direction: row; overflow-x: auto; max-height: none; }
   .note { min-width: 190px; }

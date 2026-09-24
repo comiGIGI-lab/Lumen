@@ -6,7 +6,7 @@
  * （PDF 走 pypdf、Markdown/txt 直读、图片走多模态模型识图），上传完就能在知识库看到。
  * 逐文件上传而不是一次全发：这样每一行的进度是**真实**的，一个文件失败也不拖累其它。
  */
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref } from 'vue'
 import SnakeBar from './SnakeBar.vue'
 import { api } from '@/api/client'
 import { useKnowledge } from '@/composables/useKnowledge'
@@ -18,13 +18,18 @@ const ACCEPT = '.pdf,.md,.markdown,.txt,.text,.png,.jpg,.jpeg,.webp,.bmp,.gif'
 const MAX_FILES = 10
 const MAX_BYTES = 16 * 1024 * 1024
 
-const { notes, current, currentId, pickNote, createNote, refresh, ensureLoaded } = useKnowledge()
+const { notes, pickNote, createNote, refresh, ensureLoaded } = useKnowledge()
 
 ensureLoaded()
 
 const picked = ref([]) // {id,file,name,size,type,status,progress,error,chunks}
 const newTitle = ref('')
 /** '' = 不指定（每个文件按自己的文件名成一条笔记） */
+// ★ 刻意**不默认选中「当前正在看的笔记」**：之前写了 watch 把 targetId 自动设成
+//   currentId，结果用户一进导入页、什么都不改直接上传，文件就会被冠上那条**已有笔记
+//   的名字**入库 —— 实测上传 upload-test.md 后，知识库里多出一条标题为
+//   「study-liu 能做什么」、正文却是上传内容的笔记，非常误导。
+//   现在只有用户主动在下拉里选了才归并，'' = 各按文件名成一条。
 const targetId = ref('')
 const dragOn = ref(false)
 const running = ref(false)
@@ -44,9 +49,8 @@ api
     /* 能力探测失败不阻塞导入，后端会给明确报错 */
   })
 
-watch(currentId, (id) => {
-  if (id && notes.value.some((n) => n.id === id) && !targetId.value) targetId.value = id
-}, { immediate: true })
+// 这里原来还有一个 watch，把 targetId 自动设成「当前正在看的笔记」。
+// 已删除 —— 见上面 targetId 处的说明：那会让默默上传的文件被冠上已有笔记的标题。
 
 const targetNote = computed(() => notes.value.find((n) => n.id === targetId.value) || null)
 const allReady = computed(() => picked.value.length > 0 && picked.value.every((f) => f.status === 'ready'))
@@ -402,7 +406,8 @@ h2 { font-size: 32px; margin: 6px 0 10px; }
 }
 .grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr);
+  /* 右栏给一个最小宽度，避免窗口偏窄时被压成细条 */
+  grid-template-columns: minmax(0, 1.7fr) minmax(220px, 1fr);
   gap: 18px;
 }
 .drop {
@@ -453,17 +458,35 @@ select, .new-note input {
 }
 .hint { margin: 0; font-size: 12px; color: var(--text-muted); line-height: 1.6; }
 .new-note { display: flex; flex-direction: column; gap: 8px; }
-.act { margin-top: 16px; flex-wrap: wrap; }
+/* 按钮行：原来 .act 被上面那条共享规则设成 justify-content: space-between，
+   3 个元素被拉到整行两端、中间大片空白，看着像坏了。
+   改成左对齐 + 说明文字 margin-left:auto（有空间时靠右，不够时自动换行）。
+   这里不用 !important —— .act 单类选择器与共享规则同权重，源码顺序在后即生效。 */
+.act {
+  margin-top: 16px;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+}
+.act span { margin-left: auto; }
 .done { border-color: var(--border); flex-wrap: wrap; }
 .done-btns { display: flex; flex-wrap: wrap; gap: 8px; }
 /* 接入真实上传后补的几条 */
 .hidden-input { display: none; }
 .q-status.failed { color: #c62828; }
 .q-err { display: block; margin-top: 3px; color: #c62828; font-size: 11px; line-height: 1.5; }
-.none { margin: 8px 0 0; font-size: 12px; color: var(--text-muted); }
+/* 「还没有选择文件。」原来只有 margin-top，没有左右内边距 ——
+   文字紧贴卡片边框，比上面的「待导入文件」左移 16px，一眼就是没对齐。
+   这里补上与 .queue header 一致的内缩。 */
+.none { margin: 0; padding: 0 16px 14px; font-size: 12px; color: var(--text-muted); }
 
-@media (max-width: 860px) {
+/* 断点从 860 下调到 760：860 偏高，窗口稍窄（或系统缩放 150%）就压成一栏，
+   右侧「归入笔记 / 支持格式」直接掉到屏幕外，页面看着很空。
+   同时给右栏一个最小宽度，避免它被压得太窄。 */
+@media (max-width: 760px) {
   .grid { grid-template-columns: 1fr; }
+  /* 单栏时把设置卡提到上传区之前，免得要点半天才看到「归入笔记」 */
+  .grid > aside { order: -1; }
+  .drop { padding: 32px 16px; }
   h2 { font-size: 26px; }
 }
 @media (max-width: 390px) {
