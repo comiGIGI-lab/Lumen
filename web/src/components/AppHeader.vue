@@ -108,7 +108,7 @@ const emit = defineEmits([
   }
 }
 
-@media (max-width: 390px) {
+@media (max-width: 430px) {
   .hero-inner {
     padding: 12px;
     align-items: flex-start;

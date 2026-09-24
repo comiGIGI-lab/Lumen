@@ -801,4 +801,14 @@ const degradedBanner = computed(() => {
     display: none;
   }
 }
+
+@media (max-width: 430px) {
+  .main.under-wins {
+    padding-top: 248px;
+    padding-bottom: 96px;
+  }
+  .main.study-main {
+    padding: 8px 8px 72px;
+  }
+}
 </style>
