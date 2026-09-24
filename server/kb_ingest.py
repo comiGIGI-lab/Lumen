@@ -212,9 +212,13 @@ def cleanup_uploads(data_dir, keep_seconds=UPLOAD_KEEP_SECONDS):
 # ============================================================
 # 主入口
 # ============================================================
-def ingest(path, filename, tags=None, store=None, data_dir=None):
+def ingest(path, filename, tags=None, store=None, data_dir=None, title=None):
     """把一个已落盘的文件导入知识库。
 
+    参数：
+        title: 可选，「归入的笔记名」。界面上允许把多个文件归到同一条笔记下 ——
+               传了就以它作为所有块的前缀（分组时自然聚在一起），不传则用文件名。
+               它不覆盖来源信息：块标题仍是「<归入名> · i/n」，tags 里保留 #pdf / #image 等。
     返回：
         {
           "ok": bool,
@@ -278,6 +282,11 @@ def ingest(path, filename, tags=None, store=None, data_dir=None):
     if not text:
         out["error"] = "文件里没有解析到任何文字"
         return out
+
+    # 调用方指定了「归入的笔记名」就以其为准（界面上的「归入笔记」），
+    # 这样多个文件能聚到同一条笔记下；不指定才退回用文件名。
+    if title and str(title).strip():
+        base_title = str(title).strip()
 
     # ---- 2. 内容安全 ----
     reject = _safety_reject(text)

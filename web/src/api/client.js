@@ -130,6 +130,95 @@ export const api = {
       body: JSON.stringify({ course }),
     })
   },
+
+  // ---------------- 知识库 ----------------
+
+  /**
+   * 知识库条目列表。
+   * 带 q 时后端走「分词 + 字段加权 + 覆盖率」打分检索，
+   * 返回的条目会多出 _score（分数）与 _match（命中明细），按分数降序。
+   */
+  knowledgeList(q = '', topK = 50) {
+    const qs = new URLSearchParams()
+    if (q) qs.set('q', q)
+    if (topK) qs.set('top_k', String(topK))
+    const tail = qs.toString()
+    return request(`/knowledge${tail ? '?' + tail : ''}`)
+  },
+
+  /** 知识库能力：支持哪些扩展名、PDF 能否解析、图片识图是否可用 */
+  knowledgeCapabilities() {
+    return request('/knowledge/capabilities')
+  },
+
+  /**
+   * 新建一条知识库笔记（正文可留空，作为待导入材料的容器）。
+   * tags 可传数组或逗号分隔的字符串。
+   */
+  knowledgeCreate({ title = '', content = '', tags = [] } = {}) {
+    return request('/knowledge', {
+      method: 'POST',
+      body: JSON.stringify({ title, content, tags }),
+    })
+  },
+
+  /** 删除一条知识库笔记 */
+  knowledgeDelete(id) {
+    return request(`/knowledge/${id}`, { method: 'DELETE' })
+  },
+
+  /**
+   * 上传文件导入知识库（multipart）。
+   *
+   * ⚠️ 这里刻意**不复用 request()**，两个原因：
+   *   1. request() 会强制带 `Content-Type: application/json`，
+   *      而 multipart 必须让浏览器自己写 boundary —— 写死了后端就解析不出文件；
+   *   2. 要用 XMLHttpRequest 才能拿到**真实的**上传进度（fetch 不支持）。
+   *
+   * @param {File[]} files 选中的文件
+   * @param {object} opts
+   *   tags       —— 附加标签数组
+   *   title      —— 归入的笔记名；传了就把这批文件归到同一个笔记下
+   *   onProgress —— (0~1) 上传进度回调
+   * @returns {Promise<object>} 后端返回 {ok, imported, failed, results, total}
+   */
+  knowledgeImport(files, { tags = [], title = '', onProgress } = {}) {
+    return new Promise((resolve, reject) => {
+      const list = Array.from(files || [])
+      if (!list.length) {
+        reject(new Error('没有选择文件'))
+        return
+      }
+      const form = new FormData()
+      list.forEach((f) => form.append('file', f, f.name))
+      if (tags.length) form.append('tags', tags.join(','))
+      if (title) form.append('title', title)
+
+      const xhr = new XMLHttpRequest()
+      xhr.open('POST', `${BASE}/knowledge/import`)
+      xhr.setRequestHeader('X-Client-Id', clientId()) // 不设 Content-Type，交给浏览器
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable && onProgress) onProgress(e.loaded / e.total)
+      }
+      xhr.onload = () => {
+        let data = {}
+        try {
+          data = JSON.parse(xhr.responseText)
+        } catch (_) {
+          /* 后端异常时可能不是 JSON */
+        }
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve(data)
+        } else {
+          reject(new Error(data.error || `导入失败（HTTP ${xhr.status}）`))
+        }
+      }
+      xhr.onerror = () => reject(new Error('网络错误，上传失败'))
+      xhr.ontimeout = () => reject(new Error('上传超时'))
+      xhr.timeout = 300000 // 大文件 + 模型识图可能较慢
+      xhr.send(form)
+    })
+  },
 }
 
 /**

@@ -1,11 +1,15 @@
 <script setup>
 /**
- * KnowledgePage —— 主应用内正式知识库页
- * 笔记 / 文档 / 分块走 useKnowledge 单例；分块只来自当前笔记的关联文档。
+ * KnowledgePage —— 主应用内正式知识库页（已接真实后端）
+ *
+ * 数据来自 /api/knowledge；笔记/文档/分块的层级由 useKnowledge 从后端的扁平条目映射出来。
+ * 搜索框走**后端的打分检索**（分词 + 字段加权 + 覆盖率），所以「换个说法问」也能命中，
+ * 这正是把「整句子串匹配」换掉的意义所在。
  */
-import { computed, onBeforeUnmount, ref } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import SnakeBar from './SnakeBar.vue'
-import { DEMO_FILES, TAG_LABEL, useKnowledge } from '@/composables/useKnowledge'
+import { api } from '@/api/client'
+import { TAG_LABEL, useKnowledge } from '@/composables/useKnowledge'
 
 const emit = defineEmits(['back', 'open-import', 'go-course'])
 
@@ -17,8 +21,12 @@ const TAGS = [
   { id: 'others', label: '其他' },
 ]
 
-const TYPE_LABEL = { pdf: 'PDF', image: '图片', audio: '音频' }
-const STATUS_LABEL = { ready: '演示完成', parsing: '解析中', queue: '排队中', failed: '解析失败' }
+const TYPE_LABEL = { pdf: 'PDF', image: '图片', md: 'Markdown', txt: '文本', note: '笔记' }
+const STATUS_LABEL = { ready: '已入库', parsing: '解析中', queue: '排队中', failed: '失败' }
+
+const ACCEPT = '.pdf,.md,.markdown,.txt,.text,.png,.jpg,.jpeg,.webp,.bmp,.gif'
+const MAX_FILES = 10
+const MAX_BYTES = 16 * 1024 * 1024
 
 const {
   notes,
@@ -26,42 +34,62 @@ const {
   current,
   currentDocs,
   currentChunks,
+  loading,
+  error,
+  lastQuery,
+  refresh,
+  ensureLoaded,
   pickNote,
   createNote,
   removeDoc,
   retryDoc,
-  attachDemoDocs,
-  loadDemo,
+  setRemark,
 } = useKnowledge()
+
+ensureLoaded()
 
 const filter = ref('all')
 const keyword = ref('')
-const empty = ref(false)
 const showImport = ref(false)
-const importPhase = ref('drop')
-const uploadRows = ref([])
 const savedHint = ref(false)
+const picked = ref([])
 const dragOn = ref(false)
-const demoNote = ref('')
-let uploadTimer = 0
+const running = ref(false)
+const importNote = ref('')
+const fileInput = ref(null)
+const caps = ref(null)
+let seq = 0
+let searchTimer = 0
 let hintTimer = 0
 
-const filtered = computed(() => {
-  const q = keyword.value.trim().toLowerCase()
-  return notes.value.filter((n) => {
-    if (filter.value !== 'all' && n.tag !== filter.value) return false
-    if (!q) return true
-    return (n.title + (TAG_LABEL[n.tag] || '')).toLowerCase().includes(q)
-  })
+api.knowledgeCapabilities().then((c) => { caps.value = c }).catch(() => {})
+
+/** 搜索防抖 300ms 后打后端；清空则回到全量列表 */
+watch(keyword, (q) => {
+  clearTimeout(searchTimer)
+  searchTimer = setTimeout(() => refresh(String(q || '').trim()), 300)
 })
 
+const empty = computed(() => !loading.value && notes.value.length === 0)
+
+const filtered = computed(() => {
+  if (filter.value === 'all') return notes.value
+  return notes.value.filter((n) => n.tag === filter.value)
+})
+
+function reload() {
+  refresh(lastQuery.value || '')
+}
+
 function newNote() {
-  createNote()
-  filter.value = 'all'
-  empty.value = false
+  const title = window.prompt('新笔记标题', '未命名笔记')
+  if (title === null) return
+  createNote(title.trim() || '未命名笔记')
 }
 
 function saveRemark() {
+  if (!current.value) return
+  setRemark(current.value.id, current.value.remark || '')
   savedHint.value = true
   clearTimeout(hintTimer)
   hintTimer = setTimeout(() => {
@@ -69,81 +97,103 @@ function saveRemark() {
   }, 1400)
 }
 
-function deleteDoc(doc) {
+async function deleteDoc(doc) {
   if (!current.value || !doc) return
-  removeDoc(current.value.id, doc.id)
+  if (!window.confirm(`删除「${doc.name}」及其全部 ${doc.chunks} 个分块？`)) return
+  await removeDoc(current.value.id, doc.id)
+}
+
+// ---------- 页内快速导入（与导入文档页共用后端的同一个接口）----------
+function fmtSize(bytes) {
+  if (bytes >= 1048576) return (bytes / 1048576).toFixed(1) + ' MB'
+  if (bytes >= 1024) return Math.round(bytes / 1024) + ' KB'
+  return bytes + ' B'
 }
 
 function openImport() {
   showImport.value = true
-  importPhase.value = 'drop'
-  uploadRows.value = []
-  demoNote.value = ''
-  if (uploadTimer) clearInterval(uploadTimer)
-}
-
-function cancelImport() {
-  if (uploadTimer) {
-    clearInterval(uploadTimer)
-    uploadTimer = 0
-  }
-  importPhase.value = 'drop'
-  uploadRows.value = []
-  demoNote.value = '上传任务已取消。'
+  picked.value = []
+  importNote.value = ''
+  dragOn.value = false
 }
 
 function closeImport() {
-  cancelImport()
+  if (running.value) return
   showImport.value = false
+  picked.value = []
 }
 
-function noteNoWrite() {
-  demoNote.value = '写入接口尚未接入，本次不会选择或上传本地文件。要看解析动画，请点开始解析。这是演示。'
-}
-
-function startUpload() {
-  if (importPhase.value !== 'drop') return
-  demoNote.value = `正在播放演示动画，示例文件将归档到「${current.value?.title || '当前笔记'}」。写入接口还没接。`
-  importPhase.value = 'run'
-  uploadRows.value = DEMO_FILES.map((f) => ({ ...f, progress: 0, status: 'uploading' }))
-  const speed = [7, 11, 4]
-  uploadTimer = setInterval(() => {
-    let allDone = true
-    uploadRows.value.forEach((row, i) => {
-      if (row.progress < 100) {
-        allDone = false
-        row.progress = Math.min(100, row.progress + speed[i])
-        if (row.progress >= 100) row.status = 'ready'
-      }
-    })
-    if (allDone) {
-      clearInterval(uploadTimer)
-      uploadTimer = 0
-      importPhase.value = 'done'
-      attachDemoDocs(current.value?.id)
-      demoNote.value = '演示完成。示例文件已归档到当前笔记，不是真实上传。'
-      setTimeout(() => {
-        showImport.value = false
-        importPhase.value = 'drop'
-        uploadRows.value = []
-      }, 900)
+function addFiles(fileList) {
+  const room = MAX_FILES - picked.value.length
+  const list = Array.from(fileList || []).slice(0, Math.max(0, room))
+  list.forEach((file) => {
+    if (file.size > MAX_BYTES) {
+      importNote.value = `已跳过「${file.name}」：${fmtSize(file.size)} 超过 16 MB`
+      return
     }
-  }, 180)
+    picked.value.push({
+      id: 'k' + ++seq,
+      file,
+      name: file.name,
+      size: fmtSize(file.size),
+      status: 'waiting',
+      chunks: 0,
+      error: '',
+    })
+  })
+}
+
+function onPickClick() {
+  if (running.value) return
+  fileInput.value?.click()
+}
+
+function onFileChange(e) {
+  addFiles(e.target.files)
+  e.target.value = ''
 }
 
 function onDrop(e) {
   e.preventDefault()
   dragOn.value = false
-  noteNoWrite()
+  if (!running.value) addFiles(e.dataTransfer?.files)
 }
 
-function loadSeed() {
-  empty.value = false
-  loadDemo()
+async function startUpload() {
+  if (running.value || !picked.value.length) return
+  running.value = true
+  importNote.value = '正在上传解析…'
+  let ok = 0
+  for (const row of picked.value) {
+    row.status = 'uploading'
+    try {
+      const res = await api.knowledgeImport([row.file], {
+        title: current.value?.title || '', // 归到当前正在看的这条笔记下
+      })
+      const r = (res.results || [])[0] || {}
+      if (r.ok) {
+        row.status = 'ready'
+        row.chunks = r.chunks || 0
+        ok += 1
+      } else {
+        row.status = 'failed'
+        row.error = r.error || '导入失败'
+      }
+    } catch (e) {
+      row.status = 'failed'
+      row.error = e.message || String(e)
+    }
+  }
+  await refresh('')
+  keyword.value = ''
+  running.value = false
+  importNote.value = ok
+    ? `已入库 ${ok} 个文件${picked.value.length - ok ? `，${picked.value.length - ok} 个失败` : ''}。`
+    : '全部失败，请看每行的原因。'
 }
 
 onBeforeUnmount(() => {
-  if (uploadTimer) clearInterval(uploadTimer)
+  clearTimeout(searchTimer)
   clearTimeout(hintTimer)
 })
 </script>
@@ -154,30 +204,36 @@ onBeforeUnmount(() => {
       <div>
         <p class="eyebrow">Knowledge</p>
         <h2>知识库</h2>
-        <p class="lead">这里查看笔记和文档。提问在学习方案生成页底部的课程问答。当前是演示数据，写入接口还没接，拖文件或点解析不会真的进库。</p>
+        <p class="lead">
+          这里是知识库的真实内容：左侧是按来源聚合的笔记，右侧是该来源切出的文档与分块。
+          提问在学习方案生成页底部的课程问答，回答会引用这里的材料。
+        </p>
       </div>
       <div class="kb-actions">
         <button type="button" class="ghost" @click="emit('back')">课程生成</button>
         <button type="button" class="ghost" @click="emit('open-import')">文档导入</button>
-        <button type="button" class="ok" @click="openImport">导入文档</button>
+        <button type="button" class="ok" @click="openImport">快速导入</button>
       </div>
     </div>
 
     <div class="kb-search">
-      <input v-model="keyword" type="search" placeholder="搜索笔记标题、标签或知识点" />
+      <input v-model="keyword" type="search" placeholder="搜索笔记标题、标签或知识点（走后端打分检索）" />
+      <span v-if="loading" class="kb-state">检索中…</span>
+      <span v-else-if="error" class="kb-state err">{{ error }}</span>
+      <span v-else-if="lastQuery" class="kb-state">正在显示「{{ lastQuery }}」的检索结果</span>
     </div>
 
     <div v-if="empty" class="empty">
       <h3>知识库还是空的</h3>
-      <p>这里查看笔记和文档。材料进库之后，到课程问答里提问。当前是演示数据，写入接口还没接。</p>
+      <p>导入课件或讲义，材料入库之后就能在课程问答里被引用。</p>
       <ol>
-        <li><b>01 上传课件</b><span>支持 PDF / 图片 / 音频，当前为演示</span></li>
-        <li><b>02 自动解析</b><span>OCR + 转写 + 分块索引，动画可看，不会真的进库</span></li>
+        <li><b>01 上传课件</b><span>支持 PDF / Markdown / txt / 图片</span></li>
+        <li><b>02 自动解析</b><span>PDF 抽文本层、图片走多模态识图、按句分块带重叠</span></li>
         <li><b>03 去课程问答</b><span>提问不在这一页，在学习方案生成页底部</span></li>
       </ol>
       <div class="empty-btns">
         <button type="button" class="ok" @click="openImport">导入第一份文档</button>
-        <button type="button" class="ghost" @click="loadSeed">载入示例笔记</button>
+        <button type="button" class="ghost" @click="emit('open-import')">去导入页</button>
         <button type="button" class="ghost" @click="emit('go-course')">去课程问答</button>
       </div>
     </div>
@@ -187,6 +243,7 @@ onBeforeUnmount(() => {
         <div class="sb-head">
           <span>我的笔记</span>
           <em>共 {{ filtered.length }} 条笔记</em>
+          <button type="button" class="ghost small" @click="reload">刷新</button>
         </div>
         <div class="note-list">
           <button
@@ -220,7 +277,7 @@ onBeforeUnmount(() => {
 
         <label class="title-lab">
           <span>笔记标题</span>
-          <input v-model="current.title" />
+          <input v-model="current.title" readonly title="标题来自导入来源；后端暂未提供重命名接口" />
         </label>
 
         <dl class="meta">
@@ -296,36 +353,45 @@ onBeforeUnmount(() => {
         <div class="modal" role="dialog" aria-label="导入文档">
           <header>
             <h3>导入文档</h3>
-            <button type="button" class="x" @click="closeImport">×</button>
+            <button type="button" class="x" :disabled="running" @click="closeImport">×</button>
           </header>
           <div
-            v-if="importPhase === 'drop'"
             class="drop"
             :class="{ on: dragOn }"
-            @click="noteNoWrite"
+            @click="onPickClick"
             @dragenter.prevent="dragOn = true"
             @dragover.prevent="dragOn = true"
             @dragleave.prevent="dragOn = false"
             @drop="onDrop"
           >
             <p>把文件拖到这里，或点击选择</p>
-            <span>这是演示。写入接口还没接，拖进来不会进库。支持 PDF / 图片 / 音频</span>
+            <span>支持 PDF / Markdown / txt / 图片，单个 ≤ 16 MB，一次最多 10 个</span>
+            <input
+              ref="fileInput"
+              type="file"
+              multiple
+              :accept="ACCEPT"
+              class="hidden-input"
+              @change="onFileChange"
+            />
           </div>
-          <p v-if="demoNote" class="demo-note">{{ demoNote }}</p>
-          <div v-if="importPhase !== 'drop'" class="up">
-            <p>正在播放演示动画，示例文件不会真正入库</p>
-            <div v-for="row in uploadRows" :key="row.name" class="up-row">
+          <p class="modal-hint">导入的材料会归入当前笔记「{{ current?.title || '（未选中）' }}」。</p>
+          <div v-if="picked.length" class="up">
+            <div v-for="row in picked" :key="row.id" class="up-row">
               <div class="up-meta">
                 <span>{{ row.name }}</span>
-                <em>{{ Math.round(row.progress) }}%</em>
+                <em v-if="row.status === 'ready'">已入库 {{ row.chunks }} 块</em>
+                <em v-else-if="row.status === 'failed'" class="err">{{ row.error }}</em>
+                <em v-else>{{ row.status === 'uploading' ? '上传中…' : '待上传' }}</em>
               </div>
-              <SnakeBar :progress="row.progress" :status="row.status" />
             </div>
-            <p v-if="importPhase === 'done'">演示完成。示例文件已归档到「{{ current?.title }}」，不是真实上传。</p>
           </div>
+          <p v-if="importNote" class="demo-note">{{ importNote }}</p>
           <footer>
-            <button type="button" class="ghost" @click="cancelImport">取消</button>
-            <button type="button" class="ok" :disabled="importPhase !== 'drop'" @click="startUpload">开始解析</button>
+            <button type="button" class="ghost" :disabled="running" @click="closeImport">关闭</button>
+            <button type="button" class="ok" :disabled="running || !picked.length" @click="startUpload">
+              {{ running ? '上传解析中' : '开始导入' }}
+            </button>
           </footer>
         </div>
       </div>
@@ -617,6 +683,12 @@ th, td {
 .drop.on { border-color: var(--accent); background: #ffe8d6; }
 .up { display: flex; flex-direction: column; gap: 10px; margin: 12px 0; }
 .up-meta { display: flex; justify-content: space-between; font-size: 12px; }
+/* 接真实后端后补的几条 */
+.hidden-input { display: none; }
+.kb-state { margin-left: 10px; font-size: 12px; color: var(--text-muted); }
+.kb-state.err { color: #c62828; }
+.modal-hint { margin: 10px 0 0; font-size: 12px; color: var(--text-muted); line-height: 1.6; }
+.up-meta em.err { color: #c62828; }
 
 @media (max-width: 860px) {
   .shell { grid-template-columns: 1fr; }

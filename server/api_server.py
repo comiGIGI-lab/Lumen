@@ -849,6 +849,9 @@ class ApiHandler(BaseHTTPRequestHandler):
 
         fields = parsed["fields"]
         tags = [t.strip() for t in (fields.get("tags") or "").split(",") if t.strip()]
+        # 「归入的笔记名」：界面选了某条笔记时传过来，这批文件的块都用它作前缀，
+        # 分组时就聚到同一条笔记下；不传则每个文件按自己的文件名各成一条。
+        group_title = (fields.get("title") or "").strip()
 
         store = KnowledgeStore()
         existing = len(store.list_all())
@@ -865,7 +868,7 @@ class ApiHandler(BaseHTTPRequestHandler):
             path = None
             try:
                 path = save_upload(f["data"], f["filename"], DATA_DIR)
-                r = ingest(path, f["filename"], tags=tags, store=store)
+                r = ingest(path, f["filename"], tags=tags, store=store, title=group_title)
             except Exception as e:
                 traceback.print_exc()
                 r = {"ok": False, "kind": "", "notes": [], "chunks": 0, "chars": 0,
@@ -1031,19 +1034,39 @@ class ApiHandler(BaseHTTPRequestHandler):
             if path == "/api/knowledge":
                 # 粘贴文本入库（与上传导入共用分块 + 内容安全逻辑）
                 text = (body.get("content") or body.get("text") or "").strip()
-                if not text:
-                    return self._send_json({"ok": False, "error": "内容为空"}, 400)
-                if len(text) > 100_000:
-                    return self._send_json(
-                        {"ok": False, "error": "内容过长（上限 10 万字）"}, 400)
+                title = (body.get("title") or "").strip()
+                tags = body.get("tags")
+                if isinstance(tags, str):
+                    tags = [t.strip() for t in tags.split(",") if t.strip()]
+
                 store = KnowledgeStore()
                 if len(store.list_all()) >= MAX_KB_NOTES:
                     return self._send_json(
                         {"ok": False, "error": "知识库已达上限 %d 条" % MAX_KB_NOTES}, 400)
-                tags = body.get("tags")
-                if isinstance(tags, str):
-                    tags = [t.strip() for t in tags.split(",") if t.strip()]
-                r = ingest_text(text, title=body.get("title"), tags=tags, store=store)
+
+                # 允许「只给标题、正文留空」——界面上「新建笔记」就是先建一个空容器，
+                # 等导入材料再填进去。标题和正文同时为空才算无效请求。
+                if not text:
+                    if not title:
+                        return self._send_json(
+                            {"ok": False, "error": "标题和内容不能同时为空"}, 400)
+                    try:
+                        note_id = store.add(
+                            title=title, content="",
+                            tags=tags if isinstance(tags, list) and tags else ["#manual"])
+                    except Exception as e:
+                        return self._send_json({"ok": False, "error": "写入失败：%s" % e}, 500)
+                    return self._send_json({
+                        "ok": True, "kind": "empty",
+                        "notes": [{"id": note_id, "title": title}],
+                        "chunks": 1, "chars": 0, "error": None,
+                        "total": len(store.list_all()),
+                    })
+
+                if len(text) > 100_000:
+                    return self._send_json(
+                        {"ok": False, "error": "内容过长（上限 10 万字）"}, 400)
+                r = ingest_text(text, title=title or None, tags=tags, store=store)
                 r["total"] = len(store.list_all())
                 return self._send_json(r, 200 if r.get("ok") else 400)
 
