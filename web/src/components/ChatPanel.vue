@@ -1,7 +1,9 @@
 <script setup>
 /**
  * ChatPanel —— 课程问答（链路的下游能力）
- * 复用后端 run_chat_pipeline：先查知识库，未命中再调大模型。
+ * 复用后端 run_chat_pipeline：先做知识库相关性检索（打分排序），
+ * 把命中的片段注入 system prompt 交给大模型生成；材料里没有才按常识回答。
+ * 后端在该接口一并返回 retrieved（命中的条目与分数），可用于展示「参考资料」。
  */
 import { nextTick, ref } from 'vue'
 import { api } from '@/api/client'
@@ -92,7 +94,7 @@ function clear() {
     <div ref="listRef" class="chat-list">
       <div v-if="!messages.length" class="chat-empty">
         <span>🤖</span>
-        <p>先查知识库，命中就直接回答；未命中再调用大模型。</p>
+        <p>先从你的知识库里检索相关片段，再交给大模型基于这些片段作答；材料里没有才按常识回答。</p>
       </div>
 
       <div

@@ -33,7 +33,7 @@ const cards = [
   {
     num: '01',
     title: '图文素材智能解析',
-    body: '课件 PDF、板书照片与课堂录音统一导入，自动识别文字与语音，切成可检索的内容块',
+    body: '课件 PDF、Markdown 讲义与板书照片统一导入，PDF 抽文本层、图片走多模态模型识图，切成可检索的内容块',
   },
   {
     num: '02',
@@ -43,7 +43,7 @@ const cards = [
   {
     num: '03',
     title: '交互式答疑辅导',
-    body: '基于你自己的课程内容作答，答案标注出处，可以继续追问与逐条核对',
+    body: '先在你的材料里做相关性检索，再把命中的片段交给模型作答，答案标注出处，可以继续追问与逐条核对',
   },
 ]
 
@@ -97,8 +97,8 @@ function cardStyle(i) {
         <h1 class="wl-title">智识有方</h1>
         <p class="wl-sub">多模态教学智能体</p>
         <p class="wl-desc">
-          把课件 PDF、课堂板书照片和录音丢进来，随后输入课程名与学习画像，
-          生成课程大纲、推荐资源与个性化学习计划。答案可溯源回原文位置。
+          把课件 PDF、Markdown 讲义和板书照片丢进来，随后输入课程名与学习画像，
+          生成课程大纲、推荐资源与个性化学习计划。提问时先从你的材料里检索，答案可溯源回原文位置。
         </p>
         <div class="wl-actions">
           <button class="wl-btn wl-btn-light" type="button" @click="onStart">学习方案生成</button>
