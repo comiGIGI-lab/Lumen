@@ -13,6 +13,7 @@ const emit = defineEmits(['scene-change'])
 const {
   FOCUS_PRESETS,
   SOUNDS,
+  MUSIC,
   presetMin,
   customMin,
   usingCustom,
@@ -20,6 +21,8 @@ const {
   volumes,
   sceneId,
   scene,
+  musicId,
+  musicVolume,
   clock,
   mixCount,
   pickScene,
@@ -27,6 +30,8 @@ const {
   applyCustom,
   toggle,
   onVolume,
+  pickMusic,
+  onMusicVolume,
 } = useStudyTimer()
 
 const panel = ref('') // '' | scene | focus
@@ -132,7 +137,7 @@ function commitCustom() {
     </div>
 
     <div v-if="panel === 'focus'" class="mix">
-      <p class="hint">可叠加，每路独立音量。定时器开始才出声</p>
+      <p class="hint">环境声可叠加，每路独立音量。定时器开始才出声</p>
       <label v-for="s in SOUNDS" :key="s.id" class="mix-row">
         <span>{{ s.name }}</span>
         <input
@@ -143,6 +148,38 @@ function commitCustom() {
           @input="onVolume(s.id, $event.target.value)"
         />
         <em>{{ volumes[s.id] }}</em>
+      </label>
+      <p class="hint music-hint">纯音乐三选一，可与环境声同时开，两首纯音乐不能一起响</p>
+      <div class="music-picks" role="group" aria-label="纯音乐">
+        <button
+          type="button"
+          class="chip"
+          :class="{ on: !musicId }"
+          @click="pickMusic('')"
+        >
+          关闭
+        </button>
+        <button
+          v-for="m in MUSIC"
+          :key="m.id"
+          type="button"
+          class="chip"
+          :class="{ on: musicId === m.id }"
+          @click="pickMusic(m.id)"
+        >
+          {{ m.name }}
+        </button>
+      </div>
+      <label class="mix-row">
+        <span>音量</span>
+        <input
+          type="range"
+          min="0"
+          max="100"
+          :value="musicVolume"
+          @input="onMusicVolume($event.target.value)"
+        />
+        <em>{{ musicVolume }}</em>
       </label>
     </div>
   </div>
@@ -294,5 +331,15 @@ function commitCustom() {
   font-size: 11px;
   color: var(--text-muted);
   text-align: right;
+}
+
+.music-hint {
+  margin-top: 6px;
+}
+
+.music-picks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 </style>

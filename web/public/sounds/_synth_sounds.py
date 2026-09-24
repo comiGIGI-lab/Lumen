@@ -214,6 +214,35 @@ def page_turn():
     return out
 
 
+def whale_song():
+    rng = random.Random(73)
+    out = [0.0] * N
+    t = int(SR * 0.4)
+    calls = 0
+    while t < N and calls < 3:
+        length = rng.randint(int(SR * 1.35), int(SR * 2.15))
+        if t + length >= N:
+            break
+        f0 = rng.uniform(90, 180)
+        f1 = rng.uniform(220, 360)
+        for k in range(length):
+            env = math.sin(math.pi * k / length) ** 1.6
+            frac = k / length
+            f = f0 + (f1 - f0) * (0.15 + 0.85 * frac)
+            wob = 1 + 0.012 * math.sin(2 * math.pi * 0.7 * k / SR)
+            tone = math.sin(2 * math.pi * f * wob * k / SR)
+            over = 0.12 * math.sin(2 * math.pi * f * 1.5 * k / SR)
+            out[t + k] += env * 0.28 * (tone + over)
+        t += length + rng.randint(int(SR * 0.9), int(SR * 1.8))
+        calls += 1
+    b = 0.0
+    for i in range(N):
+        w = white(rng)
+        b = 0.997 * b + 0.003 * w
+        out[i] += b * 0.02
+    return out
+
+
 def birds():
     rng = random.Random(37)
     out = [0.0] * N
@@ -247,6 +276,7 @@ MAKERS = {
     "cicada": cicada,
     "birds": birds,
     "page-turn": page_turn,
+    "whale-song": whale_song,
 }
 
 FFMPEG = Path(r"D:\ffmpeg\bin\ffmpeg.exe")

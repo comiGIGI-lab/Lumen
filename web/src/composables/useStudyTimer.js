@@ -3,7 +3,7 @@
  * 场景 UI 仍在自习坞；混音也挂在这里，关掉自习坞时声音不会断。
  */
 import { computed, reactive, ref } from 'vue'
-import { SCENES, SOUNDS, scenePoster, sceneVideo, soundSrc } from '@/study/catalog'
+import { MUSIC, SCENES, SOUNDS, musicSrc, scenePoster, sceneVideo, soundSrc } from '@/study/catalog'
 
 export const FOCUS_PRESETS = [5, 10, 15, 25, 50]
 const MIN_MIN = 1
@@ -17,7 +17,10 @@ const durationSec = ref(25 * 60)
 const running = ref(false)
 const volumes = reactive(Object.fromEntries(SOUNDS.map((s) => [s.id, 0])))
 const sceneId = ref('')
+const musicId = ref('')
+const musicVolume = ref(50)
 const players = {}
+let musicPlayer = null
 
 let tick = null
 
@@ -42,6 +45,32 @@ function ensurePlayer(id) {
   return el
 }
 
+function ensureMusic() {
+  if (musicPlayer) return musicPlayer
+  const el = new Audio()
+  el.loop = true
+  el.preload = 'none'
+  musicPlayer = el
+  return el
+}
+
+function playMusic() {
+  const el = ensureMusic()
+  const id = musicId.value
+  const vol = musicVolume.value / 100
+  if (!id || vol <= 0) {
+    el.pause()
+    return
+  }
+  const src = musicSrc(id)
+  if (!el.src.endsWith(src)) el.src = src
+  el.volume = Math.min(1, vol)
+  if (el.paused && running.value) {
+    const p = el.play()
+    if (p && typeof p.catch === 'function') p.catch(() => {})
+  }
+}
+
 function playMix() {
   SOUNDS.forEach((s) => {
     const vol = volumes[s.id] / 100
@@ -56,10 +85,12 @@ function playMix() {
       if (p && typeof p.catch === 'function') p.catch(() => {})
     }
   })
+  playMusic()
 }
 
 function pauseMix() {
   Object.values(players).forEach((el) => el.pause())
+  if (musicPlayer) musicPlayer.pause()
 }
 
 function clearTick() {
@@ -133,8 +164,24 @@ function onVolume(id, val) {
   }
 }
 
+function pickMusic(id) {
+  musicId.value = musicId.value === id ? '' : id
+  if (running.value) playMusic()
+  else if (musicPlayer && !musicId.value) musicPlayer.pause()
+}
+
+function onMusicVolume(val) {
+  musicVolume.value = Number(val)
+  if (running.value) playMusic()
+  else if (musicPlayer && musicVolume.value <= 0) musicPlayer.pause()
+}
+
 const clock = computed(() => padClock(remaining.value))
-const mixCount = computed(() => SOUNDS.filter((s) => volumes[s.id] > 0).length)
+const mixCount = computed(() => {
+  const env = SOUNDS.filter((s) => volumes[s.id] > 0).length
+  const music = musicId.value && musicVolume.value > 0 ? 1 : 0
+  return env + music
+})
 const scene = computed(() => {
   const s = SCENES.find((item) => item.id === sceneId.value)
   if (!s) return null
@@ -157,6 +204,7 @@ export function useStudyTimer() {
   return {
     FOCUS_PRESETS,
     SOUNDS,
+    MUSIC,
     presetMin,
     customMin,
     usingCustom,
@@ -166,6 +214,8 @@ export function useStudyTimer() {
     volumes,
     sceneId,
     scene,
+    musicId,
+    musicVolume,
     clock,
     mixCount,
     ratio,
@@ -176,6 +226,8 @@ export function useStudyTimer() {
     pause,
     toggle,
     onVolume,
+    pickMusic,
+    onMusicVolume,
     playMix,
     pauseMix,
   }

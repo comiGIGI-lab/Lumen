@@ -2,6 +2,7 @@
  * 自习层目录：场景只换背景，声音在专注设置里叠加。
  * 视频：/scenes/<id>/video.mp4  海报：/scenes/<id>/poster.jpg
  * 声音：/sounds/<id>.mp3
+ * 纯音乐：/music/<id>.mp3，三选一，不进 SOUNDS。
  * 缺视频时 SceneBackdrop 先铺 poster.jpg；海报也没有才走流动兜底，页面不破。
  */
 
@@ -37,6 +38,13 @@ export const SOUNDS = [
   { id: 'cicada', name: '虫鸣' },
   { id: 'birds', name: '鸟鸣' },
   { id: 'page-turn', name: '翻书' },
+  { id: 'whale-song', name: '鲸歌' },
+]
+
+export const MUSIC = [
+  { id: 'folk', name: '民谣' },
+  { id: 'ambient', name: '环境' },
+  { id: 'ethereal', name: '空灵' },
 ]
 
 export function sceneVideo(id) {
@@ -49,4 +57,8 @@ export function scenePoster(id) {
 
 export function soundSrc(id) {
   return `/sounds/${id}.mp3`
+}
+
+export function musicSrc(id) {
+  return `/music/${id}.mp3`
 }
