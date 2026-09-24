@@ -2,8 +2,8 @@
 /**
  * SceneBackdrop —— 自习场景底层
  * 未选场景：米色上半透明俄罗斯方块缓慢漂浮。
- * 有场景：本地循环视频；缺文件走该场景气质的流动兜底。
- * 禁止热链，缺文件不破页。
+ * 有场景：循环视频能播就播；视频失败且 poster.jpg 能加载则铺满静帧；
+ * 海报也没有才走该场景气质的流动兜底。禁止热链，缺文件不破页。
  */
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
@@ -14,8 +14,10 @@ const props = defineProps({
 const videoEl = ref(null)
 const canvasEl = ref(null)
 const useVideo = ref(false)
+const usePoster = ref(false)
 let raf = 0
 let t0 = 0
+let mediaGen = 0
 
 const SHAPES = {
   I: [[0, 1], [1, 1], [2, 1], [3, 1]],
@@ -149,38 +151,78 @@ function hexA(hex, a) {
   return `rgba(${r},${g},${b},${a})`
 }
 
-function tryVideo() {
-  useVideo.value = false
+function stillCurrent(gen) {
+  return gen === mediaGen
+}
+
+function probePoster(s, gen) {
+  const src = s && s.poster
+  if (!src) return
+  const img = new Image()
+  img.onload = () => {
+    if (!stillCurrent(gen) || useVideo.value) return
+    usePoster.value = true
+  }
+  img.onerror = () => {
+    if (!stillCurrent(gen)) return
+    usePoster.value = false
+  }
+  img.src = src
+}
+
+function tryVideo(s, gen) {
   const el = videoEl.value
-  if (!el || !props.scene) return
-  el.src = props.scene.video
+  if (!el || !s) return
   const onOk = () => {
+    if (!stillCurrent(gen)) return
     useVideo.value = true
+    usePoster.value = false
   }
   const onFail = () => {
+    if (!stillCurrent(gen)) return
     useVideo.value = false
   }
   el.onloadeddata = onOk
   el.onerror = onFail
+  el.src = s.video
   el.load()
   const p = el.play()
   if (p && typeof p.catch === 'function') p.catch(onFail)
+}
+
+function tryMedia() {
+  mediaGen += 1
+  const gen = mediaGen
+  useVideo.value = false
+  usePoster.value = false
+  const s = props.scene
+  if (!s) {
+    const el = videoEl.value
+    if (el) {
+      el.removeAttribute('src')
+      el.load()
+    }
+    return
+  }
+  probePoster(s, gen)
+  tryVideo(s, gen)
 }
 
 watch(
   () => props.scene && props.scene.id,
   async () => {
     await nextTick()
-    tryVideo()
+    tryMedia()
   },
 )
 
 onMounted(() => {
   raf = requestAnimationFrame(paint)
-  tryVideo()
+  tryMedia()
 })
 
 onBeforeUnmount(() => {
+  mediaGen += 1
   cancelAnimationFrame(raf)
 })
 </script>
@@ -188,12 +230,17 @@ onBeforeUnmount(() => {
 <template>
   <div class="backdrop on" :class="{ scene: !!scene }" aria-hidden="true">
     <canvas ref="canvasEl" class="flow"></canvas>
+    <img
+      v-if="scene && usePoster && !useVideo"
+      class="poster show"
+      :src="scene.poster"
+      alt=""
+    />
     <video
       v-if="scene"
       ref="videoEl"
       class="vid"
       :class="{ show: useVideo }"
-      :poster="scene.poster"
       muted
       loop
       playsinline
@@ -213,14 +260,30 @@ onBeforeUnmount(() => {
 }
 
 .flow,
-.vid {
+.vid,
+.poster {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
 }
 
+.flow {
+  z-index: 0;
+}
+
+.poster {
+  z-index: 1;
+  object-fit: cover;
+  opacity: 0;
+}
+
+.poster.show {
+  opacity: 1;
+}
+
 .vid {
+  z-index: 2;
   object-fit: cover;
   opacity: 0;
   transition: opacity 0.4s ease;
@@ -233,6 +296,7 @@ onBeforeUnmount(() => {
 .scrim {
   position: absolute;
   inset: 0;
+  z-index: 3;
   background: rgba(251, 249, 246, 0.18);
 }
 

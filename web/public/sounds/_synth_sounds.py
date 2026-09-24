@@ -153,23 +153,6 @@ def wind():
     return out
 
 
-def thunder():
-    rng = random.Random(53)
-    out = [0.0] * N
-    for i in range(N):
-        out[i] = 0.03 * white(rng) * (0.6 + 0.4 * math.sin(2 * math.pi * i / SR / 8))
-    for start in (int(SR * 1.2), int(SR * 5.6)):
-        rumble_n = int(SR * 1.8)
-        for k in range(rumble_n):
-            if start + k >= N:
-                break
-            env = math.sin(math.pi * k / rumble_n) ** 0.7
-            f = 42 + 18 * math.sin(k / 400)
-            out[start + k] += env * 0.9 * math.sin(2 * math.pi * f * k / SR)
-            out[start + k] += env * 0.35 * white(rng) * math.exp(-k / 1800)
-    return out
-
-
 def train():
     rng = random.Random(31)
     out = [0.0] * N
@@ -208,6 +191,29 @@ def cicada():
     return out
 
 
+def page_turn():
+    rng = random.Random(61)
+    out = [0.0] * N
+    b = 0.0
+    for i in range(N):
+        w = white(rng)
+        b = 0.985 * b + 0.015 * w
+        out[i] = (w - b) * 0.018
+    t = int(SR * 0.35)
+    while t < N:
+        length = rng.randint(int(SR * 0.08), int(SR * 0.15))
+        for k in range(length):
+            if t + k >= N:
+                break
+            env = math.sin(math.pi * k / length) ** 1.15
+            hiss = white(rng)
+            sweep = 720 + 1480 * (k / length)
+            rustle = hiss * 0.52 + 0.16 * math.sin(2 * math.pi * sweep * k / SR)
+            out[t + k] += env * 0.6 * rustle
+        t += rng.randint(int(SR * 1.15), int(SR * 1.9))
+    return out
+
+
 def birds():
     rng = random.Random(37)
     out = [0.0] * N
@@ -236,22 +242,28 @@ MAKERS = {
     "keyboard": keyboard,
     "waves": waves,
     "wind": wind,
-    "thunder": thunder,
     "train": train,
     "stream": stream,
     "cicada": cicada,
     "birds": birds,
+    "page-turn": page_turn,
 }
+
+FFMPEG = Path(r"D:\ffmpeg\bin\ffmpeg.exe")
 
 
 def main():
+    import sys
+    names = sys.argv[1:] or list(MAKERS)
+    ffmpeg = str(FFMPEG if FFMPEG.exists() else "ffmpeg")
     OUT.mkdir(parents=True, exist_ok=True)
-    for name, fn in MAKERS.items():
+    for name in names:
+        fn = MAKERS[name]
         wav = OUT / f"{name}.wav"
         mp3 = OUT / f"{name}.mp3"
         write_wav(wav, fn())
         subprocess.run(
-            ["ffmpeg", "-y", "-i", str(wav), "-codec:a", "libmp3lame", "-b:a", "64k", str(mp3)],
+            [ffmpeg, "-y", "-i", str(wav), "-codec:a", "libmp3lame", "-b:a", "64k", str(mp3)],
             check=True,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,

@@ -2,7 +2,7 @@
  * 自习层目录：场景只换背景，声音在专注设置里叠加。
  * 视频：/scenes/<id>/video.mp4  海报：/scenes/<id>/poster.jpg
  * 声音：/sounds/<id>.mp3
- * 缺文件时由 SceneBackdrop 走流动兜底，页面不破。
+ * 缺视频时 SceneBackdrop 先铺 poster.jpg；海报也没有才走流动兜底，页面不破。
  */
 
 export const SCENES = [
@@ -21,6 +21,7 @@ export const SCENES = [
   { id: 'sunny-meadow', name: '暖阳草甸', sky: '#8ec8e8', glow: '#f4e08a', mist: '#7cba62' },
   { id: 'fishing-wind', name: '垂钓听风', sky: '#4a7088', glow: '#d8e8f0', mist: '#6a8890' },
   { id: 'quiet-valley', name: '深谷静心', sky: '#2a3830', glow: '#c8d8c0', mist: '#4a5850' },
+  { id: 'cafe-sit', name: '咖啡馆静坐', sky: '#2a1c14', glow: '#d4a056', mist: '#3a261c' },
 ]
 
 export const SOUNDS = [
@@ -31,11 +32,11 @@ export const SOUNDS = [
   { id: 'keyboard', name: '键盘' },
   { id: 'waves', name: '海浪' },
   { id: 'wind', name: '风' },
-  { id: 'thunder', name: '雷' },
   { id: 'train', name: '火车' },
   { id: 'stream', name: '溪流' },
   { id: 'cicada', name: '虫鸣' },
   { id: 'birds', name: '鸟鸣' },
+  { id: 'page-turn', name: '翻书' },
 ]
 
 export function sceneVideo(id) {
