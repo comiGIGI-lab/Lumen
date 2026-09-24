@@ -98,7 +98,7 @@ function openSpace() {
   box-shadow: var(--shadow-btn);
 }
 
-@media (max-width: 390px) {
+@media (max-width: 430px) {
   .space-fab {
     left: 8px;
     bottom: 48px;

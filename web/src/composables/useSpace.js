@@ -38,17 +38,21 @@ function normalizeLayout(mode) {
 }
 
 function barWidth(collapsed, size, compact, layout, id) {
+  const { vw } = viewport()
+  const maxW = Math.max(160, vw - 16)
   if (collapsed) {
-    if (id === 'todo' || id === 'date') return compact ? 196 : 248
-    return compact ? 118 : 176
+    if (id === 'todo' || id === 'date') {
+      return Math.min(compact ? 196 : 248, maxW)
+    }
+    return Math.min(compact ? 136 : 176, maxW)
   }
   if (layout === 'study') {
-    const { vw } = viewport()
-    const padX = vw <= 430 ? 8 : 26
-    const total = Math.min(980, Math.max(280, vw - padX * 2))
+    const padX = compact ? 8 : vw <= 860 ? 16 : 26
+    const total = Math.min(980, Math.max(200, vw - padX * 2))
     const factor = size === 3 ? 1 : size === 2 ? 0.92 : 0.8
     if (vw <= 860) {
-      return Math.round(Math.max(280, Math.min(total, vw - padX * 2) * factor))
+      const minW = compact ? 200 : 280
+      return Math.round(Math.max(minW, Math.min(total, vw - padX * 2) * factor))
     }
     const leftW = Math.round(total * 1.1 / 2)
     const rightW = Math.max(280, total - leftW - 14)
@@ -56,24 +60,31 @@ function barWidth(collapsed, size, compact, layout, id) {
     const minW = id === 'study' ? 360 : 280
     return Math.round(Math.max(minW, base * factor))
   }
-  return 216 + (Math.max(1, size) - 1) * 64
+  const desktop = 216 + (Math.max(1, size) - 1) * 64
+  if (compact) return Math.min(Math.max(176, desktop - 24), maxW)
+  return Math.min(desktop, maxW)
 }
 
 function defaultWin(id, vw, layout) {
+  const compact = vw <= 430
   if (layout === 'study') {
     const stack = vw <= 860
-    const padX = vw <= 430 ? 8 : 26
-    const padY = HEADER_H + 16
+    const padX = compact ? 8 : vw <= 860 ? 16 : 26
+    const padY = compact ? HEADER_H + 88 : HEADER_H + 16
     const gap = 14
-    const total = Math.min(980, Math.max(280, vw - padX * 2))
+    const total = Math.min(980, Math.max(200, vw - padX * 2))
     if (stack) {
-      const h = { study: 0, todo: 300, date: 560 }
+      const stacked = {
+        study: 0,
+        todo: compact ? 52 : 300,
+        date: compact ? 104 : 560,
+      }
       return {
         on: true,
-        collapsed: false,
+        collapsed: compact ? true : false,
         size: id === 'study' ? 3 : 2,
         x: padX,
-        y: padY + (h[id] || 0),
+        y: padY + (stacked[id] || 0),
       }
     }
     const leftW = Math.round(total * 1.1 / 2)
@@ -86,21 +97,29 @@ function defaultWin(id, vw, layout) {
     }
     return { on: true, collapsed: false, size: 2, x: rightX, y: padY + 280 }
   }
-  const compact = vw <= 430
   const cascade = { study: 0, todo: 1, date: 2 }
   const i = cascade[id] || 0
   const collapsed = layout === 'app' || compact
   const size = 1
   const w = barWidth(collapsed, size, compact, layout, id)
   const gap = compact ? 6 : 12
-  const y = layout === 'app' ? HEADER_H + 6 : 12
-  const step = compact ? Math.min(w + gap, Math.max(96, (vw - 16 - w) / 2)) : w + gap
+  const y0 = layout === 'app' ? (compact ? HEADER_H + 88 : HEADER_H + 6) : compact ? HEADER_H + 88 : 12
+  if (compact) {
+    return {
+      on: true,
+      collapsed,
+      size,
+      x: 8,
+      y: y0 + i * 52,
+    }
+  }
+  const step = w + gap
   return {
     on: true,
     collapsed,
     size,
     x: Math.max(8, 12 + i * step),
-    y,
+    y: y0,
   }
 }
 
@@ -167,7 +186,7 @@ function blankState(layout = initialLayout()) {
     layout: normalizeLayout(layout),
     layouts,
     windows: layouts[normalizeLayout(layout)],
-    zSeq: 110,
+    zSeq: 132,
   }
 }
 
@@ -295,9 +314,22 @@ const layouts = {
 }
 const layoutMode = ref(boot.layout || 'welcome')
 const windows = reactive(cloneWins(boot.windows))
-const zOrder = reactive(Object.fromEntries(WIN_IDS.map((id, i) => [id, 110 + i])))
-let zSeq = boot.zSeq || 114
+const zOrder = reactive(Object.fromEntries(WIN_IDS.map((id, i) => [id, 129 + i])))
+let zSeq = boot.zSeq || 132
 const panelOpen = ref(false)
+const viewW = ref(typeof window === 'undefined' ? 1280 : window.innerWidth)
+const viewH = ref(typeof window === 'undefined' ? 800 : window.innerHeight)
+
+if (typeof window !== 'undefined') {
+  let resizeTimer = 0
+  window.addEventListener('resize', () => {
+    clearTimeout(resizeTimer)
+    resizeTimer = setTimeout(() => {
+      viewW.value = window.innerWidth
+      viewH.value = window.innerHeight
+    }, 50)
+  })
+}
 
 const todos = ref(loadList(TODOS_KEY))
 const dateNotes = reactive(loadDates())
@@ -356,20 +388,28 @@ watch(dateNotes, persistDates, { deep: true })
 watch(countdowns, persistCountdowns, { deep: true })
 
 function clampPos(id, x, y) {
-  const { vw, vh } = viewport()
+  const vw = viewW.value
+  const vh = viewH.value
+  const w = windows[id]
+  const compact = vw <= 430
+  const width = w ? barWidth(w.collapsed, w.size, compact, layoutMode.value, id) : 176
+  const margin = 8
+  const minY = compact ? HEADER_H + 80 : margin
+  const maxX = Math.max(margin, vw - Math.min(width, vw - margin * 2) - margin)
+  const maxY = Math.max(minY, vh - 44)
   return {
-    x: Math.min(Math.max(8, x), Math.max(8, vw - 48)),
-    y: Math.min(Math.max(8, y), Math.max(8, vh - 36)),
+    x: Math.min(Math.max(margin, x), maxX),
+    y: Math.min(Math.max(minY, y), maxY),
   }
 }
 
 function bringFront(id) {
   zSeq += 1
-  if (zSeq > 125) {
+  if (zSeq > 139) {
     WIN_IDS.forEach((wid, i) => {
-      zOrder[wid] = 110 + i
+      zOrder[wid] = 129 + i
     })
-    zSeq = 114
+    zSeq = 132
   }
   zOrder[id] = zSeq
   persistSpace()
@@ -382,6 +422,7 @@ function setOn(id, on) {
 
 function shrink(id) {
   const w = windows[id]
+  bringFront(id)
   if (!w.collapsed && w.size <= 1) {
     w.collapsed = true
     return
@@ -392,6 +433,7 @@ function shrink(id) {
 
 function grow(id) {
   const w = windows[id]
+  bringFront(id)
   if (w.collapsed) {
     w.collapsed = false
     return
@@ -461,6 +503,9 @@ export function useSpace() {
     resetLayout,
     applyLayout,
     barWidth,
+    clampPos,
+    viewW,
+    viewH,
     parseYmd,
   }
 }

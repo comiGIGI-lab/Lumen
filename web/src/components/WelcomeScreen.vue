@@ -232,7 +232,7 @@ function cardStyle(i) {
   min-height: 100svh;
   display: flex;
   align-items: flex-end;
-  padding: 0;
+  padding: 0 0 64px;
   color: #f7f2ea;
   overflow: hidden;
 }
@@ -625,7 +625,10 @@ function cardStyle(i) {
   }
 }
 
-@media (max-width: 390px) {
+@media (max-width: 430px) {
+  .wl-hero {
+    padding-bottom: 80px;
+  }
   .wl-hero-inner {
     padding: 88px 16px 40px;
   }
@@ -672,7 +675,7 @@ function cardStyle(i) {
   background: rgba(255, 255, 255, 0.92);
 }
 
-@media (max-width: 390px) {
+@media (max-width: 430px) {
   .wl-nav {
     top: 8px;
     right: 8px;

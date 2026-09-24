@@ -7,14 +7,14 @@
  */
 
 export const SCENES = [
+  { id: 'bamboo-wind', name: '竹林听风', sky: '#142018', glow: '#7dad62', mist: '#1e3022' },
+  { id: 'wheat-field', name: '麦浪草原', sky: '#c9a24a', glow: '#f3d98a', mist: '#7a9a48' },
   { id: 'lakeside-fire', name: '湖畔篝火', sky: '#1a140e', glow: '#d45a18', mist: '#3a2a1c' },
   { id: 'grand-library', name: '西式殿堂图书馆', sky: '#2a1c12', glow: '#c9a56a', mist: '#4a3424' },
   { id: 'night-train', name: '夜行列车', sky: '#0c1018', glow: '#d8b56a', mist: '#1c2430' },
   { id: 'rainy-window', name: '雨落窗前', sky: '#1a242c', glow: '#7aa0b4', mist: '#2a3840' },
-  { id: 'bamboo-wind', name: '竹林听风', sky: '#142018', glow: '#7dad62', mist: '#1e3022' },
   { id: 'snow-peak', name: '雪峰窗景', sky: '#d8e4ee', glow: '#ffffff', mist: '#9bb0c2' },
   { id: 'star-desk', name: '星空书桌', sky: '#0a1020', glow: '#e8c47a', mist: '#1a2440' },
-  { id: 'wheat-field', name: '麦浪草原', sky: '#c9a24a', glow: '#f3d98a', mist: '#7a9a48' },
   { id: 'whale-deep', name: '深海鲸落', sky: '#041420', glow: '#3aa0c8', mist: '#0a2838' },
   { id: 'siheyuan-study', name: '四合院书房', sky: '#3a2414', glow: '#e07a3a', mist: '#5a3820' },
   { id: 'apothecary-desk', name: '药房书桌', sky: '#2a2218', glow: '#86a05a', mist: '#4a3a28' },

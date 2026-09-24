@@ -342,4 +342,17 @@ function commitCustom() {
   flex-wrap: wrap;
   gap: 6px;
 }
+
+@media (max-width: 430px) {
+  .clock {
+    font-size: 24px;
+  }
+  .mix-row {
+    grid-template-columns: 4.4em 1fr 2em;
+    gap: 6px;
+  }
+  .tile {
+    font-size: 11px;
+  }
+}
 </style>

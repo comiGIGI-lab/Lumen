@@ -2,6 +2,7 @@
 /**
  * FloatWin —— 个人空间悬浮窗壳
  * 标题栏：名称 + 减号缩小 / 收到标题栏 + 加号放大。可拖动。
+ * 触控：标题栏拖动手势独占，不让页面跟着滚；加减号仍可点。
  */
 import { computed, onBeforeUnmount } from 'vue'
 import { useSpace } from '@/composables/useSpace'
@@ -10,7 +11,7 @@ const props = defineProps({
   id: { type: String, required: true },
 })
 
-const { windows, zOrder, WIN_META, shrink, grow, moveTo, bringFront, barWidth, layoutMode } = useSpace()
+const { windows, zOrder, WIN_META, shrink, grow, moveTo, bringFront, barWidth, layoutMode, clampPos, viewW } = useSpace()
 
 const win = computed(() => windows[props.id])
 const title = WIN_META[props.id]?.title || props.id
@@ -18,32 +19,53 @@ const studyLayout = computed(() => layoutMode.value === 'study')
 
 const boxStyle = computed(() => {
   const w = win.value
-  const compact = typeof window !== 'undefined' && window.innerWidth <= 430
+  const compact = viewW.value <= 430
   const width = barWidth(w.collapsed, w.size, compact, layoutMode.value, props.id)
+  const shown = clampPos(props.id, w.x, w.y)
   return {
-    left: `${Math.round(w.x)}px`,
-    top: `${Math.round(w.y)}px`,
+    left: `${Math.round(shown.x)}px`,
+    top: `${Math.round(shown.y)}px`,
     width: `${width}px`,
-    zIndex: zOrder[props.id] || 110,
+    zIndex: zOrder[props.id] || 129,
   }
 })
 
 let drag = null
 
+function isControl(el) {
+  return !!(el && el.closest && el.closest('.win-btns'))
+}
+
 function onPointerDown(e) {
   if (e.button != null && e.button !== 0) return
-  if (e.target && e.target.closest && e.target.closest('.win-btns')) return
+  if (isControl(e.target)) return
   bringFront(props.id)
+  const shown = clampPos(props.id, win.value.x, win.value.y)
   drag = {
-    ox: e.clientX - win.value.x,
-    oy: e.clientY - win.value.y,
+    pid: e.pointerId,
+    ox: e.clientX - shown.x,
+    oy: e.clientY - shown.y,
+    moved: false,
+    sx: e.clientX,
+    sy: e.clientY,
   }
-  window.addEventListener('pointermove', onPointerMove)
+  try {
+    e.currentTarget.setPointerCapture(e.pointerId)
+  } catch (_) {
+    /* 部分浏览器不支持 capture，退回 window 监听 */
+  }
+  window.addEventListener('pointermove', onPointerMove, { passive: false })
   window.addEventListener('pointerup', onPointerUp)
+  window.addEventListener('pointercancel', onPointerUp)
 }
 
 function onPointerMove(e) {
-  if (!drag) return
+  if (!drag || (drag.pid != null && e.pointerId !== drag.pid)) return
+  const dx = e.clientX - drag.sx
+  const dy = e.clientY - drag.sy
+  if (!drag.moved && dx * dx + dy * dy < 9) return
+  drag.moved = true
+  if (e.cancelable) e.preventDefault()
   moveTo(props.id, e.clientX - drag.ox, e.clientY - drag.oy)
 }
 
@@ -51,11 +73,13 @@ function onPointerUp() {
   drag = null
   window.removeEventListener('pointermove', onPointerMove)
   window.removeEventListener('pointerup', onPointerUp)
+  window.removeEventListener('pointercancel', onPointerUp)
 }
 
 onBeforeUnmount(() => {
   window.removeEventListener('pointermove', onPointerMove)
   window.removeEventListener('pointerup', onPointerUp)
+  window.removeEventListener('pointercancel', onPointerUp)
 })
 </script>
 
@@ -64,7 +88,6 @@ onBeforeUnmount(() => {
     class="win"
     :class="['s-' + win.size, { collapsed: win.collapsed, 'layout-study': studyLayout }]"
     :style="boxStyle"
-    @mousedown="bringFront(id)"
   >
     <header class="win-bar" @pointerdown="onPointerDown">
       <span class="win-name">{{ title }}</span>
@@ -98,10 +121,12 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: 8px;
-  min-height: 36px;
-  padding: 4px 8px 4px 12px;
+  min-height: 40px;
+  padding: 6px 8px 6px 12px;
   cursor: grab;
   user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
   border-bottom: 1px solid transparent;
 }
 
@@ -124,23 +149,26 @@ onBeforeUnmount(() => {
   font-variant-numeric: tabular-nums;
   font-size: 12px;
   color: var(--text-muted);
+  pointer-events: none;
 }
 
 .win-btns {
   display: flex;
   gap: 4px;
   flex: none;
+  touch-action: manipulation;
 }
 
 .sq {
-  width: 22px;
-  height: 22px;
+  width: 28px;
+  height: 28px;
   border: 1px solid var(--border);
   border-radius: 6px;
   background: #fff;
   color: var(--text-primary);
-  font-size: 14px;
+  font-size: 16px;
   line-height: 1;
+  touch-action: manipulation;
 }
 
 .sq:hover {
@@ -151,6 +179,13 @@ onBeforeUnmount(() => {
 .win-body {
   padding: 10px 12px 12px;
   overflow: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+}
+
+.win-body :deep(input[type='range']) {
+  touch-action: none;
 }
 
 .s-1 .win-body {
@@ -173,9 +208,21 @@ onBeforeUnmount(() => {
   max-height: min(72vh, 720px);
 }
 
-@media (max-width: 390px) {
+@media (max-width: 430px) {
+  .win-bar {
+    min-height: 44px;
+    padding: 8px 8px 8px 12px;
+  }
   .win-name {
     font-size: 13px;
+  }
+  .win-body {
+    padding: 8px 10px 10px;
+  }
+  .layout-study.s-1 .win-body,
+  .layout-study.s-2 .win-body,
+  .layout-study.s-3 .win-body {
+    max-height: min(58vh, 520px);
   }
 }
 </style>
