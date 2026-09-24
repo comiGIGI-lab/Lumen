@@ -2,6 +2,7 @@
  * 个人空间：三个悬浮窗（自习坞 / 待办 / 日期）的开关、尺寸、位置。
  * 存 localStorage zjxt.space；待办、日期、日倒数各自存键，不登录。
  * SPACE_VER 加一后旧坐标不再锁死，会落到新默认。
+ * welcome / app / study 三套 x/y/size/collapsed 分开存；待办正文和倒数日走别的键。
  */
 import { reactive, ref, watch } from 'vue'
 
@@ -9,7 +10,8 @@ export const SPACE_KEY = 'zjxt.space'
 export const TODOS_KEY = 'zjxt.todos'
 export const DATES_KEY = 'zjxt.dates'
 export const COUNTDOWNS_KEY = 'zjxt.countdowns'
-export const SPACE_VER = 2
+export const SPACE_VER = 3
+export const LAYOUTS = ['welcome', 'app', 'study']
 
 export const WIN_IDS = ['study', 'todo', 'date']
 
@@ -29,18 +31,67 @@ function viewport() {
   }
 }
 
-function barWidth(collapsed, size, compact) {
-  if (collapsed) return compact ? 118 : 176
+function normalizeLayout(mode) {
+  if (mode === 'study') return 'study'
+  if (mode === 'app') return 'app'
+  return 'welcome'
+}
+
+function barWidth(collapsed, size, compact, layout, id) {
+  if (collapsed) {
+    if (id === 'todo' || id === 'date') return compact ? 196 : 248
+    return compact ? 118 : 176
+  }
+  if (layout === 'study') {
+    const { vw } = viewport()
+    const padX = vw <= 430 ? 8 : 26
+    const total = Math.min(980, Math.max(280, vw - padX * 2))
+    const factor = size === 3 ? 1 : size === 2 ? 0.92 : 0.8
+    if (vw <= 860) {
+      return Math.round(Math.max(280, Math.min(total, vw - padX * 2) * factor))
+    }
+    const leftW = Math.round(total * 1.1 / 2)
+    const rightW = Math.max(280, total - leftW - 14)
+    const base = id === 'study' ? leftW : rightW
+    const minW = id === 'study' ? 360 : 280
+    return Math.round(Math.max(minW, base * factor))
+  }
   return 216 + (Math.max(1, size) - 1) * 64
 }
 
 function defaultWin(id, vw, layout) {
+  if (layout === 'study') {
+    const stack = vw <= 860
+    const padX = vw <= 430 ? 8 : 26
+    const padY = HEADER_H + 16
+    const gap = 14
+    const total = Math.min(980, Math.max(280, vw - padX * 2))
+    if (stack) {
+      const h = { study: 0, todo: 300, date: 560 }
+      return {
+        on: true,
+        collapsed: false,
+        size: id === 'study' ? 3 : 2,
+        x: padX,
+        y: padY + (h[id] || 0),
+      }
+    }
+    const leftW = Math.round(total * 1.1 / 2)
+    const rightX = padX + leftW + gap
+    if (id === 'study') {
+      return { on: true, collapsed: false, size: 3, x: padX, y: padY }
+    }
+    if (id === 'todo') {
+      return { on: true, collapsed: false, size: 2, x: rightX, y: padY }
+    }
+    return { on: true, collapsed: false, size: 2, x: rightX, y: padY + 280 }
+  }
   const compact = vw <= 430
   const cascade = { study: 0, todo: 1, date: 2 }
   const i = cascade[id] || 0
   const collapsed = layout === 'app' || compact
   const size = 1
-  const w = barWidth(collapsed, size, compact)
+  const w = barWidth(collapsed, size, compact, layout, id)
   const gap = compact ? 6 : 12
   const y = layout === 'app' ? HEADER_H + 6 : 12
   const step = compact ? Math.min(w + gap, Math.max(96, (vw - 16 - w) / 2)) : w + gap
@@ -51,6 +102,47 @@ function defaultWin(id, vw, layout) {
     x: Math.max(8, 12 + i * step),
     y,
   }
+}
+
+function defaultWins(layout) {
+  const { vw } = viewport()
+  const windows = {}
+  WIN_IDS.forEach((id) => {
+    windows[id] = defaultWin(id, vw, layout)
+  })
+  return windows
+}
+
+function cloneWins(src) {
+  const out = {}
+  WIN_IDS.forEach((id) => {
+    const w = src?.[id] || {}
+    out[id] = {
+      on: w.on !== false,
+      collapsed: !!w.collapsed,
+      size: Math.min(SIZE_MAX, Math.max(1, Number(w.size) || 1)),
+      x: Number.isFinite(w.x) ? w.x : 12,
+      y: Number.isFinite(w.y) ? w.y : 12,
+    }
+  })
+  return out
+}
+
+function mergeWins(base, saved) {
+  const next = cloneWins(base)
+  WIN_IDS.forEach((id) => {
+    const w = saved?.[id]
+    if (!w || typeof w !== 'object') return
+    next[id] = {
+      ...next[id],
+      on: w.on !== false,
+      collapsed: !!w.collapsed,
+      size: Math.min(SIZE_MAX, Math.max(1, Number(w.size) || 1)),
+      x: Number.isFinite(w.x) ? w.x : next[id].x,
+      y: Number.isFinite(w.y) ? w.y : next[id].y,
+    }
+  })
+  return next
 }
 
 function initialLayout() {
@@ -65,35 +157,47 @@ function initialLayout() {
 }
 
 function blankState(layout = initialLayout()) {
-  const { vw } = viewport()
-  const windows = {}
-  WIN_IDS.forEach((id) => {
-    windows[id] = defaultWin(id, vw, layout)
-  })
-  return { ver: SPACE_VER, windows, zSeq: 110, layout }
+  const layouts = {
+    welcome: defaultWins('welcome'),
+    app: defaultWins('app'),
+    study: defaultWins('study'),
+  }
+  return {
+    ver: SPACE_VER,
+    layout: normalizeLayout(layout),
+    layouts,
+    windows: layouts[normalizeLayout(layout)],
+    zSeq: 110,
+  }
 }
 
 function loadSpace() {
-  const base = blankState()
+  const layout = initialLayout()
+  const base = blankState(layout)
   try {
     const raw = localStorage.getItem(SPACE_KEY)
     if (!raw) return base
     const saved = JSON.parse(raw)
-    if (saved?.ver !== SPACE_VER) return base
-    WIN_IDS.forEach((id) => {
-      const w = saved?.windows?.[id]
-      if (!w || typeof w !== 'object') return
-      base.windows[id] = {
-        ...base.windows[id],
-        on: w.on !== false,
-        collapsed: !!w.collapsed,
-        size: Math.min(SIZE_MAX, Math.max(1, Number(w.size) || 1)),
-        x: Number.isFinite(w.x) ? w.x : base.windows[id].x,
-        y: Number.isFinite(w.y) ? w.y : base.windows[id].y,
+    const ver = Number(saved?.ver)
+    if (ver === SPACE_VER && saved?.layouts && typeof saved.layouts === 'object') {
+      LAYOUTS.forEach((key) => {
+        base.layouts[key] = mergeWins(base.layouts[key], saved.layouts[key])
+      })
+      if (saved.layout === 'welcome' || saved.layout === 'app' || saved.layout === 'study') {
+        base.layout = saved.layout
       }
-    })
-    if (Number.isFinite(saved.zSeq)) base.zSeq = saved.zSeq
-    if (saved.layout === 'app' || saved.layout === 'welcome') base.layout = saved.layout
+      if (Number.isFinite(saved.zSeq)) base.zSeq = saved.zSeq
+      base.windows = base.layouts[base.layout]
+      return base
+    }
+    if (ver === 2 && saved?.windows) {
+      const oldMode = saved.layout === 'app' ? 'app' : 'welcome'
+      base.layouts[oldMode] = mergeWins(base.layouts[oldMode], saved.windows)
+      if (oldMode === layout) base.layout = oldMode
+      if (Number.isFinite(saved.zSeq)) base.zSeq = saved.zSeq
+      base.windows = base.layouts[base.layout]
+      return base
+    }
   } catch (_) {
     /* 损坏则走默认 */
   }
@@ -184,11 +288,16 @@ function loadDates() {
 }
 
 const boot = loadSpace()
-const windows = reactive(boot.windows)
+const layouts = {
+  welcome: reactive(boot.layouts.welcome),
+  app: reactive(boot.layouts.app),
+  study: reactive(boot.layouts.study),
+}
+const layoutMode = ref(boot.layout || 'welcome')
+const windows = reactive(cloneWins(boot.windows))
 const zOrder = reactive(Object.fromEntries(WIN_IDS.map((id, i) => [id, 110 + i])))
 let zSeq = boot.zSeq || 114
 const panelOpen = ref(false)
-const layoutMode = ref(boot.layout || 'welcome')
 
 const todos = ref(loadList(TODOS_KEY))
 const dateNotes = reactive(loadDates())
@@ -197,12 +306,13 @@ const countdowns = ref(loadCountdowns())
 let persistTimer = 0
 function persistSpace() {
   try {
+    writeWins(layouts[normalizeLayout(layoutMode.value)], snapshotWins(windows))
     localStorage.setItem(
       SPACE_KEY,
       JSON.stringify({
         ver: SPACE_VER,
         layout: layoutMode.value,
-        windows,
+        layouts,
         zSeq,
       }),
     )
@@ -295,24 +405,39 @@ function moveTo(id, x, y) {
   windows[id].y = Math.round(c.y)
 }
 
-function applyLayout(mode) {
-  const nextMode = mode === 'app' ? 'app' : 'welcome'
-  layoutMode.value = nextMode
-  const next = blankState(nextMode)
+function snapshotWins(src) {
+  return cloneWins(src)
+}
+
+function writeWins(target, src) {
   WIN_IDS.forEach((id) => {
-    windows[id].x = next.windows[id].x
-    windows[id].y = next.windows[id].y
-    windows[id].size = next.windows[id].size
-    windows[id].collapsed = next.windows[id].collapsed
+    const w = src[id]
+    target[id].on = w.on
+    target[id].collapsed = w.collapsed
+    target[id].size = w.size
+    target[id].x = w.x
+    target[id].y = w.y
   })
+}
+
+function applyLayout(mode) {
+  const nextMode = normalizeLayout(mode)
+  if (layoutMode.value === nextMode) {
+    persistSpace()
+    return
+  }
+  writeWins(layouts[layoutMode.value], snapshotWins(windows))
+  layoutMode.value = nextMode
+  writeWins(windows, snapshotWins(layouts[nextMode]))
   persistSpace()
 }
 
 function resetLayout() {
-  applyLayout(layoutMode.value)
-  WIN_IDS.forEach((id) => {
-    windows[id].on = true
-  })
+  const mode = normalizeLayout(layoutMode.value)
+  const fresh = defaultWins(mode)
+  writeWins(windows, fresh)
+  writeWins(layouts[mode], fresh)
+  persistSpace()
 }
 
 export function useSpace() {

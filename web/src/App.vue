@@ -105,11 +105,17 @@ function goStudy() {
 }
 
 // 欢迎层显示期间锁住 body 滚动，避免底层工具界面跟着滚
+function currentSpaceLayout() {
+  if (showWelcome.value) return 'welcome'
+  if (appView.value === 'study') return 'study'
+  return 'app'
+}
+
 watch(
-  showWelcome,
-  (v) => {
-    document.body.style.overflow = v ? 'hidden' : ''
-    const mode = v ? 'welcome' : 'app'
+  [showWelcome, appView],
+  () => {
+    document.body.style.overflow = showWelcome.value ? 'hidden' : ''
+    const mode = currentSpaceLayout()
     if (layoutMode.value !== mode) applyLayout(mode)
   },
   { immediate: true },
@@ -414,7 +420,7 @@ const degradedBanner = computed(() => {
 <template>
   <div class="app" :class="{ 'has-scene': !!activeScene }">
     <SceneBackdrop v-if="appView !== 'study'" :scene="activeScene" />
-    <SpaceLayer :floats="appView !== 'study'" />
+    <SpaceLayer />
 
     <!-- 首访欢迎层：关闭后进入下方工具界面 -->
     <WelcomeScreen

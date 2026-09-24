@@ -10,17 +10,16 @@ const props = defineProps({
   id: { type: String, required: true },
 })
 
-const { windows, zOrder, WIN_META, shrink, grow, moveTo, bringFront, barWidth } = useSpace()
+const { windows, zOrder, WIN_META, shrink, grow, moveTo, bringFront, barWidth, layoutMode } = useSpace()
 
 const win = computed(() => windows[props.id])
 const title = WIN_META[props.id]?.title || props.id
+const studyLayout = computed(() => layoutMode.value === 'study')
 
 const boxStyle = computed(() => {
   const w = win.value
   const compact = typeof window !== 'undefined' && window.innerWidth <= 430
-  let width = barWidth(w.collapsed, w.size, compact)
-  if (props.id === 'todo' && w.collapsed) width = compact ? 196 : 248
-  if (props.id === 'date' && w.collapsed) width = compact ? 196 : 248
+  const width = barWidth(w.collapsed, w.size, compact, layoutMode.value, props.id)
   return {
     left: `${Math.round(w.x)}px`,
     top: `${Math.round(w.y)}px`,
@@ -63,7 +62,7 @@ onBeforeUnmount(() => {
 <template>
   <section
     class="win"
-    :class="['s-' + win.size, { collapsed: win.collapsed }]"
+    :class="['s-' + win.size, { collapsed: win.collapsed, 'layout-study': studyLayout }]"
     :style="boxStyle"
     @mousedown="bringFront(id)"
   >
@@ -162,6 +161,16 @@ onBeforeUnmount(() => {
 }
 .s-3 .win-body {
   max-height: 460px;
+}
+
+.layout-study.s-1 .win-body {
+  max-height: min(48vh, 420px);
+}
+.layout-study.s-2 .win-body {
+  max-height: min(52vh, 520px);
+}
+.layout-study.s-3 .win-body {
+  max-height: min(72vh, 720px);
 }
 
 @media (max-width: 390px) {

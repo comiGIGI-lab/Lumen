@@ -1,7 +1,7 @@
 <script setup>
 /**
  * SpaceLayer —— 自习坞 / 待办 / 日期三个悬浮窗 + 个人空间入口
- * 欢迎层与工具界面都在，不进顶栏。
+ * 欢迎层、工具页、自习空间都挂同一套 FloatWin；坐标走 useSpace 三套 layout。
  */
 import FloatWin from './FloatWin.vue'
 import StudyDock from './StudyDock.vue'
