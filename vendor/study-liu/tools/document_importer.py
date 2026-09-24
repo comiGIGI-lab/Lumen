@@ -181,6 +181,16 @@ def _suggest_title(path, content):
     return "导入的笔记"
 
 
+def read_text(path):
+    """读取文件正文（.pdf / .md / .txt）。
+
+    这是 _read_file_auto 的公开包装：Web 端导入要「分块入库」而不是
+    整篇塞进一条笔记（import_file 会把正文截断到 2000 字），
+    所以需要先拿到全文再自己切块。PDF 的读取方式与降级逻辑完全复用。
+    """
+    return _read_file_auto(path)
+
+
 # ---------- 高层 API ----------
 def paste_import(text, title=None, tags=None, store=None):
     """

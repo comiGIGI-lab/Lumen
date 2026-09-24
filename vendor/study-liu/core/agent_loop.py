@@ -12,6 +12,25 @@ from core.paths import data_dir as _resolve_data_dir
 _TRACE_DIR = _resolve_data_dir()
 _TRACE_FILE = os.path.join(_TRACE_DIR, "trace.log")
 
+# ---------- RAG 参数 ----------
+# 检索几条资料注入 prompt。取 3 而不是 1：单条容易漏，太多会稀释重点、
+# 也会让 prompt 变长（知识库条目平均 200 字，3 条约 600 字，成本可忽略）。
+RAG_TOP_K = 3
+# 单条资料进 prompt 的字数上限。导入的 PDF 分块后可能较长，
+# 这里截断是为了守住 prompt 体积与费用，不是知识库本身的限制。
+RAG_PASSAGE_MAX = 1200
+# 弱相关命中过滤：分数与覆盖率**两个条件都满足**才注入 prompt。
+#
+# 为什么需要：2-gram 检索偶尔会把「只是碰巧有共同字词」的笔记也带上来。
+# 实测问「傅里叶变换的物理意义」会命中《物理实验报告·不确定度传递公式》
+# （score 1.81、覆盖率很低）。这种弱命中若也注入，一是污染上下文，
+# 二是会让 source 误报成 knowledge —— 前端显示「来源：知识库」，
+# 但答案其实完全来自模型自身，答辩时被追问"引用的是哪条笔记"会答不上来。
+#
+# 分数受查询长度影响，所以加一个与长度无关的覆盖率门槛一起判断。
+RAG_MIN_SCORE = 2.5
+RAG_MIN_COVERAGE = 0.25
+
 
 def _ensure_trace_dir():
     """确保 data 目录存在。"""
@@ -192,31 +211,65 @@ def run_chat_pipeline(question, history=None, course_context=None):
 
     log_trace("chat_start", {"question": question, "history_len": len(history or [])})
 
-    # 先搜知识库（关键词搜索只看当前问题，不混入历史）
+    # 1) 检索知识库（只看当前问题，不混入历史）
+    #
+    # 改造前：store.search(question) 是「整句子串匹配」，命中就直接把笔记原文
+    #         甩给用户（不上大模型），不命中就完全不带知识库地调模型 ——
+    #         既不是 RAG，两头体验也都差。
+    # 改造后：retrieve() 打分检索 top-k，把片段**注入 system prompt**，
+    #         由大模型基于资料生成答案 —— 这才是 RAG（检索增强生成）。
     store = KnowledgeStore()
-    results = store.search(question)
-    if results:
-        # 取第一条匹配
-        best = results[0]
-        answer = f"{best['title']}：{best['content']}"
-        log_trace("chat_done", {"source": "knowledge", "title": best["title"]})
-        return {"answer": answer, "source": "knowledge"}
-
-    # 知识库没有，调大模型（多轮模式）
-    log_trace("chat_llm_start", {"question": question})
-    messages = []
-
-    # 1) system 注入（可选）
-    if course_context:
-        messages.append({
-            "role": "system",
-            "content": (
-                f"你是「{course_context}」课程的智能学习助手。"
-                "回答简洁、聚焦课程本身，使用中文。"
-            ),
+    # 多取几条再筛：只把「分数够 + 覆盖率够」的强相关命中注入 prompt。
+    # 弱命中既不注入、也不计入 citations —— 这样 source 才诚实
+    # （见文件头 RAG_MIN_SCORE 处的说明）。
+    raw_hits = store.retrieve(question, top_k=RAG_TOP_K * 2)
+    hits = [
+        h for h in raw_hits
+        if h[1] >= RAG_MIN_SCORE and (h[2].get("coverage") or 0) >= RAG_MIN_COVERAGE
+    ][:RAG_TOP_K]
+    citations = [
+        {"id": n.get("id"), "title": n.get("title", ""), "score": round(s, 2)}
+        for n, s, _ in hits
+    ]
+    if raw_hits and not hits:
+        log_trace("chat_retrieve_rejected", {
+            "reason": "弱相关，未注入",
+            "top_title": (raw_hits[0][0].get("title") or "")[:40],
+            "top_score": round(raw_hits[0][1], 2),
+            "top_coverage": (raw_hits[0][2] or {}).get("coverage"),
+        })
+    if hits:
+        log_trace("chat_retrieve", {
+            "hits": len(hits),
+            "top_title": citations[0]["title"],
+            "top_score": citations[0]["score"],
         })
 
-    # 2) 历史窗口（仅取最近 8 条，且过滤非标准 role / 非 dict）
+    # 2) system 注入：角色（可选）+ 检索到的资料
+    messages = []
+    system_parts = []
+    if course_context:
+        system_parts.append(
+            f"你是「{course_context}」课程的智能学习助手。"
+            "回答简洁、聚焦课程本身，使用中文。"
+        )
+    if hits:
+        blocks = []
+        for i, (note, _score, _detail) in enumerate(hits, 1):
+            body = (note.get("content") or "").strip()
+            if len(body) > RAG_PASSAGE_MAX:
+                body = body[:RAG_PASSAGE_MAX] + "…"
+            blocks.append(f"【资料 {i}】{note.get('title', '')}\n{body}")
+        system_parts.append(
+            "下面是本课程知识库中检索到的资料。请**优先依据这些资料**回答；\n"
+            "资料不足以回答时，可以补充你自己的知识，但要说明哪部分来自资料、哪部分是补充；\n"
+            "若资料与问题无关，直接按常识回答即可。不要复述「资料1/资料2」这种编号。\n\n"
+            + "\n\n".join(blocks)
+        )
+    if system_parts:
+        messages.append({"role": "system", "content": "\n\n".join(system_parts)})
+
+    # 3) 历史窗口（仅取最近 8 条，且过滤非标准 role / 非 dict）
     if history:
         trimmed = history[-8:] if len(history) > 8 else history
         for h in trimmed:
@@ -226,13 +279,34 @@ def run_chat_pipeline(question, history=None, course_context=None):
             if role in ("user", "assistant") and h.get("content"):
                 messages.append({"role": role, "content": h["content"]})
 
-    # 3) 当前问题
+    # 4) 当前问题
     messages.append({"role": "user", "content": question})
 
+    log_trace("chat_llm_start", {"question": question, "with_context": bool(hits)})
     answer = chat(messages)
-    source = "llm"
+
     if answer.startswith("[LLM 不可用]"):
-        source = "llm"
-        answer = f"知识库中没有相关内容，且大模型不可用。\n({answer})"
+        # 降级：模型不可用时，退回到「直接把检索到的资料给用户」——
+        # 这正是改造前的老行为，留作兜底比只回一句"大模型不可用"有用得多。
+        if hits:
+            top = hits[0][0]
+            log_trace("chat_done", {"source": "knowledge", "degraded": "llm_unavailable"})
+            return {
+                "answer": f"{top['title']}：{top['content']}",
+                "source": "knowledge",
+                "retrieved": citations,
+                "degraded": "llm_unavailable",
+            }
+        log_trace("chat_done", {"source": "llm", "degraded": "llm_unavailable"})
+        return {
+            "answer": f"知识库中没有相关内容，且大模型不可用。\n({answer})",
+            "source": "llm",
+            "retrieved": [],
+        }
+
+    # source 仍沿用 knowledge / llm 两个值 —— 前端的「来源」标签只认这几个，
+    # 新造一个值会让它落到兜底分支显示成「来源：错误」。
+    # 命中知识库时附上 retrieved（带 id/title/score），供 UI 展示「参考资料」。
+    source = "knowledge" if hits else "llm"
     log_trace("chat_done", {"source": source, "messages_count": len(messages)})
-    return {"answer": answer, "source": source}
+    return {"answer": answer, "source": source, "retrieved": citations}

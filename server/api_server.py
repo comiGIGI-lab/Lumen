@@ -202,6 +202,18 @@ from tools import cache_store                                       # noqa: E402
 from tools.knowledge_store import KnowledgeStore                    # noqa: E402
 from core.paths import data_dir as _data_dir                        # noqa: E402
 
+# 知识库导入：multipart 解析 + 按扩展名分发（都刻意保持零第三方依赖）
+from form_parser import MultipartError, parse_multipart             # noqa: E402
+from kb_ingest import (                                             # noqa: E402
+    capabilities as kb_capabilities, cleanup_uploads, ingest, ingest_text, save_upload,
+)
+
+# 上传请求体上限。与 nginx 的 client_max_body_size 保持一致（见 docs/DEPLOY.md）——
+# 只调这里不调 nginx 会在 nginx 层被挡（413）；只调 nginx 不调这里会被这层挡。
+MAX_UPLOAD_BYTES = 20 * 1024 * 1024
+# 知识库总条目上限：这是**公网无鉴权**的写入接口，留个天花板防止被灌满磁盘
+MAX_KB_NOTES = 3000
+
 TRACE_FILE = agent_loop_mod._TRACE_FILE
 # 历史 / 设置 / 缓存的实际落盘目录（源码运行时 = <源码>/data，不可写时回退 ~/.study-liu/data）
 DATA_DIR = _data_dir()
@@ -760,8 +772,8 @@ class ApiHandler(BaseHTTPRequestHandler):
     # ---------- 基础响应 ----------
     def _cors(self):
         self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, X-Client-Id")
 
     def _send_json(self, obj, status: int = 200):
         body = _j(obj)
@@ -795,6 +807,87 @@ class ApiHandler(BaseHTTPRequestHandler):
             return data if isinstance(data, dict) else {}
         except Exception:
             return {}
+
+    def _read_raw_body(self, max_bytes: int) -> bytes:
+        """读取原始请求体 bytes（**只给 multipart 上传用**）。
+
+        不能复用 _read_body()：它会把请求体整个读走并尝试 JSON 解析，
+        multipart 会被它当成"解析失败"丢掉，上传接口就拿不到文件了。
+        所以上传路由必须在调用 _read_body() **之前**分流。
+        """
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            length = 0
+        if length <= 0:
+            return b""
+        if length > max_bytes:
+            raise MultipartError(
+                "请求体过大：%.1f MB（上限 %.0f MB）" % (length / 1048576, max_bytes / 1048576)
+            )
+        return self.rfile.read(length)
+
+    # ---------- 知识库：上传导入 ----------
+    def _handle_knowledge_import(self):
+        """POST /api/knowledge/import —— multipart 上传，解析后写入知识库。
+
+        支持一次传多个文件；单个文件失败不影响其它文件（逐条返回结果）。
+        解析完立刻删除落盘临时文件，不留垃圾。
+        """
+        try:
+            raw = self._read_raw_body(MAX_UPLOAD_BYTES)
+            parsed = parse_multipart(raw, self.headers.get("Content-Type") or "")
+        except MultipartError as e:
+            return self._send_json({"ok": False, "error": str(e)}, 400)
+        except Exception as e:
+            traceback.print_exc()
+            return self._send_json({"ok": False, "error": "上传解析失败：%s" % e}, 400)
+
+        files = parsed["files"]
+        if not files:
+            return self._send_json({"ok": False, "error": "没有收到文件"}, 400)
+
+        fields = parsed["fields"]
+        tags = [t.strip() for t in (fields.get("tags") or "").split(",") if t.strip()]
+
+        store = KnowledgeStore()
+        existing = len(store.list_all())
+        if existing >= MAX_KB_NOTES:
+            return self._send_json({
+                "ok": False,
+                "error": "知识库已达上限 %d 条，请先删除一些笔记" % MAX_KB_NOTES,
+            }, 400)
+
+        cleanup_uploads(DATA_DIR)   # 顺手清过期临时文件，不需要定时任务
+
+        results = []
+        for f in files:
+            path = None
+            try:
+                path = save_upload(f["data"], f["filename"], DATA_DIR)
+                r = ingest(path, f["filename"], tags=tags, store=store)
+            except Exception as e:
+                traceback.print_exc()
+                r = {"ok": False, "kind": "", "notes": [], "chunks": 0, "chars": 0,
+                     "error": "导入异常：%s" % e}
+            finally:
+                if path:
+                    try:
+                        os.remove(path)
+                    except OSError:
+                        pass
+            r["filename"] = f["filename"]
+            r["size"] = len(f["data"])
+            results.append(r)
+
+        ok_n = sum(1 for r in results if r.get("ok"))
+        return self._send_json({
+            "ok": ok_n > 0,
+            "imported": ok_n,
+            "failed": len(results) - ok_n,
+            "results": results,
+            "total": len(store.list_all()),
+        }, 200 if ok_n > 0 else 400)
 
     def log_message(self, fmt, *args):  # 收敛控制台噪音
         if self.path.startswith("/api/plan/stream"):
@@ -888,11 +981,32 @@ class ApiHandler(BaseHTTPRequestHandler):
                 payload["progress"] = progress_store.get_progress(course)
                 return self._send_json(payload)
 
+            if path == "/api/knowledge/capabilities":
+                # 前端据此置灰不支持的入口（例如没装 pypdf 时 PDF 不可用）
+                return self._send_json({"ok": True, **kb_capabilities()})
+
             if path == "/api/knowledge":
-                q = (query.get("q") or [""])[0]
+                q = (query.get("q") or [""])[0].strip()
                 store = KnowledgeStore()
-                items = store.search(q) if q else store.list_all()
-                return self._send_json({"items": items, "total": len(items)})
+                if not q:
+                    items = store.list_all()
+                    return self._send_json({"items": items, "total": len(items)})
+                # 打分检索：替代原来的「整句子串匹配」。
+                # 旧实现只有措辞和笔记原文高度一致才命中，口语化提问一律搜不到。
+                try:
+                    top_k = max(1, min(50, int((query.get("top_k") or ["20"])[0])))
+                except ValueError:
+                    top_k = 20
+                hits = store.retrieve(q, top_k=top_k)
+                items = []
+                for note, score, detail in hits:
+                    it = dict(note)
+                    it["_score"] = round(score, 2)
+                    it["_match"] = detail
+                    items.append(it)
+                return self._send_json({
+                    "items": items, "total": len(items), "query": q, "mode": "retrieve",
+                })
 
             if path == "/api/plan/stream":
                 return self._handle_stream(query)
@@ -905,9 +1019,34 @@ class ApiHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path.rstrip("/") or "/"
+
+        # ⚠️ 上传路由必须在 _read_body() 之前分流：
+        # _read_body() 会把请求体整个读走并尝试 JSON 解析，multipart 会被它丢掉。
+        if path == "/api/knowledge/import":
+            return self._handle_knowledge_import()
+
         body = self._read_body()
 
         try:
+            if path == "/api/knowledge":
+                # 粘贴文本入库（与上传导入共用分块 + 内容安全逻辑）
+                text = (body.get("content") or body.get("text") or "").strip()
+                if not text:
+                    return self._send_json({"ok": False, "error": "内容为空"}, 400)
+                if len(text) > 100_000:
+                    return self._send_json(
+                        {"ok": False, "error": "内容过长（上限 10 万字）"}, 400)
+                store = KnowledgeStore()
+                if len(store.list_all()) >= MAX_KB_NOTES:
+                    return self._send_json(
+                        {"ok": False, "error": "知识库已达上限 %d 条" % MAX_KB_NOTES}, 400)
+                tags = body.get("tags")
+                if isinstance(tags, str):
+                    tags = [t.strip() for t in tags.split(",") if t.strip()]
+                r = ingest_text(text, title=body.get("title"), tags=tags, store=store)
+                r["total"] = len(store.list_all())
+                return self._send_json(r, 200 if r.get("ok") else 400)
+
             if path == "/api/profile":
                 profile = {
                     "level": body.get("level", DEFAULT_PROFILE["level"]),
@@ -981,6 +1120,10 @@ class ApiHandler(BaseHTTPRequestHandler):
                     "type": "chat",
                     "answer": res.get("answer", ""),
                     "source": res.get("source", "llm"),
+                    # RAG 检索到的资料（id/title/score），供前端展示「参考资料」。
+                    # source 仍沿用 knowledge / llm 两值，前端标签不会落到兜底分支。
+                    "retrieved": res.get("retrieved") or [],
+                    "degraded": res.get("degraded"),
                 })
 
             if path == "/api/export":
@@ -1027,6 +1170,28 @@ class ApiHandler(BaseHTTPRequestHandler):
                 n = cache_store.clear_cache(body.get("course") or None)
                 return self._send_json({"ok": True, "cleared": n})
 
+            return self._send_json({"ok": False, "error": f"未知接口 {path}"}, 404)
+        except Exception as e:
+            traceback.print_exc()
+            return self._send_json({"ok": False, "error": str(e)}, 500)
+
+    # ---------- DELETE：知识库删条目 ----------
+    def do_DELETE(self):
+        parsed = urllib.parse.urlparse(self.path)
+        path = parsed.path.rstrip("/") or "/"
+        try:
+            if path.startswith("/api/knowledge/"):
+                raw_id = urllib.parse.unquote(path[len("/api/knowledge/"):])
+                try:
+                    note_id = int(raw_id)
+                except ValueError:
+                    return self._send_json({"ok": False, "error": "id 必须是数字"}, 400)
+                store = KnowledgeStore()
+                if not store.delete(note_id):
+                    return self._send_json({"ok": False, "error": "未找到该笔记"}, 404)
+                return self._send_json({
+                    "ok": True, "id": note_id, "total": len(store.list_all()),
+                })
             return self._send_json({"ok": False, "error": f"未知接口 {path}"}, 404)
         except Exception as e:
             traceback.print_exc()

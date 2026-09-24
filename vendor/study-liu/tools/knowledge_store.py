@@ -98,6 +98,29 @@ class KnowledgeStore:
         """返回所有笔记。"""
         return self._load()
 
+    def retrieve(self, query, top_k=5):
+        """
+        按相关性检索笔记：分词 → 字段加权 → 覆盖率打分 → 排序。
+
+        与 search() 的区别（这是解决「知识库优先演示不出来」的关键）：
+          search()   拿整句去 in —— 只有提问措辞与笔记原文高度一致才命中；
+          retrieve() 分词后按命中量打分 —— 口语化改写也能命中。
+
+        实测（线上 25 条真实语料）：「被拦截了怎么办」「缓存有什么用」
+        「画像怎么设置比较合适」「四段式链路都有哪些 Agent」这类提问，
+        search() 全部搜不到，retrieve() 都能把正确的笔记排到第一。
+
+        search() 保留不动，供桌面版与旧调用方兼容。
+
+        参数：
+            query: 用户问题（自然语言，可长可短）
+            top_k: 返回条数上限
+        返回：
+            [(note, score, detail), ...]，score 高者在前；无命中返回 []
+        """
+        from tools.text_match import rank
+        return rank(query, self._load(), top_k=top_k)
+
     def delete(self, note_id):
         """
         删除指定 id 的笔记。
