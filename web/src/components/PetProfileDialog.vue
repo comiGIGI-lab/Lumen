@@ -186,7 +186,7 @@ header {
   justify-content: space-between;
   padding: 14px 18px 12px;
   border-bottom: 1px solid var(--border);
-  background: linear-gradient(180deg, #fbf9f6, #fff);
+  background: linear-gradient(180deg, var(--bg-soft), var(--bg-card));
 }
 
 header h3 {

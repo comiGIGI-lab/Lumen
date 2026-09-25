@@ -63,7 +63,7 @@ defineProps({
   padding: 13px 16px;
   border-bottom: 1px solid var(--border);
   border-top: 3px solid var(--primary);
-  background: linear-gradient(180deg, #fbf9f6, #fff);
+  background: linear-gradient(180deg, var(--bg-soft), var(--bg-card));
 }
 
 .panel-title {

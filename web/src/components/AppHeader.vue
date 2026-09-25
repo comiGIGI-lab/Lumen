@@ -65,7 +65,7 @@ const emit = defineEmits([
   position: relative;
   z-index: 128;
   overflow: visible;
-  background: rgba(251, 249, 246, 0.92);
+  background: rgba(var(--bg-app-rgb), 0.92);
   color: var(--text-primary);
   border-bottom: 1px solid var(--border);
 }

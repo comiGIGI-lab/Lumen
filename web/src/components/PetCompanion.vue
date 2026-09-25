@@ -131,7 +131,7 @@ watch(levelStamp, () => {
 .hud {
   min-width: 108px;
   padding: 6px 8px 7px;
-  background: rgba(251, 249, 246, 0.92);
+  background: rgba(var(--bg-app-rgb), 0.92);
   border: 1px solid var(--border);
   border-radius: 4px;
   pointer-events: auto;
@@ -162,7 +162,7 @@ watch(levelStamp, () => {
 .bar {
   margin-top: 5px;
   height: 4px;
-  background: #e4ded5;
+  background: var(--border);
   overflow: visible;
 }
 

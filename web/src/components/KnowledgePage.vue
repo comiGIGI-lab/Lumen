@@ -578,7 +578,7 @@ th, td {
   font-size: 12px;
 }
 .fail {
-  background: #fdecee;
+  background: var(--primary-soft);
 }
 .st.ready { color: #2e7d32; }
 .st.parsing, .st.queue { color: var(--accent); }
@@ -687,7 +687,7 @@ th, td {
   text-align: center;
   cursor: pointer;
 }
-.drop.on { border-color: var(--accent); background: #ffe8d6; }
+.drop.on { border-color: var(--accent); background: var(--warning-soft); }
 .up { display: flex; flex-direction: column; gap: 10px; margin: 12px 0; }
 .up-meta { display: flex; justify-content: space-between; font-size: 12px; }
 /* 接真实后端后补的几条 */

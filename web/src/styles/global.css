@@ -11,6 +11,14 @@
   --bg-soft: #f8f3ec;
   --bg-disabled: #f1ece4;
 
+  /* 同色的 RGB 分量，供需要半透明的场合使用：
+       background: rgba(var(--bg-card-rgb), 0.86);
+     直接写死 rgba(255,255,255,.86) 在暗色下会永远发白 —— 这是 2026-09-25
+     暗色模式「只有一部分变深」的根因。 */
+  --bg-app-rgb: 251, 249, 246;
+  --bg-card-rgb: 255, 255, 255;
+  --bg-soft-rgb: 248, 243, 236;
+
   /* 品牌色：强调红，不再用 indigo 紫 */
   --grad-from: #e51520;
   --grad-to: #c4101a;
@@ -78,6 +86,10 @@
   --bg-hover: #262119;
   --bg-soft: #221e19;
   --bg-disabled: #2a251e;
+
+  --bg-app-rgb: 20, 18, 15;
+  --bg-card-rgb: 29, 26, 22;
+  --bg-soft-rgb: 34, 30, 25;
 
   --grad-from: #ff3b45;
   --grad-to: #d81b26;
@@ -250,7 +262,7 @@ a:hover {
 }
 
 .btn-accent:not(:disabled):hover {
-  background: #f8d7d9;
+  background: var(--primary-soft);
 }
 
 .btn-link {
@@ -354,7 +366,7 @@ a:hover {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #d2c9bc;
+  background: var(--border-strong);
   border-radius: 8px;
 }
 
@@ -487,7 +499,7 @@ a:hover {
 .md-body .md-code {
   font-family: var(--font-mono);
   font-size: 12px;
-  background: #f3eee6;
+  background: var(--bg-hover);
   border: 1px solid var(--border);
   border-radius: 4px;
   padding: 1px 5px;

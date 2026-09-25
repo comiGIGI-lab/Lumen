@@ -178,7 +178,7 @@ function confirm() {
 
 .go:disabled {
   border-color: var(--border);
-  background: #f1ece4;
+  background: var(--bg-disabled);
   color: #a39b92;
   box-shadow: none;
   cursor: default;

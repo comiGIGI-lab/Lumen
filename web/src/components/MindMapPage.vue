@@ -511,7 +511,7 @@ export default {
 .btn.sm { padding: 6px 12px; font-size: 12.5px; }
 
 .btn.danger { color: #b91c1c; border-color: #f3c4c7; }
-.btn.danger:hover:not(:disabled) { background: #fef2f2; }
+.btn.danger:hover:not(:disabled) { background: var(--error-soft); }
 
 /* ---------- 空态 ---------- */
 .empty {

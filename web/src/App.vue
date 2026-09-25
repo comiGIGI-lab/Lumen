@@ -974,7 +974,7 @@ const degradedBanner = computed(() => {
 .app.has-scene :deep(.pipeline),
 .app.has-scene :deep(.chat),
 .app.has-scene :deep(.panel) {
-  background: rgba(255, 255, 255, 0.86);
+  background: rgba(var(--bg-card-rgb), 0.86);
   backdrop-filter: blur(8px);
 }
 
@@ -1104,7 +1104,7 @@ const degradedBanner = computed(() => {
   place-items: center;
   font-weight: 800;
   font-size: 13px;
-  background: rgba(255, 255, 255, 0.7);
+  background: rgba(var(--bg-card-rgb), 0.7);
 }
 
 /* ---------- Toast ---------- */

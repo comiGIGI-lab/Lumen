@@ -108,7 +108,7 @@ onBeforeUnmount(() => {
   position: fixed;
   display: flex;
   flex-direction: column;
-  background: rgba(251, 249, 246, 0.94);
+  background: rgba(var(--bg-app-rgb), 0.94);
   border: 1px solid var(--border);
   border-radius: 14px;
   box-shadow: var(--shadow-btn);

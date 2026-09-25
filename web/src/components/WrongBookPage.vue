@@ -635,7 +635,7 @@ function resetFilter() {
 }
 
 .btn.danger:hover {
-  background: #fef2f2;
+  background: var(--error-soft);
 }
 
 /* ---------- 表单弹窗 ---------- */

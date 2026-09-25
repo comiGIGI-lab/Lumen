@@ -151,7 +151,7 @@ function onDismiss() {
 }
 
 .x:hover {
-  background: #f1ece4;
+  background: var(--bg-disabled);
   color: var(--text-primary);
 }
 

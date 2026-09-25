@@ -436,7 +436,7 @@ const dayNo = (item, i) => item?.day ?? i + 1
   width: 34px;
   height: 34px;
   border-radius: 50%;
-  background: #fee2e2;
+  background: var(--error-soft);
   color: #dc2626;
   display: flex;
   align-items: center;
@@ -487,14 +487,14 @@ const dayNo = (item, i) => item?.day ?? i + 1
   gap: 10px;
   padding: 12px 14px;
   border-radius: 10px;
-  background: #fef2f2;
+  background: var(--error-soft);
   border: 1px solid #fecaca;
   text-decoration: none;
   transition: background 0.15s;
 }
 
 .crisis-hotline:hover {
-  background: #fee2e2;
+  background: var(--error-soft);
 }
 
 .ch-name {

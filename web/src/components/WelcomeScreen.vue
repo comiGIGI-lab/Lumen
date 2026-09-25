@@ -680,7 +680,7 @@ function cardStyle(i) {
 }
 
 .wl-nav .nav-link {
-  background: rgba(255, 255, 255, 0.92);
+  background: rgba(var(--bg-card-rgb), 0.92);
 }
 
 @media (max-width: 430px) {

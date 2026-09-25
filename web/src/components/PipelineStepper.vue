@@ -204,7 +204,7 @@ function desc(key, stage) {
   background-image: linear-gradient(
     90deg,
     var(--grad-from) 0 6px,
-    rgba(255, 255, 255, 0.85) 6px 12px,
+    rgba(var(--bg-card-rgb), 0.85) 6px 12px,
     var(--grad-from) 12px 18px
   );
   background-size: 24px 100%;

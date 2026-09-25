@@ -209,7 +209,7 @@ const deadlineHint = computed(() => {
   width: 13px;
   height: 13px;
   border-radius: 50%;
-  border: 2px solid rgba(255, 255, 255, 0.5);
+  border: 2px solid rgba(var(--bg-card-rgb), 0.5);
   border-top-color: #fff;
   animation: spin 0.7s linear infinite;
 }

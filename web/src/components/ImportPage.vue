@@ -417,7 +417,7 @@ h2 { font-size: 32px; margin: 6px 0 10px; }
   text-align: center;
   cursor: pointer;
 }
-.drop.on { border-color: var(--accent); background: #ffe8d6; }
+.drop.on { border-color: var(--accent); background: var(--warning-soft); }
 .queue, .card, .done {
   margin-top: 16px;
   background: var(--bg-card);

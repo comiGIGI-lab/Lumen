@@ -66,7 +66,7 @@ const emit = defineEmits(['close'])
   gap: 12px;
   padding: 14px 18px;
   border-bottom: 1px solid var(--border);
-  background: linear-gradient(180deg, #fbf9f6, #fff);
+  background: linear-gradient(180deg, var(--bg-soft), var(--bg-card));
 }
 
 .dlg-title {
