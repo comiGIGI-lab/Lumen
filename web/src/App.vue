@@ -30,14 +30,40 @@ import ExportPreview from './components/ExportPreview.vue'
 import { usePlanStream } from './composables/usePlanStream'
 import { useSpace } from './composables/useSpace'
 import { useStudyTimer } from './composables/useStudyTimer'
+import { usePet } from './composables/usePet'
 import { api } from './api/client'
+import PetGuide from './components/PetGuide.vue'
+import PetCompanion from './components/PetCompanion.vue'
+import TourDialog from './components/TourDialog.vue'
 
 // ---------- 基础状态 ----------
 const booted = ref(false)
 
-// ---------- 首访欢迎层 ----------
-// 首访（localStorage 无标记）显示 WelcomeScreen；深链（?course= / ?auto=1）不弹，
-// 避免打断可分享的演示链接；?welcome=1 可强制重新打开（演示 / 截图用）。
+// ---------- 角色引导 + 首访欢迎层 ----------
+// 没选过宠物（zjxt.pet）先出 PetGuide；选完再出 WelcomeScreen。
+// zjxt.welcomed 只归欢迎层。?welcome=1 强制欢迎层，不让引导页挡住拍摄。
+function hasPetSaved() {
+  try {
+    const raw = localStorage.getItem('zjxt.pet')
+    if (!raw) return false
+    const data = JSON.parse(raw)
+    return !!(data && data.id)
+  } catch (_) {
+    return false
+  }
+}
+
+function shouldShowGuide() {
+  try {
+    const qs = new URLSearchParams(window.location.search)
+    if (qs.get('welcome') === '1') return false
+    if (qs.get('course') || qs.get('auto') === '1') return false
+    return !hasPetSaved()
+  } catch (_) {
+    return false
+  }
+}
+
 function shouldShowWelcome() {
   try {
     const qs = new URLSearchParams(window.location.search)
@@ -49,7 +75,14 @@ function shouldShowWelcome() {
     return false
   }
 }
-const showWelcome = ref(shouldShowWelcome())
+const showGuide = ref(shouldShowGuide())
+const showWelcome = ref(shouldShowWelcome() && !showGuide.value)
+
+function onGuideDone() {
+  showGuide.value = false
+  showWelcome.value = shouldShowWelcome()
+  if (showWelcome.value) notify({ type: 'success', text: '这是你的学伴宠物' })
+}
 
 function onWelcomeDone() {
   try {
@@ -58,7 +91,37 @@ function onWelcomeDone() {
     /* 存不上也不阻塞进入 */
   }
   showWelcome.value = false
+  // 首访进主应用：宠物已选且没看过指引才弹（每次加载只自动弹一次）
+  maybeShowTour()
 }
+
+// ---------- 首访新手指引弹窗 ----------
+const showTour = ref(false)
+let tourAutoShown = false
+function maybeShowTour() {
+  if (tourAutoShown) return
+  if (!hasPetSaved()) return
+  if (localStorage.getItem('zjxt.tour_done') === 'true') return
+  tourAutoShown = true
+  showTour.value = true
+}
+function onTourClose() {
+  showTour.value = false
+}
+function onTourDismiss() {
+  try {
+    localStorage.setItem('zjxt.tour_done', 'true')
+  } catch (_) {
+    /* 存不上也不阻塞 */
+  }
+  showTour.value = false
+}
+// 设置里手动触发：重新打开但不写 zjxt.tour_done
+function openTour() {
+  showTour.value = true
+}
+
+const { displayName } = usePet()
 
 const { applyLayout, layoutMode } = useSpace()
 const { scene: activeScene } = useStudyTimer()
@@ -114,7 +177,7 @@ function currentSpaceLayout() {
 watch(
   [showWelcome, appView],
   () => {
-    document.body.style.overflow = showWelcome.value ? 'hidden' : ''
+    document.body.style.overflow = showWelcome.value || showGuide.value ? 'hidden' : ''
     const mode = currentSpaceLayout()
     if (layoutMode.value !== mode) applyLayout(mode)
   },
@@ -266,6 +329,9 @@ onMounted(async () => {
     statusTone.value = 'warn'
     statusText.value = '⚠ 当前是 LLM 模式但还没填 API Key —— 请在这里填入你自己的 Key'
   }
+
+  // 首访新手指引：宠物已选且没看过才弹（每次加载只自动弹一次）
+  maybeShowTour()
 })
 
 // ---------- 交互 ----------
@@ -420,7 +486,11 @@ const degradedBanner = computed(() => {
 <template>
   <div class="app" :class="{ 'has-scene': !!activeScene }">
     <SceneBackdrop v-if="appView !== 'study'" :scene="activeScene" />
-    <SpaceLayer />
+    <SpaceLayer v-show="!showGuide" />
+    <PetCompanion :visible="!showGuide && !showWelcome" />
+
+    <!-- 角色引导：没选过宠物先选化身 -->
+    <PetGuide v-if="showGuide" @done="onGuideDone" />
 
     <!-- 首访欢迎层：关闭后进入下方工具界面 -->
     <WelcomeScreen
@@ -567,6 +637,14 @@ const degradedBanner = computed(() => {
       :mode="mode"
       @close="showSettings = false"
       @saved="onSettingsSaved"
+      @show-tour="openTour"
+    />
+
+    <TourDialog
+      :open="showTour"
+      :pet-name="displayName"
+      @close="onTourClose"
+      @dismiss="onTourDismiss"
     />
 
     <HistoryDialog

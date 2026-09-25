@@ -19,7 +19,7 @@ const props = defineProps({
   mode: { type: Object, default: () => ({}) },
 })
 
-const emit = defineEmits(['close', 'saved'])
+const emit = defineEmits(['close', 'saved', 'show-tour'])
 
 /** 平台预设 —— 与桌面版 ui/settings_dialog.py 的 PLATFORMS 一一对应 */
 const PLATFORMS = [
@@ -341,6 +341,9 @@ async function clearCache() {
     <template #footer>
       <button class="btn btn-ghost foot-left" type="button" @click="ui.showHelp = !ui.showHelp">
         {{ ui.showHelp ? '收起说明' : '? 使用说明' }}
+      </button>
+      <button class="btn btn-ghost" type="button" @click="emit('show-tour')">
+        查看新手指引
       </button>
       <button class="btn btn-ghost" type="button" :disabled="ui.busy" @click="clearCache">
         清空缓存
