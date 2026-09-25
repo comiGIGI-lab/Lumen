@@ -4,7 +4,7 @@ import { useI18n } from '@/i18n'
  * StatusBar —— 固定底部状态栏（与桌面版一致，不参与滚动）
  */
 defineProps({
-  text: { type: String, default: '就绪' },
+  text: { type: String, default: '' },
   tone: { type: String, default: 'normal' }, // normal | warn | error | success
   stats: { type: Object, default: null },
   duration: { type: Number, default: 0 },
@@ -18,7 +18,7 @@ const { t } = useI18n()
   <footer class="status" :class="`t-${tone}`">
     <div class="left">
       <span class="bullet"></span>
-      <span class="msg">{{ text }}</span>
+      <span class="msg">{{ text || t('status.ready') }}</span>
       <span class="motto" title="LUMEN, Latin for light. ZhiShiYouFang: where the light reaches, learning finds its way.">{{ t('statusBar.1') }}</span>
     </div>
 

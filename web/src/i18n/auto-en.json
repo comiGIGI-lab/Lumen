@@ -502,5 +502,9 @@
   "stage.reviewerDesc": "Auto-retry once if it falls short",
   "stage.running": "{title} in progress…",
   "stage.generated": "{title} generated ({n})",
-  "stage.done": "{title} done"
+  "stage.done": "{title} done",
+  "stage.plannerEmpty": "Enter a course name and click Generate plan — Planner will produce the chapter structure",
+  "stage.writerEmpty": "Writer will schedule daily study tasks from the outline and your profile",
+  "status.ready": "Ready",
+  "status.readyDetail": "Ready · {label} | study-liu backend mounted"
 }

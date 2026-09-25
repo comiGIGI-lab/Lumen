@@ -124,7 +124,7 @@ const dayNo = (item, i) => item?.day ?? i + 1
       unit="章"
       :count="outline.length"
       :loading="loading"
-      empty-text="输入课程名并点击「生成方案」，Planner 会输出章节结构"
+      :empty-text="t('stage.plannerEmpty')"
       accent="#e51520"
     >
       <div
@@ -176,7 +176,7 @@ const dayNo = (item, i) => item?.day ?? i + 1
       </div>
 
       <template #footer>
-        来源：{{ result?.degraded ? t('resultsGridX.2') : 'Searcher Agent' }}
+        {{ t('src.label') }}{{ result?.degraded ? t('resultsGridX.2') : 'Searcher Agent' }}
         <span class="res-disclaimer">{{ t('resultsGrid.10') }}</span>
       </template>
     </ResultPanel>
@@ -188,7 +188,7 @@ const dayNo = (item, i) => item?.day ?? i + 1
       unit="天"
       :count="planItems.length"
       :loading="loading"
-      empty-text="Writer 会结合大纲与用户画像编排每日学习任务"
+      :empty-text="t('stage.writerEmpty')"
       accent="#c4101a"
     >
       <div

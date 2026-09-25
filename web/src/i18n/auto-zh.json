@@ -502,5 +502,9 @@
   "stage.reviewerDesc": "不达标自动重跑一轮",
   "stage.running": "{title}处理中…",
   "stage.generated": "{title}已生成（{n}）",
-  "stage.done": "{title}已完成"
+  "stage.done": "{title}已完成",
+  "stage.plannerEmpty": "输入课程名并点击「生成方案」，Planner 会输出章节结构",
+  "stage.writerEmpty": "Writer 会结合大纲与用户画像编排每日学习任务",
+  "status.ready": "就绪",
+  "status.readyDetail": "就绪 · {label} ｜ 后端已挂载 study-liu 源码"
 }

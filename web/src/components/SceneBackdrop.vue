@@ -64,15 +64,28 @@ function rotateCell(x, y, times) {
 }
 
 function paintIdle(ctx, w, h, t) {
-  ctx.fillStyle = '#FBF9F6'
+  // 按当前主题取色：浅色用米底 + 浅色粒子，暗色用深墨底 + 低透明白粒子。
+  // 每帧读一次 data-theme 很便宜，且主题切换后下一帧自动换色，无需监听。
+  const dark = typeof document !== 'undefined'
+    && document.documentElement.dataset.theme === 'dark'
+  const bg = dark ? '#14120f' : '#FBF9F6'
+  const FILLS_DARK = [
+    'rgba(255, 59, 69, 0.20)',
+    'rgba(255, 59, 69, 0.13)',
+    'rgba(236, 231, 224, 0.10)',
+    'rgba(185, 177, 167, 0.14)',
+    'rgba(255, 59, 69, 0.16)',
+    'rgba(236, 231, 224, 0.12)',
+  ]
+  ctx.fillStyle = bg
   ctx.fillRect(0, 0, w, h)
   const mist = ctx.createRadialGradient(w * 0.7, h * 0.18, 20, w * 0.7, h * 0.18, Math.max(w, h) * 0.62)
-  mist.addColorStop(0, 'rgba(229, 21, 32, 0.06)')
-  mist.addColorStop(1, 'rgba(251, 249, 246, 0)')
+  mist.addColorStop(0, dark ? 'rgba(255, 59, 69, 0.10)' : 'rgba(229, 21, 32, 0.06)')
+  mist.addColorStop(1, dark ? 'rgba(20, 18, 15, 0)' : 'rgba(251, 249, 246, 0)')
   ctx.fillStyle = mist
   ctx.fillRect(0, 0, w, h)
 
-  idlePieces.forEach((p) => {
+  idlePieces.forEach((p, idx) => {
     const cell = Math.min(w, h) * p.s
     const dx = Math.sin(t * p.speed + p.phase) * 28
     const dy = Math.cos(t * p.speed * 0.82 + p.phase) * 22
@@ -82,10 +95,10 @@ function paintIdle(ctx, w, h, t) {
     ctx.save()
     ctx.translate(x, y)
     ctx.rotate(Math.sin(t * p.rot + p.phase) * 0.18)
-    ctx.shadowColor = 'rgba(229, 21, 32, 0.18)'
+    ctx.shadowColor = dark ? 'rgba(255, 59, 69, 0.28)' : 'rgba(229, 21, 32, 0.18)'
     ctx.shadowBlur = 22
-    ctx.fillStyle = p.fill
-    ctx.strokeStyle = 'rgba(229, 21, 32, 0.16)'
+    ctx.fillStyle = dark ? FILLS_DARK[idx % FILLS_DARK.length] : p.fill
+    ctx.strokeStyle = dark ? 'rgba(255, 59, 69, 0.22)' : 'rgba(229, 21, 32, 0.16)'
     ctx.lineWidth = 1
     cells.forEach(([cx, cy]) => {
       const [rx, ry] = rotateCell(cx, cy, p.spin)
@@ -297,10 +310,10 @@ onBeforeUnmount(() => {
   position: absolute;
   inset: 0;
   z-index: 3;
-  background: rgba(251, 249, 246, 0.18);
+  background: rgba(var(--bg-app-rgb), 0.18);
 }
 
 .scrim.scene {
-  background: rgba(251, 249, 246, 0.28);
+  background: rgba(var(--bg-app-rgb), 0.28);
 }
 </style>

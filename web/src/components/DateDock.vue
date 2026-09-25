@@ -96,7 +96,7 @@ const { t } = useI18n()
       :value="dateNotes[selected] || ''"
       rows="3"
       maxlength="400"
-      placeholder="这一天的备忘"
+      :placeholder="t('dateDock.1')"
       @input="onNote"
     />
   </div>

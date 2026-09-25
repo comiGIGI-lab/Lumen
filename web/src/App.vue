@@ -10,6 +10,8 @@
  * 前端只做展示与交互。
  */
 import { computed, onMounted, ref, watch } from 'vue'
+import { useI18n } from '@/i18n'
+const { t } = useI18n()
 import AppHeader from './components/AppHeader.vue'
 import WelcomeScreen from './components/WelcomeScreen.vue'
 import PipelineStepper from './components/PipelineStepper.vue'
@@ -360,7 +362,7 @@ watch(spacePanelOpen, (v) => {
 })
 
 // ---------- 状态栏 ----------
-const statusText = ref('就绪')
+const statusText = ref(t('status.ready'))
 const statusTone = ref('normal')
 
 // ---------- Toast ----------
@@ -442,7 +444,7 @@ async function loadBootstrap() {
     suggestedDays.value = data.suggested_days || 7
     sourceDir.value = data.source_dir || ''
     traceFile.value = data.trace_file || ''
-    statusText.value = `就绪 · ${data.mode?.label || ''} ｜ 后端已挂载 study-liu 源码`
+    statusText.value = t('status.readyDetail', { label: data.mode?.label || '' })
     // LLM 模式却没 Key：不主动提示的话，用户只能看着「LLM 模式」角标
     // 却不知道去哪儿填自己的 API Key（之前就是这样，体验很差）
     needsKey.value = !!data.mode && data.mode.mode !== 'mock' && !data.mode.has_key
@@ -706,6 +708,7 @@ const degradedBanner = computed(() => {
     detail: `${agents} 走了内置模板兜底（原因：${d.error}）。请检查 API Key / 网络 / 账户余额后重新生成。`,
   }
 })
+
 </script>
 
 <template>
@@ -819,12 +822,8 @@ const degradedBanner = computed(() => {
       <!-- 生成选项 -->
       <div class="opts">
         <label class="check">
-          <input v-model="useCache" type="checkbox" :disabled="busy" />
-          允许命中结果缓存（同一课程 + 同一画像 24 小时内不重复调用大模型）
-        </label>
-        <span v-if="usedFallback" class="chip chip-warn">
-          当前使用非流式模式（SSE 不可用，已自动降级）
-        </span>
+          <input v-model="useCache" type="checkbox" :disabled="busy" />{{ t('app.1') }}</label>
+        <span v-if="usedFallback" class="chip chip-warn">{{ t('app.2') }}</span>
         <span v-if="sourceDir" class="src-path" :title="sourceDir">
           业务逻辑来源：{{ sourceDir }}
         </span>
@@ -851,7 +850,7 @@ const degradedBanner = computed(() => {
       <div v-if="error" class="banner err">
         <span class="b-ico">✗</span>
         <div>
-          <b>链路执行失败</b>
+          <b>{{ t('app.3') }}</b>
           <p>{{ error }}</p>
         </div>
       </div>
@@ -868,10 +867,10 @@ const degradedBanner = computed(() => {
 
       <div v-if="canExportPlan()" class="export-bar">
         <div>
-          <p class="export-title">导出方案</p>
-          <p class="export-desc">先打开固定排版的讲义预览，再选择 Markdown、打印为 PDF，或查看 Word 入口。</p>
+          <p class="export-title">{{ t('app.4') }}</p>
+          <p class="export-desc">{{ t('app.5') }}</p>
         </div>
-        <button type="button" class="btn btn-primary" @click="openExport">导出方案</button>
+        <button type="button" class="btn btn-primary" @click="openExport">{{ t('app.6') }}</button>
       </div>
 
       <!-- ④ 课程问答 -->
