@@ -197,7 +197,9 @@ from tools.user_profile import (                                    # noqa: E402
     format_profile_text, load_profile, save_profile, suggest_plan_length,
 )
 from tools.markdown_export import render_plan_markdown, suggest_filename   # noqa: E402
+from tools.docx_export import render_plan_docx, suggest_docx_filename      # noqa: E402
 from tools import progress_store                                    # noqa: E402
+from tools import wrong_book_store                                  # noqa: E402
 from tools import cache_store                                       # noqa: E402
 from tools.knowledge_store import KnowledgeStore                    # noqa: E402
 from core.paths import data_dir as _data_dir                        # noqa: E402
@@ -575,9 +577,28 @@ def bootstrap(client_id: str = "") -> dict:
 
 
 def normalize_plan_items(plan) -> list:
-    """把 plan 归一化成 {day,title,chapters,tasks}，与桌面版 plan_normalize 同源。"""
-    from tools.plan_normalize import normalize_plan as _np
-    return _np(plan)
+    """把 plan 归一化成 {day,title,chapters,tasks}，与桌面版 plan_normalize 同源。
+
+    额外挂一个 `_idx`：该项在**原始 plan 列表**里的下标（0 基）。
+
+    为什么需要它：进度勾选（/api/progress/done）的 index 是按原始 plan 编的
+    （见 tools/progress_store._plan_to_progress），而归一化会跳过 None / 空白项，
+    一旦 plan 里存在空项，两边下标就会错位 —— 勾了 Day 3 却存到 Day 4。
+    所以前端必须用 `_idx`，不能用渲染序号。
+    """
+    from tools.plan_normalize import normalize_day as _nd
+    if not isinstance(plan, list):
+        return []
+    items = []
+    for i, day in enumerate(plan):
+        if day is None:
+            continue
+        if isinstance(day, str) and not day.strip():
+            continue
+        item = _nd(day, i + 1)
+        item["_idx"] = i
+        items.append(item)
+    return items
 
 
 def build_payload(course: str, result: dict, duration_ms: int) -> dict:
@@ -774,6 +795,9 @@ class ApiHandler(BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type, X-Client-Id")
+        # 跨域下前端默认读不到 Content-Disposition，导出时拿不到文件名；
+        # 显式放行这个响应头，前端就能用后端定的文件名。
+        self.send_header("Access-Control-Expose-Headers", "Content-Disposition")
 
     def _send_json(self, obj, status: int = 200):
         body = _j(obj)
@@ -793,6 +817,27 @@ class ApiHandler(BaseHTTPRequestHandler):
         self._cors()
         self.end_headers()
         self.wfile.write(body)
+
+    def _send_binary(self, data: bytes, content_type: str,
+                     filename: str = "", status: int = 200):
+        """发送二进制响应（Word 导出用）。
+
+        filename 非空时带下载头。中文文件名必须走 RFC 5987 的 filename* 形式，
+        否则浏览器会拿到乱码；同时保留一个 ASCII 的 filename 兜底给老浏览器。
+        """
+        self.send_response(status)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(data)))
+        if filename:
+            ascii_name = filename.encode("ascii", "ignore").decode("ascii") or "plan.docx"
+            self.send_header(
+                "Content-Disposition",
+                "attachment; filename=\"%s\"; filename*=UTF-8''%s"
+                % (ascii_name, urllib.parse.quote(filename)),
+            )
+        self._cors()
+        self.end_headers()
+        self.wfile.write(data)
 
     def _read_body(self) -> dict:
         try:
@@ -984,6 +1029,53 @@ class ApiHandler(BaseHTTPRequestHandler):
                 payload["progress"] = progress_store.get_progress(course)
                 return self._send_json(payload)
 
+            if path == "/api/progress/overview":
+                # 学情面板：该浏览器名下所有课程的勾选完成度汇总。
+                # progress.json 全局共享，所以仍要按 client 过滤（同 /api/history）。
+                allowed = client_courses(self._client_id(query))
+                rows = []
+                for c in progress_store.list_courses():
+                    name = c.get("course")
+                    if name not in allowed:
+                        continue
+                    d, t, r = progress_store.get_stats(name)
+                    rows.append({
+                        "course": name,
+                        "done": d,
+                        "total": t,
+                        "ratio": round(r, 4),
+                        "created_at": c.get("created_at", ""),
+                        "last_seen_at": c.get("last_seen_at", ""),
+                    })
+                total_done = sum(x["done"] for x in rows)
+                total_all = sum(x["total"] for x in rows)
+                return self._send_json({
+                    "ok": True,
+                    "courses": rows,
+                    "summary": {
+                        "courses": len(rows),
+                        "done": total_done,
+                        "total": total_all,
+                        "ratio": round(total_done / total_all, 4) if total_all else 0.0,
+                    },
+                })
+
+            if path == "/api/wrongbook":
+                cid = self._client_id(query)
+                items = wrong_book_store.list_items(
+                    cid,
+                    course=(query.get("course") or [""])[0].strip() or None,
+                    keyword=(query.get("q") or [""])[0].strip() or None,
+                    status=(query.get("status") or [""])[0].strip() or None,
+                )
+                return self._send_json({
+                    "ok": True,
+                    "items": items,
+                    "total": len(items),
+                    "stats": wrong_book_store.stats(cid),
+                    "courses": wrong_book_store.courses(cid),
+                })
+
             if path == "/api/knowledge/capabilities":
                 # 前端据此置灰不支持的入口（例如没装 pypdf 时 PDF 不可用）
                 return self._send_json({"ok": True, **kb_capabilities()})
@@ -1151,9 +1243,25 @@ class ApiHandler(BaseHTTPRequestHandler):
 
             if path == "/api/export":
                 course = (body.get("course") or "").strip()
+                fmt = (body.get("format") or "markdown").strip().lower()
                 result = body.get("result") or progress_store.load_result(course)
                 if not result:
                     return self._send_json({"ok": False, "error": "没有可导出的方案"}, 400)
+                # Word：直接回二进制流（浏览器按 Content-Disposition 落盘），
+                # 不走 JSON——docx 是 zip，塞进 JSON 还得 base64，白白涨 33%。
+                if fmt in ("docx", "word"):
+                    try:
+                        blob = render_plan_docx(result, course=course or None)
+                    except Exception as e:
+                        traceback.print_exc()
+                        return self._send_json(
+                            {"ok": False, "error": "Word 生成失败：%s" % e}, 500)
+                    return self._send_binary(
+                        blob,
+                        "application/vnd.openxmlformats-officedocument"
+                        ".wordprocessingml.document",
+                        suggest_docx_filename(course or "学习方案"),
+                    )
                 md = render_plan_markdown(result, course=course or None)
                 return self._send_json({
                     "ok": True,
@@ -1189,6 +1297,81 @@ class ApiHandler(BaseHTTPRequestHandler):
                 save_settings(provider, api_key, base_url, model)
                 return self._send_json({"ok": True, "mode": mode_info()})
 
+            if path == "/api/progress/done":
+                # 勾选/取消勾选大纲或计划里的某一项。
+                # 底层 progress_store.set_done() 在桌面版就写好了，只是从来没有路由调它。
+                course = (body.get("course") or "").strip()
+                kind = (body.get("kind") or "").strip()
+                if not course or kind not in ("outline", "plan"):
+                    return self._send_json(
+                        {"ok": False, "error": "需要 course 与 kind（outline/plan）"}, 400)
+                try:
+                    index = int(body.get("index"))
+                except (TypeError, ValueError):
+                    return self._send_json(
+                        {"ok": False, "error": "index 必须是整数"}, 400)
+                if not progress_store.set_done(course, kind, index, bool(body.get("done"))):
+                    return self._send_json(
+                        {"ok": False, "error": "未找到该课程或该项越界"}, 404)
+                done, total, ratio = progress_store.get_stats(course)
+                return self._send_json({
+                    "ok": True,
+                    "progress": progress_store.get_progress(course),
+                    "stats": {"done": done, "total": total, "ratio": round(ratio, 4)},
+                })
+
+            if path == "/api/wrongbook":
+                cid = self._client_id()
+                try:
+                    item = wrong_book_store.add_item(
+                        cid,
+                        course=body.get("course") or "",
+                        question=body.get("question") or "",
+                        my_answer=body.get("my_answer") or "",
+                        answer=body.get("answer") or "",
+                        reason=body.get("reason") or "",
+                        tags=body.get("tags"),
+                        source=body.get("source") or "manual",
+                    )
+                except ValueError as e:
+                    return self._send_json({"ok": False, "error": str(e)}, 400)
+                if not item:
+                    return self._send_json({"ok": False, "error": "题干不能为空"}, 400)
+                return self._send_json({
+                    "ok": True, "item": item,
+                    "stats": wrong_book_store.stats(cid),
+                    "courses": wrong_book_store.courses(cid),
+                })
+
+            if path.startswith("/api/wrongbook/"):
+                cid = self._client_id()
+                raw_id = urllib.parse.unquote(path[len("/api/wrongbook/"):])
+                try:
+                    item_id = int(raw_id)
+                except ValueError:
+                    return self._send_json({"ok": False, "error": "id 必须是数字"}, 400)
+
+                # review=true 走「记一次复习」分支（可同时带 mastered 改掌握状态）
+                if body.get("review"):
+                    item = wrong_book_store.review_item(
+                        cid, item_id, mastered=body.get("mastered"))
+                else:
+                    fields = {
+                        k: body[k] for k in
+                        ("course", "question", "my_answer", "answer",
+                         "reason", "tags", "mastered")
+                        if k in body
+                    }
+                    item = wrong_book_store.update_item(cid, item_id, **fields)
+
+                if not item:
+                    return self._send_json(
+                        {"ok": False, "error": "未找到该错题（或题干被清空）"}, 404)
+                return self._send_json({
+                    "ok": True, "item": item,
+                    "stats": wrong_book_store.stats(cid),
+                })
+
             if path == "/api/cache/clear":
                 n = cache_store.clear_cache(body.get("course") or None)
                 return self._send_json({"ok": True, "cleared": n})
@@ -1203,6 +1386,21 @@ class ApiHandler(BaseHTTPRequestHandler):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path.rstrip("/") or "/"
         try:
+            if path.startswith("/api/wrongbook/"):
+                cid = self._client_id()
+                raw_id = urllib.parse.unquote(path[len("/api/wrongbook/"):])
+                try:
+                    item_id = int(raw_id)
+                except ValueError:
+                    return self._send_json({"ok": False, "error": "id 必须是数字"}, 400)
+                if not wrong_book_store.delete_item(cid, item_id):
+                    return self._send_json({"ok": False, "error": "未找到该错题"}, 404)
+                return self._send_json({
+                    "ok": True, "id": item_id,
+                    "stats": wrong_book_store.stats(cid),
+                    "courses": wrong_book_store.courses(cid),
+                })
+
             if path.startswith("/api/knowledge/"):
                 raw_id = urllib.parse.unquote(path[len("/api/knowledge/"):])
                 try:

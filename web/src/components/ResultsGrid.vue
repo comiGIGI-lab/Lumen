@@ -9,13 +9,34 @@ import ResultPanel from './ResultPanel.vue'
 const props = defineProps({
   result: { type: Object, default: null },
   loading: { type: Boolean, default: false },
+  /** 学习进度：{outline:[{title,done}], plan:[{title,done}]}，索引与 result 一一对应 */
+  progress: { type: Object, default: () => ({ outline: [], plan: [] }) },
 })
 
-const emit = defineEmits(['copy-outline', 'copy-plan'])
+const emit = defineEmits(['copy-outline', 'copy-plan', 'toggle-progress'])
 
 const outline = computed(() => props.result?.outline || [])
 const resources = computed(() => props.result?.resources || [])
 const planItems = computed(() => props.result?.plan_items || [])
+
+/** 该项是否已勾选 */
+function isDone(kind, index) {
+  const list = props.progress?.[kind] || []
+  return !!list[index]?.done
+}
+
+/**
+ * 计划项在**原始 plan** 里的下标。
+ * 归一层会跳过 None / 空白项，所以渲染序号可能和进度索引错位 ——
+ * 后端在 plan_items 上挂了 `_idx`，优先用它。
+ */
+function planIndex(item, i) {
+  return typeof item?._idx === 'number' ? item._idx : i
+}
+
+function onToggle(kind, index, e) {
+  emit('toggle-progress', { kind, index, done: e.target.checked })
+}
 
 // ---- B30 危机干预：后端返回 type=crisis 时不渲染三栏结果，改展示热线卡片 ----
 const isCrisis = computed(() => props.result?.type === 'crisis')
@@ -86,7 +107,19 @@ const dayNo = (item, i) => item?.day ?? i + 1
       empty-text="输入课程名并点击「生成方案」，Planner 会输出章节结构"
       accent="#e51520"
     >
-      <div v-for="(ch, i) in outline" :key="i" class="outline-item">
+      <div
+        v-for="(ch, i) in outline"
+        :key="i"
+        class="outline-item"
+        :class="{ done: isDone('outline', i) }"
+      >
+        <label class="pick" title="标记这一章已学完">
+          <input
+            type="checkbox"
+            :checked="isDone('outline', i)"
+            @change="onToggle('outline', i, $event)"
+          />
+        </label>
         <span class="outline-no">{{ String(i + 1).padStart(2, '0') }}</span>
         <span class="outline-text">{{ ch }}</span>
       </div>
@@ -133,7 +166,19 @@ const dayNo = (item, i) => item?.day ?? i + 1
       empty-text="Writer 会结合大纲与用户画像编排每日学习任务"
       accent="#c4101a"
     >
-      <div v-for="(item, i) in planItems" :key="i" class="plan-item">
+      <div
+        v-for="(item, i) in planItems"
+        :key="i"
+        class="plan-item"
+        :class="{ done: isDone('plan', planIndex(item, i)) }"
+      >
+        <label class="pick" title="标记这一天已完成">
+          <input
+            type="checkbox"
+            :checked="isDone('plan', planIndex(item, i))"
+            @change="onToggle('plan', planIndex(item, i), $event)"
+          />
+        </label>
         <div class="plan-day">Day {{ dayNo(item, i) }}</div>
         <div class="plan-body">
           <p class="plan-task">{{ item.title }}</p>
@@ -160,6 +205,36 @@ const dayNo = (item, i) => item?.day ?? i + 1
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 14px;
+}
+
+/* ---------- 勾选框（学习进度） ---------- */
+.pick {
+  flex: none;
+  display: flex;
+  align-items: center;
+  min-height: 22px;
+  cursor: pointer;
+}
+
+.pick input {
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  cursor: pointer;
+  accent-color: var(--primary);
+}
+
+/* 已完成项压暗 + 划线，一眼看出还剩多少 */
+.outline-item.done,
+.plan-item.done {
+  opacity: 0.6;
+}
+
+.outline-item.done .outline-text,
+.plan-item.done .plan-task,
+.plan-item.done .plan-tasks {
+  text-decoration: line-through;
+  text-decoration-color: var(--text-faint);
 }
 
 /* ---------- 大纲 ---------- */

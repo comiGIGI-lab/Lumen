@@ -1,8 +1,8 @@
 <script setup>
 /**
  * ExportPreview —— 学习方案讲义预览
- * 封面 + 大纲 / 资源 / 计划，固定顺序。Markdown 走现有 /api/export；
- * PDF 用浏览器打印；Word 后端未接，按钮可见但标明暂不可用。
+ * 封面 + 大纲 / 资源 / 计划，固定顺序。Markdown 与 Word 都走 /api/export
+ * （用 format 区分，Word 回的是 .docx 二进制流）；PDF 用浏览器打印。
  */
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { api } from '@/api/client'
@@ -18,6 +18,7 @@ const emit = defineEmits(['close'])
 
 const mdBusy = ref(false)
 const mdHint = ref('')
+const wordBusy = ref(false)
 
 function pad(n) {
   return String(n).padStart(2, '0')
@@ -129,6 +130,25 @@ async function onMarkdown() {
   }
 }
 
+async function onWord() {
+  if (!props.result?.course || wordBusy.value) return
+  wordBusy.value = true
+  mdHint.value = '正在生成 Word 文档'
+  try {
+    const { blob, filename } = await api.exportDocx(props.result.course, props.result)
+    download(
+      filename,
+      blob,
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    )
+    mdHint.value = `已下载 ${filename}`
+  } catch (e) {
+    mdHint.value = `导出失败：${e.message}`
+  } finally {
+    wordBusy.value = false
+  }
+}
+
 function onPdf() {
   window.print()
 }
@@ -172,12 +192,9 @@ onBeforeUnmount(() => {
             {{ mdBusy ? '导出中' : '下载 Markdown' }}
           </button>
           <button type="button" class="btn btn-ghost" @click="onPdf">打印为 PDF</button>
-          <span class="word-wrap">
-            <button type="button" class="btn btn-ghost" disabled title="后端尚未提供 Word 导出">
-              下载 Word
-            </button>
-            <span class="word-note">暂不可用，接口尚未接入</span>
-          </span>
+          <button type="button" class="btn btn-ghost" :disabled="wordBusy" @click="onWord">
+            {{ wordBusy ? '生成中' : '下载 Word' }}
+          </button>
           <button type="button" class="btn btn-ghost" @click="emit('close')">关闭</button>
         </div>
         <p v-if="mdHint" class="chrome-status">{{ mdHint }}</p>

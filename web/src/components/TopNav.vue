@@ -17,7 +17,9 @@ const emit = defineEmits([
   'open-knowledge',
   'open-import',
   'open-chat',
+  'open-wrongbook',
   'open-study',
+  'open-progress',
   'open-settings',
   'open-history',
   'open-trace',
@@ -78,6 +80,12 @@ onBeforeUnmount(() => {
     <button
       type="button"
       class="nav-link"
+      :class="{ on: current === 'wrongbook' }"
+      @click="emit('open-wrongbook')"
+    >错题本</button>
+    <button
+      type="button"
+      class="nav-link"
       :class="{ on: current === 'study' }"
       @click="emit('open-study')"
     >自习空间</button>
@@ -97,6 +105,7 @@ onBeforeUnmount(() => {
           AI 模型设置
           <em v-if="needsKey">填入 API Key</em>
         </button>
+        <button type="button" role="menuitem" @click="pick('open-progress')">学习进度</button>
         <button type="button" role="menuitem" @click="pick('open-history')">历史</button>
         <button type="button" role="menuitem" @click="pick('open-trace')">日志</button>
       </div>

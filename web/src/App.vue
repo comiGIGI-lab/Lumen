@@ -26,6 +26,8 @@ import KnowledgePage from './components/KnowledgePage.vue'
 import ImportPage from './components/ImportPage.vue'
 import ChatPage from './components/ChatPage.vue'
 import StudySpacePage from './components/StudySpacePage.vue'
+import WrongBookPage from './components/WrongBookPage.vue'
+import LearningProgress from './components/LearningProgress.vue'
 import ExportPreview from './components/ExportPreview.vue'
 import { usePlanStream } from './composables/usePlanStream'
 import { useSpace } from './composables/useSpace'
@@ -257,6 +259,16 @@ function goChat() {
 function goStudy() {
   if (showWelcome.value) onWelcomeDone()
   appView.value = 'study'
+}
+
+function goWrongBook() {
+  if (showWelcome.value) onWelcomeDone()
+  appView.value = 'wrongbook'
+}
+
+function goProgress() {
+  if (showWelcome.value) onWelcomeDone()
+  appView.value = 'progress'
 }
 
 // 欢迎层显示期间锁住 body 滚动，避免底层工具界面跟着滚
@@ -575,6 +587,68 @@ function onLoadHistory(payload) {
   if (payload.type !== 'crisis') showExport.value = true
 }
 
+/** 学情页里点「打开这门课」：切回方案页并载入该课程的历史方案 */
+async function onOpenCourseFromProgress(courseName) {
+  if (!courseName) {
+    goCourse()
+    return
+  }
+  try {
+    const payload = await api.historyDetail(courseName)
+    appView.value = 'course'
+    onLoadHistory(payload)
+  } catch (e) {
+    notify({ type: 'error', text: `打开失败：${e.message}` })
+  }
+}
+
+// ---------- 学习进度（结果区勾选） ----------
+/** {outline:[{title,done}], plan:[{title,done}]}，索引与 result 一一对应 */
+const studyProgress = ref({ outline: [], plan: [] })
+
+async function loadStudyProgress() {
+  const c = result.value?.course
+  if (!c) {
+    studyProgress.value = { outline: [], plan: [] }
+    return
+  }
+  try {
+    const data = await api.historyDetail(c)
+    studyProgress.value = data.progress || { outline: [], plan: [] }
+  } catch (_) {
+    // 方案刚落库时可能还查不到，静默处理；勾选时会重新对齐
+    studyProgress.value = { outline: [], plan: [] }
+  }
+}
+
+// 方案生成完成 / 从历史载入后，把勾选状态拉回来
+watch([() => result.value?.course, status], ([c, s]) => {
+  if (c && s === 'done') loadStudyProgress()
+})
+
+async function onToggleProgress({ kind, index, done }) {
+  const c = result.value?.course
+  if (!c) return
+
+  // 乐观更新：先动界面，失败再回滚（点勾选框不该有延迟感）
+  const list = [...(studyProgress.value[kind] || [])]
+  const prev = list[index]?.done
+  list[index] = { ...(list[index] || { title: '' }), done }
+  studyProgress.value = { ...studyProgress.value, [kind]: list }
+
+  try {
+    const r = await api.progressDone(c, kind, index, done)
+    if (r.progress) studyProgress.value = r.progress
+    const st = r.stats || {}
+    statusText.value = `进度已更新：${st.done ?? 0} / ${st.total ?? 0}`
+  } catch (e) {
+    const back = [...(studyProgress.value[kind] || [])]
+    if (back[index]) back[index] = { ...back[index], done: prev }
+    studyProgress.value = { ...studyProgress.value, [kind]: back }
+    notify({ type: 'error', text: `保存失败：${e.message}` })
+  }
+}
+
 function onSettingsSaved(newMode) {
   if (newMode) {
     mode.value = newMode
@@ -653,7 +727,9 @@ const degradedBanner = computed(() => {
       @open-knowledge="goKnowledge"
       @open-import="goImport"
       @open-chat="goChat"
+      @open-wrongbook="goWrongBook"
       @open-study="goStudy"
+      @open-progress="goProgress"
     />
 
     <main class="main" :class="{ 'under-wins': !showWelcome && appView !== 'study', 'study-main': appView === 'study' }">
@@ -675,6 +751,18 @@ const degradedBanner = computed(() => {
         :mode="mode"
         @notify="notify"
         @go-course="goCourse"
+      />
+      <WrongBookPage
+        v-else-if="appView === 'wrongbook'"
+        @back="goCourse"
+        @go-course="goCourse"
+        @notify="notify"
+      />
+      <LearningProgress
+        v-else-if="appView === 'progress'"
+        @back="goCourse"
+        @open-course="onOpenCourseFromProgress"
+        @notify="notify"
       />
       <StudySpacePage v-else-if="appView === 'study'" />
       <template v-else>
@@ -733,8 +821,10 @@ const degradedBanner = computed(() => {
       <ResultsGrid
         :result="result"
         :loading="busy"
+        :progress="studyProgress"
         @copy-outline="onCopyOutline"
         @copy-plan="onCopyPlan"
+        @toggle-progress="onToggleProgress"
       />
 
       <div v-if="canExportPlan()" class="export-bar">

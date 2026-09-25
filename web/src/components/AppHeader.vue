@@ -21,7 +21,9 @@ const emit = defineEmits([
   'open-knowledge',
   'open-import',
   'open-chat',
+  'open-wrongbook',
   'open-study',
+  'open-progress',
   'go-course',
 ])
 </script>
@@ -43,7 +45,9 @@ const emit = defineEmits([
         @open-knowledge="emit('open-knowledge')"
         @open-import="emit('open-import')"
         @open-chat="emit('open-chat')"
+        @open-wrongbook="emit('open-wrongbook')"
         @open-study="emit('open-study')"
+        @open-progress="emit('open-progress')"
         @open-settings="emit('open-settings')"
         @open-history="emit('open-history')"
         @open-trace="emit('open-trace')"

@@ -108,12 +108,28 @@ def data_dir() -> str:
     """可写数据目录（带不可写回退），结果会被缓存。
 
     优先级：
+        0. 环境变量 STUDY_LIU_DATA_DIR  （显式指定；自动化测试 / 多实例部署用）
         1. <exe 同目录>/data      （便携式，源码运行 = 项目/data）
         2. ~/.study-liu/data      （exe 目录不可写时的回退）
+
+    关于第 0 条：没有它的时候，"目录是否可写"是靠一次写探针判断的，
+    而探针的成败会随运行环境变化（例如受限沙箱里 os.remove 被拦截），
+    于是同一个项目在不同进程里可能解析出**不同的数据目录** ——
+    表现出来就是"数据莫名其妙不见了"。显式指定可以彻底避免这种漂移。
     """
     global _CACHED_DATA_DIR
     if _CACHED_DATA_DIR:
         return _CACHED_DATA_DIR
+
+    override = os.environ.get("STUDY_LIU_DATA_DIR", "").strip()
+    if override:
+        path = os.path.abspath(os.path.expanduser(override))
+        try:
+            os.makedirs(path, exist_ok=True)
+        except Exception:
+            pass
+        _CACHED_DATA_DIR = path
+        return path
 
     primary = os.path.join(app_root(), "data")
     if _is_writable(primary):

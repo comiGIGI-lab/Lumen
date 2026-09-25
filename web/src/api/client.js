@@ -107,6 +107,43 @@ export const api = {
     })
   },
 
+  /**
+   * 导出 Word（.docx）。
+   * 后端直接回二进制流（不是 JSON），所以这里不走 request()，单独用 fetch 取 blob。
+   * 文件名优先用后端 Content-Disposition 里的 filename*（RFC 5987，中文安全）。
+   */
+  async exportDocx(course, result) {
+    const res = await fetch(`${BASE}/export`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Client-Id': clientId(),
+      },
+      body: JSON.stringify({ course, result, format: 'docx' }),
+    })
+    if (!res.ok) {
+      let msg = `导出失败（${res.status}）`
+      try {
+        const data = await res.json()
+        if (data && data.error) msg = data.error
+      } catch (_) {
+        /* 后端异常时可能不是 JSON，保留默认文案 */
+      }
+      throw new Error(msg)
+    }
+    let filename = `${course || '学习方案'} 学习方案.docx`
+    const cd = res.headers.get('Content-Disposition') || ''
+    const m = /filename\*=UTF-8''([^;]+)/i.exec(cd)
+    if (m) {
+      try {
+        filename = decodeURIComponent(m[1])
+      } catch (_) {
+        /* 解码失败就用默认名 */
+      }
+    }
+    return { blob: await res.blob(), filename }
+  },
+
   /** 切换 Mock / LLM 模式 */
   saveSettings(payload) {
     return request('/settings', {
@@ -218,6 +255,67 @@ export const api = {
       xhr.timeout = 300000 // 大文件 + 模型识图可能较慢
       xhr.send(form)
     })
+  },
+
+  // ---------------- 学习进度 / 学情 ----------------
+
+  /**
+   * 勾选或取消大纲 / 计划里的某一项。
+   * 索引与方案里 outline / plan 的顺序一一对应（后端按同一顺序生成进度清单）。
+   */
+  progressDone(course, kind, index, done) {
+    return request('/progress/done', {
+      method: 'POST',
+      body: JSON.stringify({ course, kind, index, done }),
+    })
+  },
+
+  /** 学情概览：本浏览器名下所有课程的完成度汇总 */
+  progressOverview() {
+    return request('/progress/overview')
+  },
+
+  // ---------------- 错题本 ----------------
+
+  /** 错题列表。course / q / status 都可选（status: unmastered | mastered） */
+  wrongBookList({ course = '', q = '', status = '' } = {}) {
+    const qs = new URLSearchParams()
+    if (course) qs.set('course', course)
+    if (q) qs.set('q', q)
+    if (status) qs.set('status', status)
+    const tail = qs.toString()
+    return request(`/wrongbook${tail ? '?' + tail : ''}`)
+  },
+
+  /** 新增一道错题 */
+  wrongBookAdd(payload) {
+    return request('/wrongbook', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    })
+  },
+
+  /** 修改一道错题（传哪些字段就改哪些） */
+  wrongBookUpdate(id, fields) {
+    return request(`/wrongbook/${id}`, {
+      method: 'POST',
+      body: JSON.stringify(fields),
+    })
+  },
+
+  /** 记一次复习；mastered 传 true/false 时顺带更新掌握状态 */
+  wrongBookReview(id, mastered = null) {
+    const body = { review: true }
+    if (mastered !== null) body.mastered = mastered
+    return request(`/wrongbook/${id}`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  },
+
+  /** 删除一道错题 */
+  wrongBookDelete(id) {
+    return request(`/wrongbook/${id}`, { method: 'DELETE' })
   },
 }
 
