@@ -12,17 +12,31 @@
 
 ## 1. 目录结构
 
+Round 10 学伴完整集成已合入 `origin/master`（`0dd3d2f`，标签 `round-10-pet`）。学伴、新手说明、自习空间、知识库/导入独立页都已经在远程，**不要重做**。每个文件干什么、哪些不要重写，见 [`docs/文件地图-已完成工作.md`](docs/文件地图-已完成工作.md)。回到该完成点：`git checkout round-10-pet`。
+
 ```
-study-liu-web/
+ai-coding/
 ├── start.bat                 # ★ 一键启动：双击即可（自动找 node + 自动开浏览器）
 ├── package.json              # 工作区脚本（npm run dev 一键同时起前后端）
 ├── .gitignore                # 已排除 .env / data/ / node_modules / dist 等
 ├── docs/
-│   └── screenshot.png        # 界面截图
+│   ├── 文件地图-已完成工作.md # 给队友：路径、作用、已完成不要重做
+│   ├── screenshot.png
+│   ├── DEPLOY.md
+│   ├── API-Contract-knowledge-base-v0.2-2026-09-20.md
+│   └── seed/knowledge.json
 ├── scripts/
 │   └── dev.mjs               # 无额外依赖的双进程启动器（自动找 Python / 自动开浏览器）
+├── tests/
+│   ├── safety_cases.py       # 内容安全回归用例
+│   └── run_safety_regression.py
 ├── server/
 │   ├── api_server.py         # ★ 纯标准库 HTTP API，直接 import study-liu 源码
+│   ├── safety_words.py       # 敏感词表（已拆出，不要塞回 api_server）
+│   ├── safety_gate.py        # 内容安全判定
+│   ├── safety_rules.py       # 拼音 / 豁免 / How-to
+│   ├── kb_ingest.py          # 知识库导入：解析、分块、入库
+│   ├── form_parser.py        # multipart 解析（标准库）
 │   └── source.json.example   # 源码路径配置模板（可选，一般用不到）
 ├── vendor/
 │   └── study-liu/            # 原版 study-liu 源码（仅代码，约 1.7MB）
@@ -32,27 +46,61 @@ study-liu-web/
     ├── vite.config.js        # /api 反向代理到 127.0.0.1:8000
     ├── package.json
     ├── public/
+    │   ├── hero-desk.jpg     # 欢迎层书桌图
+    │   ├── pet/              # 九只学伴图（基础 + 进阶）
+    │   ├── scenes/           # 自习场景视频 / 海报
+    │   ├── sounds/           # 环境音
+    │   ├── music/            # 纯音乐三选一
+    │   └── prototypes/       # 早期静态原型（归档，主应用不走这里）
     ├── scripts/              # 无浏览器验证工具（见 §10）
     │   ├── ssr-check.mjs     #   能渲染吗 → SSR 渲染 + 内容抽查
     │   ├── click-test.mjs    #   点了有反应吗 → jsdom 真实点击
     │   └── minimal-dom-test.mjs  # 对照实验：jsdom + Vue 最简挂载
     └── src/
         ├── main.js
-        ├── App.vue                      # 主界面（链路可视化编排）
+        ├── App.vue                      # 总装（引导 → 欢迎 → 主应用）
         ├── styles/global.css            # 与桌面版 theme.py 同源的配色变量
         ├── api/client.js                # REST + SSE 客户端
-        ├── composables/usePlanStream.js # ★ 全链路状态机
+        ├── study/catalog.js             # 场景 / 环境音 / 纯音乐目录
+        ├── composables/
+        │   ├── usePlanStream.js         # ★ 方案生成 SSE 状态机
+        │   ├── usePet.js                # 学伴（已完成，不要另起一套）
+        │   ├── useSpace.js              # 三个悬浮窗布局
+        │   ├── useStudyTimer.js         # 自习计时 + 混音
+        │   └── useKnowledge.js          # 知识库真实接口
         └── components/
-            ├── AppHeader.vue            # 顶部 Hero + 模式角标 + 功能入口
+            ├── AppHeader.vue            # 工具页顶栏
+            ├── TopNav.vue               # 右上导航
+            ├── WelcomeScreen.vue        # 首访欢迎层
             ├── CourseForm.vue           # 【课程名】输入 + 用户画像 + 生成按钮
             ├── PipelineStepper.vue      # ★ Agent 流水线实时状态条
             ├── ResultsGrid.vue          # 三栏结果：大纲 / 资源 / 计划
             ├── ResultPanel.vue          # 结果面板通用外壳
-            ├── ChatPanel.vue            # 课程问答（知识库 → 大模型）
+            ├── ChatPanel.vue            # 课程问答面板
+            ├── ChatPage.vue             # 课程问答独立页（已完成）
+            ├── KnowledgePage.vue        # 知识库页（已接真实后端，不要重做）
+            ├── ImportPage.vue           # 文档导入页（已接真实后端，不要重做）
+            ├── StudySpacePage.vue       # 自习空间主页（已完成）
+            ├── StudyDock.vue            # 自习坞：场景 + 计时混音
+            ├── DateDock.vue             # 月历 + 备忘 + 倒数日
+            ├── TodoDock.vue             # 待办
+            ├── CountdownTimer.vue       # 倒数日
+            ├── SpaceLayer.vue           # 三个 FloatWin 挂层
+            ├── SpacePanel.vue           # 个人空间设置
+            ├── FloatWin.vue             # 悬浮窗外壳
+            ├── SceneBackdrop.vue        # 场景视频 / 海报
+            ├── PetGuide.vue             # 首访选学伴（已完成，不要重做）
+            ├── PetCompanion.vue         # 右下常驻学伴（已完成，不要重做）
+            ├── PetProfileDialog.vue     # 点学伴弹出的档案（已完成，不要重做）
+            ├── PetSprite.vue            # 学伴立绘
+            ├── TourDialog.vue           # 新手总览
+            ├── TourBubble.vue           # 点位气泡
             ├── TraceDrawer.vue          # 日志回放（data/trace.log）
             ├── HistoryDialog.vue        # 历史方案（data/progress.json）
-            ├── SettingsDialog.vue       # Mock / LLM 模式设置
+            ├── SettingsDialog.vue       # AI 模型设置
+            ├── ExportPreview.vue        # 导出预览
             ├── ModalDialog.vue
+            ├── SnakeBar.vue             # 轻提示条
             └── StatusBar.vue            # 固定底部状态栏
 ```
 
