@@ -51,6 +51,30 @@ class TestRenderPlanMarkdown:
         assert "- 变量" in md
         assert "## 第 3 章 — 字符串与列表" in md
 
+    def test_outline_points_render_without_placeholder(self):
+        """v20：章节对象带 points 时，不能再出现「暂无要点」。"""
+        result = {
+            "course": "Python 入门",
+            "outline": [
+                {"title": "基础语法", "points": ["变量与命名", "数据类型", "类型转换"]},
+                {"title": "控制流", "points": ["if/else", "for/while", "异常处理"]},
+                {"title": "函数", "points": ["定义与参数", "作用域", "模块拆分"]},
+            ],
+            "resources": [],
+            "plan": [],
+        }
+        md = render_plan_markdown(result)
+        assert "- 变量与命名" in md
+        assert "- 异常处理" in md
+        assert "暂无要点" not in md
+        assert "要点待补充" not in md
+
+    def test_string_chapter_still_gets_placeholder(self):
+        """旧的纯字符串章节没有要点，仍显示占位（不崩）。"""
+        md = render_plan_markdown({"course": "X", "outline": ["第一章 绪论"]})
+        assert "## 第 1 章 — 第一章 绪论" in md
+        assert "暂无要点" in md
+
     def test_renders_resources_table(self):
         md = render_plan_markdown(SAMPLE_RESULT)
         assert "| 标题 | 类型 | 链接 |" in md

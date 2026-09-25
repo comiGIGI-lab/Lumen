@@ -309,7 +309,15 @@ class ResultPanel:
     def set_outline(self, outline):
         self._reset()
         self.count_label.config(text=f"{len(outline)} 章")
-        for line in outline:
+        # 大纲项从 v20 起是 {"title", "points"} 对象，这里只取章节名展示；
+        # 旧数据里的纯字符串项也兼容（outline_item_title 两种都能处理）。
+        try:
+            from tools.plan_normalize import outline_item_title
+        except Exception:
+            outline_item_title = None
+        for i, line in enumerate(outline, start=1):
+            if outline_item_title is not None:
+                line = outline_item_title(line, i)
             self._ins("●  ", "accent")
             self._ins(line + "\n")
 

@@ -12,6 +12,7 @@ import pytest
 from tools.plan_normalize import (
     normalize_day,
     normalize_plan,
+    outline_item_points,
     outline_item_title,
     plan_item_label,
 )
@@ -228,6 +229,28 @@ class TestOutlineItemTitle:
 
     def test_none_falls_back(self):
         assert outline_item_title(None, 2) == "第2章"
+
+
+class TestOutlineItemPoints:
+    """章节要点：v20 起大纲项是 {"title","points"} 对象。"""
+
+    def test_points_from_dict(self):
+        assert outline_item_points({"title": "T", "points": ["a", "b"]}) == ["a", "b"]
+
+    def test_items_alias(self):
+        assert outline_item_points({"title": "T", "items": ["a"]}) == ["a"]
+
+    def test_single_string_wrapped(self):
+        assert outline_item_points({"title": "T", "points": "单个要点"}) == ["单个要点"]
+
+    def test_blank_filtered(self):
+        assert outline_item_points({"title": "T", "points": ["a", "", "  ", "b"]}) == ["a", "b"]
+
+    def test_string_chapter_has_no_points(self):
+        assert outline_item_points("第一章 绪论") == []
+
+    def test_none_has_no_points(self):
+        assert outline_item_points(None) == []
 
 
 class TestConsumerRegressions:

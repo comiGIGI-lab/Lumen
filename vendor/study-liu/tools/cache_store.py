@@ -8,7 +8,7 @@
 
 存储结构（cache.json）：
 {
-    "version": 1,
+    "version": 2,
     "entries": {
         "<key_hash>": {
             "course": "机器学习",
@@ -37,6 +37,13 @@ MAX_ENTRIES = 30                # 最多缓存条目数（LRU 淘汰）
 DEFAULT_TTL = 24 * 3600         # 默认过期时间 24 小时
 CACHE_FILENAME = "cache.json"   # 相对 data/ 目录
 
+# 结果结构版本。**改动 outline / resources / plan 的输出结构时必须 +1** ——
+# 它参与 cache key 派生，旧结构的历史缓存会自动失效。
+# 背景：缓存 TTL 24h，若结构变了而 key 没变，部署后 24 小时内仍会命中
+# 旧结构结果（例如大纲还是纯字符串、导出里继续显示「要点待补充」），
+# 看起来像"改了没用"。
+CACHE_SCHEMA = 2
+
 
 def _now() -> float:
     return time.time()
@@ -62,7 +69,7 @@ def make_cache_key(course: str, profile: dict | None = None) -> str:
     # 课程名规范化：小写 + strip
     course_norm = (course or "").strip().lower()
     profile_str = json.dumps(profile or {}, sort_keys=True, ensure_ascii=False)
-    raw = f"{course_norm}|{profile_str}".encode("utf-8")
+    raw = f"v{CACHE_SCHEMA}|{course_norm}|{profile_str}".encode("utf-8")
     return hashlib.sha256(raw).hexdigest()[:16]
 
 
@@ -73,18 +80,18 @@ def _load_raw() -> dict:
     """读取 cache.json，缺文件返回空。"""
     path = _get_cache_path()
     if not os.path.exists(path):
-        return {"version": 1, "entries": {}}
+        return {"version": CACHE_SCHEMA, "entries": {}}
     try:
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
         if not isinstance(data, dict) or "entries" not in data:
-            return {"version": 1, "entries": {}}
+            return {"version": CACHE_SCHEMA, "entries": {}}
         if not isinstance(data["entries"], dict):
             data["entries"] = {}
         return data
     except Exception:
         # 损坏时静默回退到空缓存（不影响主流程）
-        return {"version": 1, "entries": {}}
+        return {"version": CACHE_SCHEMA, "entries": {}}
 
 
 def _save_raw(data: dict) -> None:

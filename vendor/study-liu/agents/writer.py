@@ -1,8 +1,13 @@
 # writer.py — Writer Agent：大纲 → 学习计划
 
-"""Writer Agent：根据课程和大纲生成 7 天学习计划。"""
+"""Writer Agent：根据课程和大纲生成 7 天学习计划。
+
+大纲自 v20 起是章节对象列表（{"title", "points"}），Writer 只读 title；
+points 会作为上下文写进 prompt，帮模型排得更具体，但不强制出现在任务文案里。
+"""
 
 from core.llm import generate
+from tools.plan_normalize import outline_item_title, outline_item_points
 
 
 # 7 天不同活动模板：避免每天复读
@@ -22,7 +27,7 @@ def write_plan(course, outline, profile=None):
     根据大纲为课程生成学习计划。
     参数：
         course: 课程名
-        outline: 大纲列表（字符串数组）
+        outline: 大纲列表（每项 {"title", "points"}，也兼容纯字符串项）
         profile: 可选，用户画像（决定计划天数 / 活动节奏）
     返回：
         学习计划列表（字符串数组，按天排）
@@ -36,8 +41,14 @@ def write_plan(course, outline, profile=None):
     except Exception:
         days = 7
 
-    # 把大纲拼成列表格式
-    outline_text = "\n".join(f"- {ch}" for ch in outline)
+    # 大纲 → prompt 文本：每章一行，要点作为缩进子项（只用于提示模型）
+    outline_lines = []
+    for i, ch in enumerate(outline or [], start=1):
+        title = outline_item_title(ch, i)
+        outline_lines.append(f"- {title}")
+        for p in outline_item_points(ch):
+            outline_lines.append(f"    - {p}")
+    outline_text = "\n".join(outline_lines)
 
     # 1. 尝试大模型
     profile_text = ""
@@ -83,11 +94,11 @@ def _fallback_plan(course, outline, days=7):
 
     参数：
         course: 课程名
-        outline: 章节列表
+        outline: 章节列表（每项 {"title", "points"}，也兼容纯字符串项）
         days: 计划天数（默认 7，可被 profile.suggest_plan_length 覆盖）
     """
     plan = []
-    chapter_count = len(outline)
+    chapter_count = len(outline or [])
 
     for day in range(1, days + 1):
         activity = _DAY_ACTIVITIES[(day - 1) % len(_DAY_ACTIVITIES)]
@@ -96,9 +107,13 @@ def _fallback_plan(course, outline, days=7):
             plan.append(f"第{day}天：{course}——{activity}")
             continue
 
-        # 每天覆盖两章（取模轮转）
-        ch1 = outline[(day - 1) % chapter_count]
-        ch2 = outline[day % chapter_count] if chapter_count > 1 else None
+        # 每天覆盖两章（取模轮转）—— 只取标题，避免把要点塞进「——」之后
+        # 被 plan_normalize 当成多个章节拆开
+        ch1 = outline_item_title(outline[(day - 1) % chapter_count], (day - 1) % chapter_count + 1)
+        ch2 = None
+        if chapter_count > 1:
+            i2 = day % chapter_count
+            ch2 = outline_item_title(outline[i2], i2 + 1)
 
         if day <= min(3, days) and ch2:
             plan.append(

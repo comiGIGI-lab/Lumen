@@ -189,7 +189,7 @@ function maybeShowBubble(viewId, title, body, storageKey) {
 const BUBBLES = {
   plan: {
     title: '学习方案',
-    body: '把课件、板书和录音交给这里，Agent 流水线会生成大纲、资源和学习计划。入门 / 进阶 / 大牛 三档画像匹配时长和深度。',
+    body: '把课件、板书和录音交给这里，Agent 流水线会生成大纲、资源和学习计划。入门 / 进阶 / 冲刺 三档画像匹配时长和深度。',
     storageKey: 'zjxt.tour_plan',
   },
   kb: {
@@ -204,7 +204,7 @@ const BUBBLES = {
   },
   study: {
     title: '自习空间',
-    body: '视频为主体，三扇固定窗：场景、计时、控件。时长按入门 / 进阶 / 大牛三档，完整跑完才计经验。',
+    body: '视频为主体，三扇固定窗：场景、计时、控件。时长按入门 / 进阶 / 冲刺三档，完整跑完才计经验。',
     storageKey: 'zjxt.tour_study',
   },
   space: {
@@ -554,8 +554,18 @@ async function onExport() {
 }
 
 function onCopyOutline() {
+  // 大纲从 v20 起是章节对象 {"title","points"}；旧的纯字符串项也兼容
   const list = (result.value?.outline || [])
-    .map((c, i) => `${i + 1}. ${c}`)
+    .map((c, i) => {
+      const isObj = c && typeof c === 'object' && !Array.isArray(c)
+      const title = String(isObj ? (c.title || c.name || `第 ${i + 1} 章`) : (c || `第 ${i + 1} 章`)).trim()
+      const points = (isObj ? (c.points || c.items || []) : [])
+        .map((p) => String(p).trim())
+        .filter(Boolean)
+        .map((p) => `   · ${p}`)
+        .join('\n')
+      return `${i + 1}. ${title}${points ? '\n' + points : ''}`
+    })
     .join('\n')
   copyText(`【${result.value?.course}】课程大纲\n${list}`, '大纲')
 }

@@ -206,6 +206,22 @@ def outline_item_title(chapter: Any, idx: int) -> str:
     return text or f"第{idx}章"
 
 
+def outline_item_points(chapter: Any) -> list[str]:
+    """给大纲的一项取要点列表（兼容 points / items / sections，过滤空串）。
+
+    大纲项从 v20 起是 {"title", "points"} 对象；早期 / 手工数据可能仍是字符串，
+    此时没有要点，返回空列表 —— 调用方据此决定是否显示占位提示。
+    """
+    if not isinstance(chapter, dict):
+        return []
+    pts = chapter.get("points") or chapter.get("items") or chapter.get("sections") or []
+    if isinstance(pts, str):
+        pts = [pts]
+    if not isinstance(pts, list):
+        return []
+    return [str(p).strip() for p in pts if str(p).strip()]
+
+
 # ------------------------------------------------------------
 # 向后兼容别名：calendar_export 早期把 _normalize_day 当作私有函数，
 # 保留别名避免外部/测试代码 import 失败。

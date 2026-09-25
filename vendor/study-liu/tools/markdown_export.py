@@ -6,17 +6,19 @@ from datetime import datetime
 
 
 def _fmt_outline(outline):
-    """大纲每章渲染成 ## 章节名 + 项目列表。"""
+    """大纲每章渲染成 ## 章节名 + 要点列表。
+
+    章节项从 v20 起是 {"title", "points"} 对象（见 agents/planner.py）；
+    旧数据里的纯字符串项仍兼容，此时要点为空、显示占位。
+    """
+    from tools.plan_normalize import outline_item_title, outline_item_points
+
     if not outline:
         return "（暂无大纲）"
     lines = []
     for idx, chapter in enumerate(outline, start=1):
-        if isinstance(chapter, dict):
-            title = chapter.get("title") or chapter.get("name") or f"第{idx}章"
-            points = chapter.get("points") or chapter.get("items") or []
-        else:
-            title = str(chapter)
-            points = []
+        title = outline_item_title(chapter, idx)
+        points = outline_item_points(chapter)
         lines.append(f"## 第 {idx} 章 — {title}")
         for p in points:
             lines.append(f"- {p}")

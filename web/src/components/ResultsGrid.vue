@@ -19,6 +19,24 @@ const outline = computed(() => props.result?.outline || [])
 const resources = computed(() => props.result?.resources || [])
 const planItems = computed(() => props.result?.plan_items || [])
 
+/**
+ * 大纲归一化：每章 → {title, points}。
+ * 后端从 v20 起返回章节对象 {"title", "points"}；旧的纯字符串项也兼容，
+ * 否则直接 {{ ch }} 会渲染成 "object Object"。
+ */
+const outlineItems = computed(() =>
+  outline.value.map((ch, i) => {
+    if (ch && typeof ch === 'object' && !Array.isArray(ch)) {
+      const title = String(ch.title || ch.name || `第 ${i + 1} 章`).trim()
+      const points = (ch.points || ch.items || [])
+        .map((p) => String(p).trim())
+        .filter(Boolean)
+      return { title, points }
+    }
+    return { title: String(ch || '').trim() || `第 ${i + 1} 章`, points: [] }
+  }),
+)
+
 /** 该项是否已勾选 */
 function isDone(kind, index) {
   const list = props.progress?.[kind] || []
@@ -108,7 +126,7 @@ const dayNo = (item, i) => item?.day ?? i + 1
       accent="#e51520"
     >
       <div
-        v-for="(ch, i) in outline"
+        v-for="(ch, i) in outlineItems"
         :key="i"
         class="outline-item"
         :class="{ done: isDone('outline', i) }"
@@ -121,7 +139,12 @@ const dayNo = (item, i) => item?.day ?? i + 1
           />
         </label>
         <span class="outline-no">{{ String(i + 1).padStart(2, '0') }}</span>
-        <span class="outline-text">{{ ch }}</span>
+        <div class="outline-body">
+          <span class="outline-text">{{ ch.title }}</span>
+          <ul v-if="ch.points.length" class="outline-points">
+            <li v-for="(p, pi) in ch.points" :key="pi">{{ p }}</li>
+          </ul>
+        </div>
       </div>
 
       <template #footer>
@@ -231,6 +254,7 @@ const dayNo = (item, i) => item?.day ?? i + 1
 }
 
 .outline-item.done .outline-text,
+.outline-item.done .outline-points,
 .plan-item.done .plan-task,
 .plan-item.done .plan-tasks {
   text-decoration: line-through;
@@ -269,11 +293,29 @@ const dayNo = (item, i) => item?.day ?? i + 1
   place-items: center;
 }
 
+.outline-body {
+  min-width: 0;
+}
+
 .outline-text {
   font-size: 13px;
   color: var(--text-secondary);
   line-height: 1.55;
   word-break: break-word;
+}
+
+.outline-points {
+  margin: 5px 0 0;
+  padding-left: 16px;
+  list-style: disc;
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.6;
+  word-break: break-word;
+}
+
+.outline-points li {
+  margin-top: 2px;
 }
 
 /* ---------- 资源 ---------- */
