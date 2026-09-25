@@ -7,11 +7,13 @@
  * 逐文件上传而不是一次全发：这样每一行的进度是**真实**的，一个文件失败也不拖累其它。
  */
 import { computed, onBeforeUnmount, ref } from 'vue'
+import { useI18n } from '@/i18n'
 import SnakeBar from './SnakeBar.vue'
 import { api } from '@/api/client'
 import { useKnowledge } from '@/composables/useKnowledge'
 
 const emit = defineEmits(['back', 'open-knowledge', 'go-course'])
+const { t } = useI18n()
 
 /** 与后端 kb_ingest 支持的扩展名保持一致 */
 const ACCEPT = '.pdf,.md,.markdown,.txt,.text,.png,.jpg,.jpeg,.webp,.bmp,.gif'
@@ -58,7 +60,7 @@ const anyFailed = computed(() => picked.value.some((f) => f.status === 'failed')
 const startLabel = computed(() => {
   if (running.value) return '上传解析中'
   if (allReady.value) return '重新选择'
-  return '开始导入'
+  return t('importPageX.5')
 })
 
 const statusText = (f) =>
@@ -248,21 +250,18 @@ onBeforeUnmount(() => {
 <template>
   <div class="imp">
     <p class="crumb">
-      <button type="button" class="link" @click="emit('back')">课程生成</button>
+      <button type="button" class="link" @click="emit('back')">{{ t('importPage.2') }}</button>
       <span>/</span>
-      <em>导入文档</em>
+      <em>{{ t('importPage.3') }}</em>
     </p>
     <p class="eyebrow">Step 1 · Upload</p>
-    <h2>导入文档</h2>
-    <p class="lead">
-      上传课件与讲义，解析后进入知识库。PDF 走文本层抽取，Markdown / txt 直读，图片走多模态模型识图。
-      材料进库之后，到课程问答里提问就能引用到。
-    </p>
+    <h2>{{ t('importPage.4') }}</h2>
+    <p class="lead">{{ t('importPage.5') }}</p>
 
     <div class="steps">
-      <span :class="{ on: step === 1 }">01 选择文件</span>
-      <span :class="{ on: step === 2 }">02 上传解析</span>
-      <span :class="{ on: step === 3 }">03 入库可查看</span>
+      <span :class="{ on: step === 1 }">{{ t('importPage.6') }}</span>
+      <span :class="{ on: step === 2 }">{{ t('importPage.7') }}</span>
+      <span :class="{ on: step === 3 }">{{ t('importPage.8') }}</span>
     </div>
 
     <div class="grid">
@@ -276,9 +275,9 @@ onBeforeUnmount(() => {
           @dragleave.prevent="dragOn = false"
           @drop="onDrop"
         >
-          <h3>把文件拖到这里</h3>
-          <p>支持 PDF / Markdown / txt / 图片（png·jpg·webp），单个 ≤ 16 MB，一次最多 10 个</p>
-          <button type="button" class="ok" @click.stop="onPickClick">选择文件</button>
+          <h3>{{ t('importPage.9') }}</h3>
+          <p>{{ t('importPage.10') }}</p>
+          <button type="button" class="ok" @click.stop="onPickClick">{{ t('importPage.11') }}</button>
           <input
             ref="fileInput"
             type="file"
@@ -289,14 +288,12 @@ onBeforeUnmount(() => {
           />
         </div>
         <p v-if="hint" class="demo-note">{{ hint }}</p>
-        <p v-if="caps && caps.document && !caps.document.pdf" class="demo-note">
-          提示：服务器未装 pypdf，PDF 暂时解析不了；Markdown / txt / 图片不受影响。
-        </p>
+        <p v-if="caps && caps.document && !caps.document.pdf" class="demo-note">{{ t('importPage.12') }}</p>
 
         <div class="queue">
           <header>
-            <h3>待导入文件</h3>
-            <span>共 {{ picked.length }} 个文件</span>
+            <h3>{{ t('importPage.13') }}</h3>
+            <span>{{ t('stat.importFiles', { n: picked.length }) }}</span>
           </header>
           <div v-for="f in picked" :key="f.id" class="q-row">
             <div class="q-meta">
@@ -315,9 +312,9 @@ onBeforeUnmount(() => {
               type="button"
               class="ghost small"
               @click="removePicked(f)"
-            >移除</button>
+            >{{ t('importPage.14') }}</button>
           </div>
-          <p v-if="!picked.length" class="none">还没有选择文件。</p>
+          <p v-if="!picked.length" class="none">{{ t('importPage.15') }}</p>
         </div>
 
         <div v-if="summary && summary.ok" class="done">
@@ -327,46 +324,42 @@ onBeforeUnmount(() => {
               已归入「{{ targetNote.title }}」，共切出
               {{ picked.filter((f) => f.status === 'ready').reduce((s, f) => s + f.chunks, 0) }} 个分块。
             </p>
-            <p v-else>每个文件按自己的文件名各成一条笔记。材料进库之后，到课程问答里提问。</p>
+            <p v-else>{{ t('importPage.16') }}</p>
           </div>
           <div class="done-btns">
-            <button type="button" class="ok" @click="emit('open-knowledge')">去知识库查看</button>
-            <button type="button" class="ok" @click="emit('go-course')">去课程问答</button>
+            <button type="button" class="ok" @click="emit('open-knowledge')">{{ t('importPage.17') }}</button>
+            <button type="button" class="ok" @click="emit('go-course')">{{ t('importPage.18') }}</button>
           </div>
         </div>
 
         <div class="act">
-          <button type="button" class="ghost" :disabled="running" @click="cancelTask">清空</button>
+          <button type="button" class="ghost" :disabled="running" @click="cancelTask">{{ t('importPage.19') }}</button>
           <button type="button" class="ok" :disabled="running || !picked.length" @click="startParse">
             {{ startLabel }}
           </button>
-          <span>上传即时解析入库；图片要过模型识图，会稍慢一些。</span>
+          <span>{{ t('importPage.20') }}</span>
         </div>
       </div>
 
       <aside>
         <div class="card">
-          <h3>归入笔记</h3>
-          <label>
-            归入
-            <select v-model="targetId">
-              <option value="">不指定（每个文件各成一条）</option>
+          <h3>{{ t('importPage.21') }}</h3>
+          <label>{{ t('importPage.22') }}<select v-model="targetId">
+              <option value="">{{ t('importPage.23') }}</option>
               <option v-for="n in notes" :key="n.id" :value="n.id">{{ n.title }}</option>
             </select>
           </label>
-          <p class="hint">
-            选定一条笔记，这批文件切出的分块会归到它下面；不指定就按文件名各成一条。
-          </p>
+          <p class="hint">{{ t('importPage.24') }}</p>
           <div class="new-note">
-            <input v-model="newTitle" type="text" placeholder="新笔记标题" />
-            <button type="button" class="ghost" @click="addNoteThenImport">新建并归入</button>
+            <input v-model="newTitle" type="text" :placeholder="t('importPage.1')" />
+            <button type="button" class="ghost" @click="addNoteThenImport">{{ t('importPage.25') }}</button>
           </div>
         </div>
         <div class="card">
-          <h3>支持格式</h3>
-          <p><span>课件 / 讲义</span><em>.pdf .md .txt</em></p>
-          <p><span>板书 / 题目截图</span><em>.png .jpg .webp</em></p>
-          <small>单个文件 ≤ 16 MB，单次最多 10 个。音频暂不支持。</small>
+          <h3>{{ t('importPage.26') }}</h3>
+          <p><span>{{ t('importPage.27') }}</span><em>.pdf .md .txt</em></p>
+          <p><span>{{ t('importPage.28') }}</span><em>.png .jpg .webp</em></p>
+          <small>{{ t('importPage.29') }}</small>
         </div>
       </aside>
     </div>

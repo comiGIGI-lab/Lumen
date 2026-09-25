@@ -1,4 +1,5 @@
 <script setup>
+import { useI18n } from '@/i18n'
 /**
  * TourBubble —— 单界面点位气泡（点状提示，非模态）
  *
@@ -29,6 +30,7 @@ const props = defineProps({
       ['bottom-right', 'top-right', 'bottom-left', 'top-left'].includes(v),
   },
 })
+const { t } = useI18n()
 
 const emit = defineEmits(['close', 'dismiss'])
 
@@ -58,18 +60,14 @@ function onDismiss() {
           <button
             class="x"
             type="button"
-            aria-label="关闭"
+            :aria-label="t('tourBubble.1')"
             @click="emit('close')"
           >✕</button>
         </div>
         <p class="body">{{ body }}</p>
         <div class="foot">
-          <button class="ghost" type="button" @click="emit('close')">
-            知道了
-          </button>
-          <button class="ok" type="button" @click="onDismiss">
-            不再提示
-          </button>
+          <button class="ghost" type="button" @click="emit('close')">{{ t('tourBubble.2') }}</button>
+          <button class="ok" type="button" @click="onDismiss">{{ t('tourBubble.3') }}</button>
         </div>
       </div>
     </div>

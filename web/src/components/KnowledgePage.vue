@@ -7,11 +7,13 @@
  * 这正是把「整句子串匹配」换掉的意义所在。
  */
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { useI18n } from '@/i18n'
 import SnakeBar from './SnakeBar.vue'
 import { api } from '@/api/client'
 import { TAG_LABEL, useKnowledge } from '@/composables/useKnowledge'
 
 const emit = defineEmits(['back', 'open-import', 'go-course'])
+const { t } = useI18n()
 
 const TAGS = [
   { id: 'all', label: '全部' },
@@ -203,47 +205,44 @@ onBeforeUnmount(() => {
     <div class="kb-bar">
       <div>
         <p class="eyebrow">Knowledge</p>
-        <h2>知识库</h2>
-        <p class="lead">
-          这里是知识库的真实内容：左侧是按来源聚合的笔记，右侧是该来源切出的文档与分块。
-          提问在学习方案生成页底部的课程问答，回答会引用这里的材料。
-        </p>
+        <h2>{{ t('knowledgePage.5') }}</h2>
+        <p class="lead">{{ t('knowledgePage.6') }}</p>
       </div>
       <div class="kb-actions">
-        <button type="button" class="ghost" @click="emit('back')">课程生成</button>
-        <button type="button" class="ghost" @click="emit('open-import')">文档导入</button>
-        <button type="button" class="ok" @click="openImport">快速导入</button>
+        <button type="button" class="ghost" @click="emit('back')">{{ t('knowledgePage.7') }}</button>
+        <button type="button" class="ghost" @click="emit('open-import')">{{ t('knowledgePage.8') }}</button>
+        <button type="button" class="ok" @click="openImport">{{ t('knowledgePage.9') }}</button>
       </div>
     </div>
 
     <div class="kb-search">
-      <input v-model="keyword" type="search" placeholder="搜索笔记标题、标签或知识点（走后端打分检索）" />
-      <span v-if="loading" class="kb-state">检索中…</span>
+      <input v-model="keyword" type="search" :placeholder="t('knowledgePage.1')" />
+      <span v-if="loading" class="kb-state">{{ t('knowledgePage.10') }}</span>
       <span v-else-if="error" class="kb-state err">{{ error }}</span>
       <span v-else-if="lastQuery" class="kb-state">正在显示「{{ lastQuery }}」的检索结果</span>
     </div>
 
     <div v-if="empty" class="empty">
-      <h3>知识库还是空的</h3>
-      <p>导入课件或讲义，材料入库之后就能在课程问答里被引用。</p>
+      <h3>{{ t('knowledgePage.11') }}</h3>
+      <p>{{ t('knowledgePage.12') }}</p>
       <ol>
-        <li><b>01 上传课件</b><span>支持 PDF / Markdown / txt / 图片</span></li>
-        <li><b>02 自动解析</b><span>PDF 抽文本层、图片走多模态识图、按句分块带重叠</span></li>
-        <li><b>03 去课程问答</b><span>提问不在这一页，在学习方案生成页底部</span></li>
+        <li><b>{{ t('knowledgePage.13') }}</b><span>{{ t('knowledgePage.14') }}</span></li>
+        <li><b>{{ t('knowledgePage.15') }}</b><span>{{ t('knowledgePage.16') }}</span></li>
+        <li><b>{{ t('knowledgePage.17') }}</b><span>{{ t('knowledgePage.18') }}</span></li>
       </ol>
       <div class="empty-btns">
-        <button type="button" class="ok" @click="openImport">导入第一份文档</button>
-        <button type="button" class="ghost" @click="emit('open-import')">去导入页</button>
-        <button type="button" class="ghost" @click="emit('go-course')">去课程问答</button>
+        <button type="button" class="ok" @click="openImport">{{ t('knowledgePage.19') }}</button>
+        <button type="button" class="ghost" @click="emit('open-import')">{{ t('knowledgePage.20') }}</button>
+        <button type="button" class="ghost" @click="emit('go-course')">{{ t('knowledgePage.21') }}</button>
       </div>
     </div>
 
     <div v-else class="shell">
       <aside>
         <div class="sb-head">
-          <span>我的笔记</span>
-          <em>共 {{ filtered.length }} 条笔记</em>
-          <button type="button" class="ghost small" @click="reload">刷新</button>
+          <span>{{ t('knowledgePage.22') }}</span>
+          <em>{{ t('stat.knowledge', { n: filtered.length }) }}</em>
+          <button type="button" class="ghost small" @click="reload">{{ t('knowledgePage.23') }}</button>
         </div>
         <div class="note-list">
           <button
@@ -258,9 +257,9 @@ onBeforeUnmount(() => {
             <span class="chip">{{ TAG_LABEL[n.tag] }}</span>
             <span class="note-d">{{ n.updated }}</span>
           </button>
-          <p v-if="!filtered.length" class="none">没有匹配的笔记</p>
+          <p v-if="!filtered.length" class="none">{{ t('knowledgePage.24') }}</p>
         </div>
-        <button type="button" class="ghost new" @click="newNote">新建笔记</button>
+        <button type="button" class="ghost new" @click="newNote">{{ t('knowledgePage.25') }}</button>
       </aside>
 
       <section v-if="current" class="detail">
@@ -276,31 +275,31 @@ onBeforeUnmount(() => {
         </div>
 
         <label class="title-lab">
-          <span>笔记标题</span>
-          <input v-model="current.title" readonly title="标题来自导入来源；后端暂未提供重命名接口" />
+          <span>{{ t('knowledgePage.26') }}</span>
+          <input v-model="current.title" readonly :title="t('knowledgePage.2')" />
         </label>
 
         <dl class="meta">
-          <div><dt>创建时间</dt><dd>{{ current.created }}</dd></div>
-          <div><dt>最近更新</dt><dd>{{ current.updated }}</dd></div>
-          <div><dt>标签</dt><dd>{{ TAG_LABEL[current.tag] }}</dd></div>
-          <div><dt>关联文档</dt><dd>{{ currentDocs.length }} 个</dd></div>
+          <div><dt>{{ t('knowledgePage.27') }}</dt><dd>{{ current.created }}</dd></div>
+          <div><dt>{{ t('knowledgePage.28') }}</dt><dd>{{ current.updated }}</dd></div>
+          <div><dt>{{ t('knowledgePage.29') }}</dt><dd>{{ TAG_LABEL[current.tag] }}</dd></div>
+          <div><dt>{{ t('knowledgePage.30') }}</dt><dd>{{ currentDocs.length }} 个</dd></div>
         </dl>
 
         <div class="table-wrap">
           <table>
             <thead>
               <tr>
-                <th>文档名</th>
-                <th>类型</th>
-                <th>状态</th>
-                <th>分块数</th>
-                <th>操作</th>
+                <th>{{ t('knowledgePage.31') }}</th>
+                <th>{{ t('knowledgePage.32') }}</th>
+                <th>{{ t('knowledgePage.33') }}</th>
+                <th>{{ t('knowledgePage.34') }}</th>
+                <th>{{ t('knowledgePage.35') }}</th>
               </tr>
             </thead>
             <tbody>
               <tr v-if="!currentDocs.length">
-                <td colspan="5" class="empty-cell">这条笔记还没有关联文档。分块只来自这里的材料。</td>
+                <td colspan="5" class="empty-cell">{{ t('knowledgePage.36') }}</td>
               </tr>
               <tr v-for="d in currentDocs" :key="d.id" :class="{ fail: d.status === 'failed' }">
                 <td>{{ d.name }}</td>
@@ -312,8 +311,8 @@ onBeforeUnmount(() => {
                 </td>
                 <td>{{ d.chunks || '—' }}</td>
                 <td class="ops">
-                  <button v-if="d.status === 'failed'" type="button" class="danger" @click="retryDoc(d)">重试</button>
-                  <button type="button" class="ghost small" @click="deleteDoc(d)">删除</button>
+                  <button v-if="d.status === 'failed'" type="button" class="danger" @click="retryDoc(d)">{{ t('knowledgePage.37') }}</button>
+                  <button type="button" class="ghost small" @click="deleteDoc(d)">{{ t('knowledgePage.38') }}</button>
                 </td>
               </tr>
             </tbody>
@@ -321,14 +320,10 @@ onBeforeUnmount(() => {
         </div>
 
         <div class="chunks">
-          <h3>分块预览</h3>
-          <p v-if="!currentDocs.length" class="empty-chunk">
-            还没有材料。分块只来自这条笔记的关联文档。
-            <button type="button" class="ok" @click="openImport">导入到这条笔记</button>
+          <h3>{{ t('knowledgePage.39') }}</h3>
+          <p v-if="!currentDocs.length" class="empty-chunk">{{ t('knowledgePage.40') }}<button type="button" class="ok" @click="openImport">{{ t('knowledgePage.41') }}</button>
           </p>
-          <p v-else-if="!currentChunks.length" class="empty-chunk">
-            这条笔记还没有可查看的分块。解析完成的文档才会出现在这里。
-            <button type="button" class="ok" @click="openImport">导入到这条笔记</button>
+          <p v-else-if="!currentChunks.length" class="empty-chunk">{{ t('knowledgePage.42') }}<button type="button" class="ok" @click="openImport">{{ t('knowledgePage.43') }}</button>
           </p>
           <article v-for="c in currentChunks" :key="c.id">
             <header><span>{{ c.src }}</span></header>
@@ -337,12 +332,12 @@ onBeforeUnmount(() => {
         </div>
 
         <div class="remark">
-          <h3>备注</h3>
-          <textarea v-model="current.remark" rows="4" placeholder="记录你的复习计划、易错点"></textarea>
+          <h3>{{ t('knowledgePage.44') }}</h3>
+          <textarea v-model="current.remark" rows="4" :placeholder="t('knowledgePage.3')"></textarea>
           <div class="remark-row">
-            <button type="button" class="ok" @click="saveRemark">保存备注</button>
-            <em :class="{ show: savedHint }">已保存</em>
-            <span>修改后可手动保存，数据留在这台浏览器</span>
+            <button type="button" class="ok" @click="saveRemark">{{ t('knowledgePage.45') }}</button>
+            <em :class="{ show: savedHint }">{{ t('knowledgePage.46') }}</em>
+            <span>{{ t('knowledgePage.47') }}</span>
           </div>
         </div>
       </section>
@@ -350,9 +345,9 @@ onBeforeUnmount(() => {
 
     <Teleport to="body">
       <div v-if="showImport" class="mask" @click.self="closeImport">
-        <div class="modal" role="dialog" aria-label="导入文档">
+        <div class="modal" role="dialog" :aria-label="t('knowledgePage.4')">
           <header>
-            <h3>导入文档</h3>
+            <h3>{{ t('knowledgePage.48') }}</h3>
             <button type="button" class="x" :disabled="running" @click="closeImport">×</button>
           </header>
           <div
@@ -364,8 +359,8 @@ onBeforeUnmount(() => {
             @dragleave.prevent="dragOn = false"
             @drop="onDrop"
           >
-            <p>把文件拖到这里，或点击选择</p>
-            <span>支持 PDF / Markdown / txt / 图片，单个 ≤ 16 MB，一次最多 10 个</span>
+            <p>{{ t('knowledgePage.49') }}</p>
+            <span>{{ t('knowledgePage.50') }}</span>
             <input
               ref="fileInput"
               type="file"
@@ -375,22 +370,22 @@ onBeforeUnmount(() => {
               @change="onFileChange"
             />
           </div>
-          <p class="modal-hint">导入的材料会归入当前笔记「{{ current?.title || '（未选中）' }}」。</p>
+          <p class="modal-hint">导入的材料会归入当前笔记「{{ current?.title || t('knowledgePageX.1') }}」。</p>
           <div v-if="picked.length" class="up">
             <div v-for="row in picked" :key="row.id" class="up-row">
               <div class="up-meta">
                 <span>{{ row.name }}</span>
                 <em v-if="row.status === 'ready'">已入库 {{ row.chunks }} 块</em>
                 <em v-else-if="row.status === 'failed'" class="err">{{ row.error }}</em>
-                <em v-else>{{ row.status === 'uploading' ? '上传中…' : '待上传' }}</em>
+                <em v-else>{{ row.status === 'uploading' ? t('knowledgePageX.2') : t('knowledgePageX.3') }}</em>
               </div>
             </div>
           </div>
           <p v-if="importNote" class="demo-note">{{ importNote }}</p>
           <footer>
-            <button type="button" class="ghost" :disabled="running" @click="closeImport">关闭</button>
+            <button type="button" class="ghost" :disabled="running" @click="closeImport">{{ t('knowledgePage.51') }}</button>
             <button type="button" class="ok" :disabled="running || !picked.length" @click="startUpload">
-              {{ running ? '上传解析中' : '开始导入' }}
+              {{ running ? t('knowledgePageX.4') : t('knowledgePageX.5') }}
             </button>
           </footer>
         </div>

@@ -4,6 +4,7 @@
  * 兼有当前学伴宠物展示：性格 / 学习类型只读、升级经验条、更换学伴宠物。
  */
 import { computed } from 'vue'
+import { useI18n } from '@/i18n'
 import { useSpace } from '@/composables/useSpace'
 import { usePet } from '@/composables/usePet'
 
@@ -16,46 +17,48 @@ const currentSpecies = computed(() => speciesOf(pet.id))
 function close() {
   panelOpen.value = false
 }
+const { t } = useI18n()
+
 </script>
 
 <template>
   <Teleport to="body">
   <div class="mask" @click.self="close">
-    <div class="card" role="dialog" aria-label="个人空间">
+    <div class="card" role="dialog" :aria-label="t('spacePanel.1')">
       <header>
-        <h3>个人空间</h3>
-        <button type="button" class="x" aria-label="关闭" @click="close">×</button>
+        <h3>{{ t('spacePanel.5') }}</h3>
+        <button type="button" class="x" :aria-label="t('spacePanel.2')" @click="close">×</button>
       </header>
-      <p class="lead">开关三个组件。大小、折叠和位置会记在这台浏览器里，没有账号。</p>
+      <p class="lead">{{ t('spacePanel.6') }}</p>
       <ul>
         <li v-for="id in WIN_IDS" :key="id">
           <label>
             <input type="checkbox" :checked="windows[id].on" @change="setOn(id, $event.target.checked)" />
-            <span>{{ WIN_META[id].title }}</span>
+            <span>{{ t(WIN_META[id].titleKey) || WIN_META[id].title }}</span>
           </label>
-          <em>{{ windows[id].collapsed ? '已收起' : '大小 ' + windows[id].size }}</em>
+          <em>{{ windows[id].collapsed ? t('spacePanelX.1') : t('spacePanelX.2') + windows[id].size }}</em>
         </li>
       </ul>
 
       <div v-if="hasPet" class="avatar">
         <p class="who">当前学伴宠物 · {{ displayName }}</p>
         <!-- 性格与学习类型：只读静态展示，要换请走下方「更换学伴宠物」 -->
-        <section class="traits" aria-label="性格与学习类型">
-          <h4>性格与学习类型</h4>
+        <section class="traits" :aria-label="t('spacePanel.3')">
+          <h4>{{ t('spacePanel.7') }}</h4>
           <div class="trait-row">
             <div class="trait">
-              <span class="k">性格</span>
+              <span class="k">{{ t('spacePanel.8') }}</span>
               <span class="v">{{ currentSpecies?.personality || '—' }}</span>
             </div>
             <div class="trait">
-              <span class="k">学习类型</span>
+              <span class="k">{{ t('spacePanel.9') }}</span>
               <span class="v">{{ currentSpecies?.learningStyle || '—' }}</span>
             </div>
           </div>
-          <p class="hint">文案不可编辑。要换请走下方「更换学伴宠物」。</p>
+          <p class="hint">{{ t('spacePanel.10') }}</p>
         </section>
         <!-- 升级经验条 -->
-        <section class="exp" aria-label="升级经验">
+        <section class="exp" :aria-label="t('spacePanel.4')">
           <div class="exp-head">
             <span>Lv {{ pet.level }}</span>
             <span>{{ pet.exp }} / {{ need }}</span>
@@ -65,7 +68,7 @@ function close() {
           </div>
         </section>
 
-        <p class="change-label">更换学伴宠物</p>
+        <p class="change-label">{{ t('spacePanel.11') }}</p>
         <div class="picks">
           <button
             v-for="p in PETS"
@@ -78,8 +81,8 @@ function close() {
       </div>
 
       <div class="foot">
-        <button type="button" class="ghost" @click="resetLayout">恢复默认位置</button>
-        <button type="button" class="ok" @click="close">完成</button>
+        <button type="button" class="ghost" @click="resetLayout">{{ t('spacePanel.12') }}</button>
+        <button type="button" class="ok" @click="close">{{ t('spacePanel.13') }}</button>
       </div>
     </div>
   </div>

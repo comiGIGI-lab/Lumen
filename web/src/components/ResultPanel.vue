@@ -1,4 +1,5 @@
 <script setup>
+import { useI18n } from '@/i18n'
 /**
  * ResultPanel —— 三栏结果的通用外壳（标题 / 计数 / 空状态 / 滚动区）
  */
@@ -11,6 +12,8 @@ defineProps({
   loading: { type: Boolean, default: false },
   accent: { type: String, default: '#e51520' },
 })
+const { t } = useI18n()
+
 </script>
 
 <template>
@@ -28,7 +31,7 @@ defineProps({
     <div class="panel-body">
       <div v-if="loading" class="panel-empty">
         <div class="dots"><i></i><i></i><i></i></div>
-        <p>正在生成…</p>
+        <p>{{ t('resultPanel.1') }}</p>
       </div>
 
       <div v-else-if="count === 0" class="panel-empty">

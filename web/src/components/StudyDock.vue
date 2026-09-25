@@ -5,10 +5,12 @@
  * 定时器开始才播当前组合，暂停静音，再开始接着响。
  */
 import { ref, watch } from 'vue'
+import { useI18n } from '@/i18n'
 import { SCENES } from '@/study/catalog'
 import { useStudyTimer } from '@/composables/useStudyTimer'
 
 const emit = defineEmits(['scene-change'])
+const { t } = useI18n()
 
 const {
   FOCUS_PRESETS,
@@ -73,11 +75,11 @@ function commitCustom() {
     <div class="top">
       <span class="clock" :class="{ on: running }">{{ clock }}</span>
       <button type="button" class="act" :class="{ run: running }" @click="toggle">
-        {{ running ? '暂停' : '开始' }}
+        {{ running ? t('studyDockX.1') : t('studyDockX.2') }}
       </button>
     </div>
 
-    <div class="dur" role="group" aria-label="专注时长">
+    <div class="dur" role="group" :aria-label="t('studyDock.1')">
       <button
         v-for="m in FOCUS_PRESETS"
         :key="m"
@@ -93,12 +95,10 @@ function commitCustom() {
         class="chip"
         :class="{ on: usingCustom }"
         @click="applyCustom(customMin)"
-      >
-        自定义
-      </button>
+      >{{ t('studyDock.3') }}</button>
     </div>
     <label v-if="usingCustom" class="custom">
-      <span>分钟</span>
+      <span>{{ t('studyDock.4') }}</span>
       <input
         type="number"
         min="1"
@@ -111,17 +111,13 @@ function commitCustom() {
     </label>
 
     <div class="row-btns">
-      <button type="button" class="chip" :class="{ on: panel === 'scene' || !!sceneId }" @click="togglePanel('scene')">
-        场景
-      </button>
-      <button type="button" class="chip" :class="{ on: panel === 'focus' }" @click="togglePanel('focus')">
-        专注设置
-        <em v-if="mixCount">{{ mixCount }}</em>
+      <button type="button" class="chip" :class="{ on: panel === 'scene' || !!sceneId }" @click="togglePanel('scene')">{{ t('studyDock.5') }}</button>
+      <button type="button" class="chip" :class="{ on: panel === 'focus' }" @click="togglePanel('focus')">{{ t('studyDock.6') }}<em v-if="mixCount">{{ mixCount }}</em>
       </button>
     </div>
 
     <div v-if="panel === 'scene'" class="grid">
-      <p class="hint">只换背景，不改声音</p>
+      <p class="hint">{{ t('studyDock.7') }}</p>
       <button
         v-for="s in SCENES"
         :key="s.id"
@@ -137,7 +133,7 @@ function commitCustom() {
     </div>
 
     <div v-if="panel === 'focus'" class="mix">
-      <p class="hint">环境声可叠加，每路独立音量。定时器开始才出声</p>
+      <p class="hint">{{ t('studyDock.8') }}</p>
       <label v-for="s in SOUNDS" :key="s.id" class="mix-row">
         <span>{{ s.name }}</span>
         <input
@@ -149,16 +145,14 @@ function commitCustom() {
         />
         <em>{{ volumes[s.id] }}</em>
       </label>
-      <p class="hint music-hint">纯音乐三选一，可与环境声同时开，两首纯音乐不能一起响</p>
-      <div class="music-picks" role="group" aria-label="纯音乐">
+      <p class="hint music-hint">{{ t('studyDock.9') }}</p>
+      <div class="music-picks" role="group" :aria-label="t('studyDock.2')">
         <button
           type="button"
           class="chip"
           :class="{ on: !musicId }"
           @click="pickMusic('')"
-        >
-          关闭
-        </button>
+        >{{ t('studyDock.10') }}</button>
         <button
           v-for="m in MUSIC"
           :key="m.id"
@@ -171,7 +165,7 @@ function commitCustom() {
         </button>
       </div>
       <label class="mix-row">
-        <span>音量</span>
+        <span>{{ t('studyDock.11') }}</span>
         <input
           type="range"
           min="0"

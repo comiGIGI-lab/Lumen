@@ -16,9 +16,10 @@ export const LAYOUTS = ['welcome', 'app', 'study']
 export const WIN_IDS = ['study', 'todo', 'date']
 
 export const WIN_META = {
-  study: { title: '自习坞' },
-  todo: { title: '待办事项' },
-  date: { title: '日期' },
+  // title 保留中文原文作兜底；titleKey 供界面按语言取值
+  study: { title: '自习坞', titleKey: 'win.study' },
+  todo: { title: '待办事项', titleKey: 'win.todo' },
+  date: { title: '日期', titleKey: 'win.date' },
 }
 
 const SIZE_MAX = 3

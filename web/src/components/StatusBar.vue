@@ -1,4 +1,5 @@
 <script setup>
+import { useI18n } from '@/i18n'
 /**
  * StatusBar —— 固定底部状态栏（与桌面版一致，不参与滚动）
  */
@@ -9,6 +10,8 @@ defineProps({
   duration: { type: Number, default: 0 },
   fromCache: { type: Boolean, default: false },
 })
+const { t } = useI18n()
+
 </script>
 
 <template>
@@ -16,14 +19,12 @@ defineProps({
     <div class="left">
       <span class="bullet"></span>
       <span class="msg">{{ text }}</span>
-      <span class="motto" title="LUMEN, Latin for light. ZhiShiYouFang: where the light reaches, learning finds its way.">
-        LUMEN，拉丁语意为光。智识有方：光之所至，学有其方。
-      </span>
+      <span class="motto" title="LUMEN, Latin for light. ZhiShiYouFang: where the light reaches, learning finds its way.">{{ t('statusBar.1') }}</span>
     </div>
 
     <div class="right">
       <span class="motto-en">LUMEN, Latin for light.</span>
-      <span v-if="fromCache" class="pill cache">⚡ 缓存命中</span>
+      <span v-if="fromCache" class="pill cache">{{ t('statusBar.2') }}</span>
       <span v-if="stats" class="pill">
         大纲 {{ stats.outline }} 章 · 资源 {{ stats.resources }} 项 · 计划 {{ stats.plan }} 天
       </span>

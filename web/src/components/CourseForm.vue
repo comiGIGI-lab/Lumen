@@ -4,6 +4,7 @@
  * 这是整条链路的起点。
  */
 import { computed, ref, watch } from 'vue'
+import { useI18n } from '@/i18n'
 
 const props = defineProps({
   options: {
@@ -13,6 +14,7 @@ const props = defineProps({
   busy: { type: Boolean, default: false },
   suggestedDays: { type: Number, default: 7 },
 })
+const { t } = useI18n()
 
 const emit = defineEmits(['generate', 'profile-change'])
 
@@ -34,16 +36,17 @@ const deadlineOptions = computed(() => {
     ).padStart(2, '0')}`
   }
   return [
-    { value: '', label: '不限（按每日时长推荐）' },
-    { value: fmt(7), label: `${fmt(7)}（剩 7 天 · 冲刺）` },
-    { value: fmt(14), label: `${fmt(14)}（剩 14 天）` },
-    { value: fmt(30), label: `${fmt(30)}（剩 30 天）` },
-    { value: fmt(90), label: `${fmt(90)}（剩 90 天 · 长期）` },
+    { value: '', label: t('days.auto') },
+    { value: fmt(7), label: t('days.7', { d: fmt(7) }) },
+    { value: fmt(14), label: t('days.14', { d: fmt(14) }) },
+    { value: fmt(30), label: t('days.30', { d: fmt(30) }) },
+    { value: fmt(90), label: t('days.90', { d: fmt(90) }) },
   ]
 })
 
 /** 常见课程快捷入口，点一下直接填入并生成 */
-const presets = ['机器学习', 'Python', '计算机网络', '线性代数', '操作系统', '数据结构']
+const presetKeys = ['preset.ml', 'preset.python', 'preset.network', 'preset.linalg', 'preset.os', 'preset.ds']
+const presets = presetKeys.map((k) => t(k))
 
 watch(
   profile,
@@ -78,7 +81,7 @@ const deadlineHint = computed(() => {
   const days = Math.round((target - today) / 86400000)
   if (days <= 0) return `已到期 · 生成 5 天冲刺计划`
   const n = Math.min(30, Math.max(5, days))
-  return `剩 ${days} 天 · 将生成 ${n} 天计划`
+  return t('days.plan', { days, n })
 })
 </script>
 
@@ -86,12 +89,12 @@ const deadlineHint = computed(() => {
   <section class="card card-pad form-card">
     <!-- 课程名 -->
     <div class="row-main">
-      <label class="lead">📖 想学什么课程？</label>
+      <label class="lead">{{ t('courseForm.2') }}</label>
       <div class="input-wrap">
         <input
           v-model="course"
           class="input course-input"
-          placeholder="例如：机器学习、计算机网络、线性代数…"
+          :placeholder="t('courseForm.1')"
           :disabled="busy"
           @keyup.enter="submit"
         />
@@ -99,15 +102,13 @@ const deadlineHint = computed(() => {
       <button class="btn btn-primary generate" :disabled="busy" @click="submit">
         <span v-if="busy" class="spinner"></span>
         <span v-else>✨</span>
-        {{ busy ? '生成中…' : '生成方案' }}
+        {{ busy ? t('courseFormX.1') : t('courseFormX.2') }}
       </button>
     </div>
 
     <div class="row-hint">
-      <span class="muted">💡 回车键也能直接生成</span>
-      <span class="presets">
-        试试：
-        <button
+      <span class="muted">{{ t('courseForm.3') }}</span>
+      <span class="presets">{{ t('courseForm.4') }}<button
           v-for="p in presets"
           :key="p"
           class="preset"
@@ -121,37 +122,37 @@ const deadlineHint = computed(() => {
 
     <!-- 用户画像 -->
     <div class="profile-head">
-      <span class="lead">🎯 你是哪类学习者？</span>
-      <span class="muted">画像会注入 Prompt，影响章节深度、资源推荐与计划天数</span>
+      <span class="lead">{{ t('courseForm.5') }}</span>
+      <span class="muted">{{ t('courseForm.6') }}</span>
       <button class="btn-link toggle" @click="showProfile = !showProfile">
-        {{ showProfile ? '收起 ▲' : '展开 ▼' }}
+        {{ showProfile ? t('courseFormX.3') : t('courseFormX.4') }}
       </button>
     </div>
 
     <div v-show="showProfile" class="profile-grid">
       <div class="field">
-        <label class="field-label">水平</label>
+        <label class="field-label">{{ t('courseForm.7') }}</label>
         <select v-model="profile.level" class="select" :disabled="busy">
           <option v-for="v in options.levels" :key="v" :value="v">{{ v }}</option>
         </select>
       </div>
 
       <div class="field">
-        <label class="field-label">每日时长</label>
+        <label class="field-label">{{ t('courseForm.8') }}</label>
         <select v-model="profile.daily_hours" class="select" :disabled="busy">
           <option v-for="v in options.daily_hours" :key="v" :value="v">{{ v }}</option>
         </select>
       </div>
 
       <div class="field">
-        <label class="field-label">学习目标</label>
+        <label class="field-label">{{ t('courseForm.9') }}</label>
         <select v-model="profile.goal" class="select" :disabled="busy">
           <option v-for="v in options.goals" :key="v" :value="v">{{ v }}</option>
         </select>
       </div>
 
       <div class="field">
-        <label class="field-label">截止日期</label>
+        <label class="field-label">{{ t('courseForm.10') }}</label>
         <select v-model="profile.deadline" class="select" :disabled="busy">
           <option v-for="o in deadlineOptions" :key="o.value" :value="o.value">
             {{ o.label }}

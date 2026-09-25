@@ -10,6 +10,7 @@
  * 显示时机由 App.vue 控制：本组件不读写 zjxt.welcomed。
  */
 import { ref } from 'vue'
+import { useI18n } from '@/i18n'
 import TopNav from './TopNav.vue'
 
 defineProps({
@@ -30,6 +31,7 @@ const emit = defineEmits([
   'open-history',
   'open-trace',
 ])
+const { t } = useI18n()
 const showPrivacy = ref(false)
 const activeCard = ref(0)
 
@@ -73,7 +75,7 @@ function cardStyle(i) {
 </script>
 
 <template>
-  <div class="welcome" role="dialog" aria-label="欢迎页">
+  <div class="welcome" role="dialog" :aria-label="t('welcomeScreen.1')">
     <Teleport to="body">
       <div class="wl-nav">
         <TopNav
@@ -102,16 +104,13 @@ function cardStyle(i) {
       <div class="wl-hero-scrim" aria-hidden="true"></div>
       <div class="wl-hero-inner">
         <p class="wl-wordmark">LUMEN</p>
-        <h1 class="wl-title">智识有方</h1>
-        <p class="wl-sub">多模态教学智能体</p>
-        <p class="wl-desc">
-          把课件 PDF、Markdown 讲义和板书照片丢进来，随后输入课程名与学习画像，
-          生成课程大纲、推荐资源与个性化学习计划。提问时先从你的材料里检索，答案可溯源回原文位置。
-        </p>
+        <h1 class="wl-title">{{ t('welcomeScreen.3') }}</h1>
+        <p class="wl-sub">{{ t('welcomeScreen.4') }}</p>
+        <p class="wl-desc">{{ t('welcomeScreen.5') }}</p>
         <div class="wl-actions">
-          <button class="wl-btn wl-btn-light" type="button" @click="onStart">学习方案生成</button>
-          <button class="wl-btn wl-btn-light" type="button" @click="emit('open-knowledge')">知识库</button>
-          <button class="wl-btn wl-btn-light" type="button" @click="emit('open-import')">文档导入</button>
+          <button class="wl-btn wl-btn-light" type="button" @click="onStart">{{ t('welcomeScreen.6') }}</button>
+          <button class="wl-btn wl-btn-light" type="button" @click="emit('open-knowledge')">{{ t('welcomeScreen.7') }}</button>
+          <button class="wl-btn wl-btn-light" type="button" @click="emit('open-import')">{{ t('welcomeScreen.8') }}</button>
         </div>
       </div>
     </section>
@@ -120,8 +119,8 @@ function cardStyle(i) {
     <section class="wl-band">
       <div class="wl-inner">
         <p class="wl-eyebrow">Core capabilities</p>
-        <h2 class="wl-h2">三项能力，覆盖一次完整的学习准备</h2>
-        <p class="wl-lead">从素材解析到知识抽取，再到答疑核对，都建立在课程内容之上</p>
+        <h2 class="wl-h2">{{ t('welcomeScreen.9') }}</h2>
+        <p class="wl-lead">{{ t('welcomeScreen.10') }}</p>
         <div
           class="wl-stage"
           @mouseleave="activeCard = 0"
@@ -143,7 +142,7 @@ function cardStyle(i) {
             </article>
           </div>
         </div>
-        <div class="wl-dots" role="tablist" aria-label="三项能力">
+        <div class="wl-dots" role="tablist" :aria-label="t('welcomeScreen.2')">
           <button
             v-for="(card, i) in cards"
             :key="'dot-' + card.num"
@@ -160,12 +159,12 @@ function cardStyle(i) {
     <!-- ③ CTA -->
     <section class="wl-cta">
       <div class="wl-inner">
-        <h2 class="wl-h2">从一门课程开始</h2>
-        <p class="wl-lead">不需要预先整理资料，进入后输入课程名即可生成</p>
+        <h2 class="wl-h2">{{ t('welcomeScreen.11') }}</h2>
+        <p class="wl-lead">{{ t('welcomeScreen.12') }}</p>
         <div class="wl-actions">
-          <button class="wl-btn" type="button" @click="onStart">学习方案生成</button>
-          <button class="wl-btn" type="button" @click="emit('open-knowledge')">知识库</button>
-          <button class="wl-btn" type="button" @click="emit('open-import')">文档导入</button>
+          <button class="wl-btn" type="button" @click="onStart">{{ t('welcomeScreen.13') }}</button>
+          <button class="wl-btn" type="button" @click="emit('open-knowledge')">{{ t('welcomeScreen.14') }}</button>
+          <button class="wl-btn" type="button" @click="emit('open-import')">{{ t('welcomeScreen.15') }}</button>
         </div>
       </div>
     </section>
@@ -173,12 +172,12 @@ function cardStyle(i) {
     <!-- ④ 页脚 -->
     <footer class="wl-foot">
       <div class="wl-inner">
-        <div class="wl-foot-name">智识有方</div>
-        <p class="wl-foot-lumen">LUMEN，拉丁语意为光。智识有方：光之所至，学有其方。</p>
+        <div class="wl-foot-name">{{ t('welcomeScreen.16') }}</div>
+        <p class="wl-foot-lumen">{{ t('welcomeScreen.17') }}</p>
         <p class="wl-foot-lumen en">LUMEN, Latin for light. ZhiShiYouFang: where the light reaches, learning finds its way.</p>
         <p class="wl-foot-links">
           <a href="https://gitee.com/zhang-binxiang666/ai-coding" target="_blank" rel="noopener">Gitee</a>
-          <button class="wl-privacy-btn" type="button" @click="showPrivacy = true">隐私说明</button>
+          <button class="wl-privacy-btn" type="button" @click="showPrivacy = true">{{ t('welcomeScreen.18') }}</button>
         </p>
       </div>
     </footer>
@@ -186,12 +185,12 @@ function cardStyle(i) {
     <Teleport to="body">
     <div v-if="showPrivacy" class="wl-modal" @click.self="showPrivacy = false">
       <div class="wl-modal-card">
-        <h3>隐私说明</h3>
-        <p>本页面为参赛原型演示，不收集任何个人信息。</p>
-        <p>演示所用的笔记、文档与学习记录均保存在你本机浏览器中，不会上传到服务器。</p>
-        <p>页面上的解析状态、分块数量与统计数字均为演示用示例数据。</p>
+        <h3>{{ t('welcomeScreen.19') }}</h3>
+        <p>{{ t('welcomeScreen.20') }}</p>
+        <p>{{ t('welcomeScreen.21') }}</p>
+        <p>{{ t('welcomeScreen.22') }}</p>
         <div class="wl-modal-foot">
-          <button class="wl-btn-ghost" type="button" @click="showPrivacy = false">知道了</button>
+          <button class="wl-btn-ghost" type="button" @click="showPrivacy = false">{{ t('welcomeScreen.23') }}</button>
         </div>
       </div>
     </div>

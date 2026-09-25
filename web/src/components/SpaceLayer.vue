@@ -10,6 +10,7 @@ import DateDock from './DateDock.vue'
 import SpacePanel from './SpacePanel.vue'
 import CountdownTimer from './CountdownTimer.vue'
 import { computed } from 'vue'
+import { useI18n } from '@/i18n'
 import { useSpace } from '@/composables/useSpace'
 import { useStudyTimer } from '@/composables/useStudyTimer'
 
@@ -18,6 +19,7 @@ defineProps({
 })
 
 const emit = defineEmits(['scene-change'])
+const { t } = useI18n()
 const { windows, panelOpen, todos } = useSpace()
 const { clock } = useStudyTimer()
 const pinnedTodo = computed(() => todos.value.find((t) => t.pinned) || null)
@@ -53,12 +55,10 @@ function openSpace() {
     <button
       type="button"
       class="space-fab"
-      title="个人空间"
-      aria-label="个人空间"
+      :title="t('spaceLayer.1')"
+      :aria-label="t('spaceLayer.2')"
       @click="openSpace"
-    >
-      空间
-    </button>
+    >{{ t('spaceLayer.3') }}</button>
 
     <SpacePanel v-if="panelOpen" />
   </div>

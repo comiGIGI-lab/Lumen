@@ -5,6 +5,7 @@
  * （用 format 区分，Word 回的是 .docx 二进制流）；PDF 用浏览器打印。
  */
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { useI18n } from '@/i18n'
 import { api } from '@/api/client'
 
 const props = defineProps({
@@ -13,6 +14,7 @@ const props = defineProps({
   profile: { type: Object, default: () => ({}) },
   generatedAt: { type: String, default: '' },
 })
+const { t } = useI18n()
 
 const emit = defineEmits(['close'])
 
@@ -180,34 +182,34 @@ onBeforeUnmount(() => {
 
 <template>
   <Teleport to="body">
-    <div v-if="open" class="export-preview" role="dialog" aria-label="学习方案预览">
+    <div v-if="open" class="export-preview" role="dialog" :aria-label="t('exportPreview.1')">
       <div class="export-chrome no-print">
         <div class="chrome-left">
           <p class="chrome-kicker">LUMEN</p>
-          <h2>方案预览</h2>
-          <p class="chrome-hint">先看排版，再选择下载格式。打印时只输出这份讲义。</p>
+          <h2>{{ t('exportPreview.2') }}</h2>
+          <p class="chrome-hint">{{ t('exportPreview.3') }}</p>
         </div>
         <div class="chrome-actions">
           <button type="button" class="btn btn-primary" :disabled="mdBusy" @click="onMarkdown">
-            {{ mdBusy ? '导出中' : '下载 Markdown' }}
+            {{ mdBusy ? t('exportPreviewX.1') : t('exportPreviewX.2') }}
           </button>
-          <button type="button" class="btn btn-ghost" @click="onPdf">打印为 PDF</button>
+          <button type="button" class="btn btn-ghost" @click="onPdf">{{ t('exportPreview.4') }}</button>
           <button type="button" class="btn btn-ghost" :disabled="wordBusy" @click="onWord">
-            {{ wordBusy ? '生成中' : '下载 Word' }}
+            {{ wordBusy ? t('exportPreviewX.3') : t('exportPreviewX.4') }}
           </button>
-          <button type="button" class="btn btn-ghost" @click="emit('close')">关闭</button>
+          <button type="button" class="btn btn-ghost" @click="emit('close')">{{ t('exportPreview.5') }}</button>
         </div>
         <p v-if="mdHint" class="chrome-status">{{ mdHint }}</p>
-        <p class="chrome-pdf-note">打印为 PDF：在系统打印对话框里把目标选成「另存为 PDF」。</p>
+        <p class="chrome-pdf-note">{{ t('exportPreview.6') }}</p>
       </div>
 
       <article class="export-paper">
-        <div class="ep-print-head" aria-hidden="true">LUMEN · 智识有方</div>
-        <div class="ep-print-foot" aria-hidden="true">LUMEN，拉丁语意为光。智识有方：光之所至，学有其方。</div>
+        <div class="ep-print-head" aria-hidden="true">{{ t('exportPreview.7') }}</div>
+        <div class="ep-print-foot" aria-hidden="true">{{ t('exportPreview.8') }}</div>
         <header class="ep-banner">
           <span class="ep-mark">LUMEN</span>
-          <span class="ep-brand">智识有方</span>
-          <span class="ep-kind">学习方案</span>
+          <span class="ep-brand">{{ t('exportPreview.9') }}</span>
+          <span class="ep-kind">{{ t('exportPreview.10') }}</span>
         </header>
 
         <section class="ep-cover">
@@ -215,26 +217,26 @@ onBeforeUnmount(() => {
           <h1>{{ courseName }}</h1>
           <dl class="ep-meta">
             <div>
-              <dt>生成日期</dt>
+              <dt>{{ t('exportPreview.11') }}</dt>
               <dd>{{ coverDate }}</dd>
             </div>
             <div>
-              <dt>程度</dt>
+              <dt>{{ t('exportPreview.12') }}</dt>
               <dd>{{ coverProfile.level }}</dd>
             </div>
             <div>
-              <dt>每日时长</dt>
+              <dt>{{ t('exportPreview.13') }}</dt>
               <dd>{{ coverProfile.daily }}</dd>
             </div>
             <div>
-              <dt>目标</dt>
+              <dt>{{ t('exportPreview.14') }}</dt>
               <dd>{{ coverProfile.goal }}</dd>
             </div>
           </dl>
         </section>
 
         <section class="ep-block">
-          <h2>课程大纲</h2>
+          <h2>{{ t('exportPreview.15') }}</h2>
           <ol v-if="chapters.length" class="ep-chapters">
             <li v-for="ch in chapters" :key="ch.no">
               <div class="ch-head">
@@ -245,20 +247,20 @@ onBeforeUnmount(() => {
                 <li v-for="(p, pi) in ch.points" :key="pi">{{ p }}</li>
               </ul>
               <p v-else-if="ch.note" class="ch-note">{{ ch.note }}</p>
-              <p v-else class="ep-pending">要点待补充</p>
+              <p v-else class="ep-pending">{{ t('exportPreview.16') }}</p>
             </li>
           </ol>
-          <p v-else class="ep-empty">大纲待写入。生成方案后，章节会按顺序排在这里。</p>
+          <p v-else class="ep-empty">{{ t('exportPreview.17') }}</p>
         </section>
 
         <section class="ep-block">
-          <h2>推荐资源</h2>
+          <h2>{{ t('exportPreview.18') }}</h2>
           <table v-if="resources.length" class="ep-table">
             <thead>
               <tr>
-                <th>类型</th>
-                <th>标题</th>
-                <th>链接</th>
+                <th>{{ t('exportPreview.19') }}</th>
+                <th>{{ t('exportPreview.20') }}</th>
+                <th>{{ t('exportPreview.21') }}</th>
               </tr>
             </thead>
             <tbody>
@@ -272,11 +274,11 @@ onBeforeUnmount(() => {
               </tr>
             </tbody>
           </table>
-          <p v-else class="ep-empty">资源待写入。检索完成后，条目会以表的形式列在这里。</p>
+          <p v-else class="ep-empty">{{ t('exportPreview.22') }}</p>
         </section>
 
         <section class="ep-block">
-          <h2>每日计划</h2>
+          <h2>{{ t('exportPreview.23') }}</h2>
           <ol v-if="days.length" class="ep-days">
             <li v-for="d in days" :key="d.n">
               <h3>
@@ -287,14 +289,14 @@ onBeforeUnmount(() => {
               <ul v-if="d.tasks.length" class="day-tasks">
                 <li v-for="(t, ti) in d.tasks" :key="ti">{{ t }}</li>
               </ul>
-              <p v-else class="ep-pending">当日任务待补充</p>
+              <p v-else class="ep-pending">{{ t('exportPreview.24') }}</p>
             </li>
           </ol>
-          <p v-else class="ep-empty">计划待写入。编排完成后，每天的任务会按日列在这里。</p>
+          <p v-else class="ep-empty">{{ t('exportPreview.25') }}</p>
         </section>
 
         <footer class="ep-foot">
-          <span>LUMEN，拉丁语意为光。智识有方：光之所至，学有其方。</span>
+          <span>{{ t('exportPreview.26') }}</span>
           <span class="ep-foot-en">LUMEN, Latin for light.</span>
         </footer>
       </article>

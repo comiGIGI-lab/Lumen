@@ -4,12 +4,14 @@
  * 对应桌面版的「📜 历史」弹窗，点一条即可把方案回填到三栏。
  */
 import { ref, watch } from 'vue'
+import { useI18n } from '@/i18n'
 import ModalDialog from './ModalDialog.vue'
 import { api } from '@/api/client'
 
 const props = defineProps({
   open: { type: Boolean, default: false },
 })
+const { t } = useI18n()
 
 const emit = defineEmits(['close', 'load', 'notify'])
 
@@ -47,12 +49,12 @@ async function pick(course) {
 </script>
 
 <template>
-  <ModalDialog :open="open" title="历史学习方案" icon="🕘" width="600px" @close="emit('close')">
-    <div v-if="loading" class="empty">读取中…</div>
+  <ModalDialog :open="open" :title="t('historyDialog.1')" icon="🕘" width="600px" @close="emit('close')">
+    <div v-if="loading" class="empty">{{ t('historyDialog.2') }}</div>
 
     <div v-else-if="!courses.length" class="empty">
       <span>🗂</span>
-      <p>还没有历史记录。生成一次方案后，这里会按时间倒序列出。</p>
+      <p>{{ t('historyDialog.3') }}</p>
     </div>
 
     <div v-else class="list">
@@ -61,7 +63,7 @@ async function pick(course) {
           <span class="name">{{ c.course }}</span>
           <span class="time">最近：{{ c.last_seen_at || '—' }}</span>
         </div>
-        <span class="go">打开预览 →</span>
+        <span class="go">{{ t('historyDialog.4') }}</span>
       </button>
     </div>
   </ModalDialog>

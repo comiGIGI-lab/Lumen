@@ -59,14 +59,11 @@ onMounted(load)
       <div>
         <p class="kicker">Study progress</p>
         <h1>{{ t('page.progressTitle') }}</h1>
-        <p class="sub">
-          勾选动作在方案结果区完成（大纲每一章、计划每一天都能打勾），
-          这里汇总所有课程的完成情况。
-        </p>
+        <p class="sub">{{ t('learningProgress.1') }}</p>
       </div>
       <div class="head-actions">
-        <button type="button" class="btn btn-ghost" @click="load">刷新</button>
-        <button type="button" class="btn btn-ghost" @click="emit('back')">返回</button>
+        <button type="button" class="btn btn-ghost" @click="load">{{ t('learningProgress.2') }}</button>
+        <button type="button" class="btn btn-ghost" @click="emit('back')">{{ t('learningProgress.3') }}</button>
       </div>
     </header>
 
@@ -85,38 +82,33 @@ onMounted(load)
         </svg>
         <div class="ring-num">
           <b>{{ percent }}<i>%</i></b>
-          <span>总体完成</span>
+          <span>{{ t('learningProgress.4') }}</span>
         </div>
       </div>
       <div class="ov-stats">
         <div class="ov">
           <span class="n">{{ summary.courses }}</span>
-          <span class="l">在学课程</span>
+          <span class="l">{{ t('learningProgress.5') }}</span>
         </div>
         <div class="ov">
           <span class="n">{{ summary.done }}</span>
-          <span class="l">已完成项</span>
+          <span class="l">{{ t('learningProgress.6') }}</span>
         </div>
         <div class="ov">
           <span class="n">{{ summary.total }}</span>
-          <span class="l">总项数</span>
+          <span class="l">{{ t('learningProgress.7') }}</span>
         </div>
       </div>
     </div>
 
     <!-- 列表 -->
-    <div v-if="loading" class="empty">加载中…</div>
+    <div v-if="loading" class="empty">{{ t('learningProgress.8') }}</div>
 
     <div v-else-if="!courses.length" class="empty">
       <p class="e-ico">📈</p>
-      <p class="e-title">还没有可统计的课程</p>
-      <p class="e-sub">
-        先去生成一份学习方案，然后在结果区把学完的章节和当天任务勾上，
-        这里就会出现进度。
-      </p>
-      <button type="button" class="btn btn-primary" @click="emit('open-course')">
-        去生成学习方案
-      </button>
+      <p class="e-title">{{ t('learningProgress.9') }}</p>
+      <p class="e-sub">{{ t('learningProgress.10') }}</p>
+      <button type="button" class="btn btn-primary" @click="emit('open-course')">{{ t('learningProgress.11') }}</button>
     </div>
 
     <ul v-else class="list">
@@ -138,23 +130,19 @@ onMounted(load)
 
         <div v-if="expanded === c.course" class="row-detail">
           <p class="d-line">
-            <b>创建时间</b><span>{{ fmtTime(c.created_at) }}</span>
+            <b>{{ t('learningProgress.12') }}</b><span>{{ fmtTime(c.created_at) }}</span>
           </p>
           <p class="d-line">
-            <b>最近学习</b><span>{{ fmtTime(c.last_seen_at) }}</span>
+            <b>{{ t('learningProgress.13') }}</b><span>{{ fmtTime(c.last_seen_at) }}</span>
           </p>
           <div class="d-actions">
-            <button type="button" class="btn btn-ghost sm" @click="emit('open-course', c.course)">
-              打开这门课
-            </button>
+            <button type="button" class="btn btn-ghost sm" @click="emit('open-course', c.course)">{{ t('learningProgress.14') }}</button>
           </div>
         </div>
       </li>
     </ul>
 
-    <p class="foot">
-      进度数据存在后端的 <code>progress.json</code> 里，按浏览器隔离，换设备不会串。
-    </p>
+    <p class="foot">{{ t('learningProgress.15') }}<code>progress.json</code>{{ t('learningProgress.16') }}</p>
   </section>
 </template>
 

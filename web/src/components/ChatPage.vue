@@ -4,6 +4,7 @@
  * 同一份 ChatPanel 全页展示；课程页底部那块问答保留不动。
  */
 import { onMounted } from 'vue'
+import { useI18n } from '@/i18n'
 import ChatPanel from './ChatPanel.vue'
 import { usePet } from '@/composables/usePet'
 
@@ -13,6 +14,7 @@ defineProps({
 })
 
 const emit = defineEmits(['notify', 'go-course'])
+const { t } = useI18n()
 
 const { logExp } = usePet()
 // 首次进入问答页留一条成长记录（amount=0，遵循 P62 既有规则「问答不加分」）
@@ -26,10 +28,10 @@ onMounted(() => {
     <div class="bar">
       <div>
         <p class="eyebrow">Ask</p>
-        <h2>课程问答</h2>
-        <p class="lead">基于当前课程提问。学习方案生成页底部仍保留同一块问答。</p>
+        <h2>{{ t('chatPage.1') }}</h2>
+        <p class="lead">{{ t('chatPage.2') }}</p>
       </div>
-      <button type="button" class="ghost" @click="emit('go-course')">课程生成</button>
+      <button type="button" class="ghost" @click="emit('go-course')">{{ t('chatPage.3') }}</button>
     </div>
     <ChatPanel
       :course-context="courseContext"

@@ -290,60 +290,48 @@ const selectedNode = computed(() => nodes.value.find((n) => n.id === selected.va
       <div>
         <p class="kicker">Mind map</p>
         <h1>{{ t('page.mindmapTitle') }}</h1>
-        <p class="sub">
-          可以把已有方案的大纲一键转成导图，也可以从空白开始。
-          单击选中、双击改字，节点可自由增删，改完保存。
-        </p>
+        <p class="sub">{{ t('mindMapPage.3') }}</p>
       </div>
       <div class="head-actions">
-        <button type="button" class="btn btn-ghost" @click="emit('back')">返回</button>
+        <button type="button" class="btn btn-ghost" @click="emit('back')">{{ t('mindMapPage.4') }}</button>
       </div>
     </header>
 
     <!-- 工具条 -->
     <div class="bar">
       <select v-model="course" class="sel">
-        <option value="">选择课程…</option>
+        <option value="">{{ t('mindMapPage.5') }}</option>
         <option v-for="c in courses" :key="c" :value="c">{{ c }}</option>
       </select>
-      <button type="button" class="btn btn-ghost sm" :disabled="busy || !course" @click="openFromPlan">
-        按方案大纲生成
-      </button>
-      <button type="button" class="btn btn-ghost sm" :disabled="busy || !course" @click="loadExisting">
-        载入已保存
-      </button>
-      <button type="button" class="btn btn-ghost sm" :disabled="busy" @click="startBlank">
-        从空白开始
-      </button>
+      <button type="button" class="btn btn-ghost sm" :disabled="busy || !course" @click="openFromPlan">{{ t('mindMapPage.6') }}</button>
+      <button type="button" class="btn btn-ghost sm" :disabled="busy || !course" @click="loadExisting">{{ t('mindMapPage.7') }}</button>
+      <button type="button" class="btn btn-ghost sm" :disabled="busy" @click="startBlank">{{ t('mindMapPage.8') }}</button>
 
       <span class="spacer" />
 
       <span class="cnt">
-        {{ stats.total }} 节点 · {{ stats.depth }} 层
-        <em v-if="dirty">· 未保存</em>
+        {{ t('stat.mindmap', { n: stats.total, d: stats.depth }) }}
+        <em v-if="dirty">{{ t('mindMapPage.9') }}</em>
       </span>
       <button type="button" class="btn btn-primary sm" :disabled="busy || !nodes.length" @click="save">
-        {{ busy ? '处理中…' : '保存' }}
+        {{ busy ? t('mindMapPageX.1') : t('mindMapPageX.2') }}
       </button>
     </div>
 
     <!-- 画布 -->
     <div v-if="!nodes.length" class="empty">
       <p class="e-ico">🗺</p>
-      <p class="e-title">还没有导图</p>
-      <p class="e-sub">
-        上面选一门课程，点「按方案大纲生成」会按你的大纲自动铺一张；
-        也可以「从空白开始」自己搭。
-      </p>
+      <p class="e-title">{{ t('mindMapPage.10') }}</p>
+      <p class="e-sub">{{ t('mindMapPage.11') }}</p>
     </div>
 
     <template v-else>
       <div class="canvas-wrap">
         <div class="canvas-tools">
-          <button type="button" class="ico-btn" title="缩小" @click="zoom(-0.1)">−</button>
+          <button type="button" class="ico-btn" :title="t('mindMapPage.1')" @click="zoom(-0.1)">−</button>
           <span class="zoom">{{ Math.round(scale * 100) }}%</span>
-          <button type="button" class="ico-btn" title="放大" @click="zoom(0.1)">＋</button>
-          <button type="button" class="btn btn-ghost sm" @click="resetZoom">复位</button>
+          <button type="button" class="ico-btn" :title="t('mindMapPage.2')" @click="zoom(0.1)">＋</button>
+          <button type="button" class="btn btn-ghost sm" @click="resetZoom">{{ t('mindMapPage.12') }}</button>
         </div>
 
         <div class="canvas-scroll">
@@ -387,7 +375,7 @@ const selectedNode = computed(() => nodes.value.find((n) => n.id === selected.va
                   @click.stop
                   v-focus
                 />
-                <span v-else class="node-text">{{ n.text || '（空）' }}</span>
+                <span v-else class="node-text">{{ n.text || t('mindMapPageX.3') }}</span>
               </div>
             </div>
           </div>
@@ -396,21 +384,18 @@ const selectedNode = computed(() => nodes.value.find((n) => n.id === selected.va
         <!-- 选中节点的操作 -->
         <div class="node-ops">
           <template v-if="selectedNode">
-            <span class="ops-label">
-              已选：<b>{{ selectedNode.text || '（空）' }}</b>
+            <span class="ops-label">{{ t('mindMapPage.13') }}<b>{{ selectedNode.text || t('mindMapPageX.3') }}</b>
             </span>
-            <button type="button" class="btn btn-ghost sm" @click="addChild(selectedNode.id)">
-              ＋ 加子节点
-            </button>
-            <button type="button" class="btn btn-ghost sm" @click="startEdit(selectedNode)">改文字</button>
+            <button type="button" class="btn btn-ghost sm" @click="addChild(selectedNode.id)">{{ t('mindMapPage.14') }}</button>
+            <button type="button" class="btn btn-ghost sm" @click="startEdit(selectedNode)">{{ t('mindMapPage.15') }}</button>
             <button
               type="button"
               class="btn btn-ghost sm danger"
               :disabled="!selectedNode.parent"
               @click="removeNode(selectedNode.id)"
-            >删除（含子树）</button>
+            >{{ t('mindMapPage.16') }}</button>
           </template>
-          <span v-else class="ops-label muted">单击一个节点开始编辑</span>
+          <span v-else class="ops-label muted">{{ t('mindMapPage.17') }}</span>
         </div>
       </div>
     </template>

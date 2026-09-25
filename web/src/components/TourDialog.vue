@@ -1,4 +1,5 @@
 <script setup>
+import { useI18n } from '@/i18n'
 /**
  * TourDialog —— 首访新手指引弹窗
  *
@@ -9,34 +10,34 @@
  */
 const props = defineProps({
   open: { type: Boolean, default: false },
-  /** 当前学伴宠物的名字（usePet.displayName，例如「灯灯」） */
-  petName: { type: String, default: '学伴宠物' },
+  /** 当前学伴宠物的名字（usePet.displayName，例如「灯灯」）。
+   *  默认留空，由模板回退到 i18n 文案 —— 写死中文会在英文界面里露出来。 */
+  petName: { type: String, default: '' },
 })
+const { t } = useI18n()
 
 const emit = defineEmits(['close', 'dismiss'])
 
-// 学伴宠物第一人称介绍：覆盖六个入口，80–120 字，治愈语气、无 AI 腔。
-// 末尾追加「顺带一提…」一句，提示主界面几个悬浮窗可拖到屏幕边缘收起（与下方六个界面单独气泡互相呼应）。
-const copy =
-  '嗨，我是陪你学习的学伴宠物。把课件录音交给我，能变成学习计划；卡住的知识点去知识库翻，或直接问我。自习空间陪你静心专注，右下方是我，设置里调模型。六个入口都在，挑一个试试。顺带一提：主界面那几个悬浮窗可以拖到屏幕边缘收起，腾出空间专心学习。'
+// 引导文案放在 i18n 的 tour.greeting（见 src/i18n/auto-*.json）。
+// 不在这里写成常量 —— 常量不会随语言切换更新。
 </script>
 
 <template>
   <transition name="modal">
     <div v-if="open" class="mask" @click.self="emit('close')">
-      <div class="dialog card" role="dialog" aria-modal="true" aria-label="新手指引">
+      <div class="dialog card" role="dialog" aria-modal="true" :aria-label="t('tourDialog.1')">
         <div class="dlg-head">
-          <div class="dlg-title">我是你的{{ petName }}</div>
-          <button class="close" type="button" aria-label="关闭" @click="emit('close')">✕</button>
+          <div class="dlg-title">{{ t('tour.title', { name: petName || t('tour.buddy') }) }}</div>
+          <button class="close" type="button" :aria-label="t('tourDialog.2')" @click="emit('close')">✕</button>
         </div>
 
         <div class="dlg-body">
-          <p class="tour-copy">{{ copy }}</p>
+          <p class="tour-copy">{{ t('tour.greeting') }}</p>
         </div>
 
         <div class="dlg-foot">
-          <button class="btn btn-ghost" type="button" @click="emit('close')">知道了</button>
-          <button class="btn btn-primary" type="button" @click="emit('dismiss')">不再提示</button>
+          <button class="btn btn-ghost" type="button" @click="emit('close')">{{ t('tourDialog.3') }}</button>
+          <button class="btn btn-primary" type="button" @click="emit('dismiss')">{{ t('tourDialog.4') }}</button>
         </div>
       </div>
     </div>

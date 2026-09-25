@@ -1,4 +1,5 @@
 <script setup>
+import { useI18n } from '@/i18n'
 /**
  * AppHeader —— 工具界面顶栏
  * 左：LUMEN + 智识有方；右：常驻横排导航。
@@ -28,6 +29,7 @@ const emit = defineEmits([
   'open-progress',
   'go-course',
 ])
+const { t } = useI18n()
 </script>
 
 <template>
@@ -36,7 +38,7 @@ const emit = defineEmits([
       <div class="hero-left">
         <div class="wordmark" aria-hidden="true">LUMEN</div>
         <div>
-          <h1 class="hero-title">智识有方</h1>
+          <h1 class="hero-title">{{ t('appHeader.1') }}</h1>
         </div>
       </div>
 

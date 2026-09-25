@@ -58,7 +58,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <nav class="top-nav" aria-label="功能导航">
+  <nav class="top-nav" :aria-label="t('topNav.1')">
     <button
       type="button"
       class="nav-link"
@@ -106,11 +106,11 @@ onBeforeUnmount(() => {
         type="button"
         class="nav-link more-btn"
         :class="{ on: openMore, 'needs-key': needsKey }"
-        title="更多"
+        :title="t('topNav.2')"
         aria-haspopup="true"
         :aria-expanded="openMore"
         @click.stop="openMore = !openMore"
-      >更多</button>
+      >{{ t('topNav.3') }}</button>
       <div v-if="openMore" class="more-menu" role="menu">
         <button type="button" role="menuitem" @click="openSpace">{{ t('nav.space') }}</button>
         <button type="button" role="menuitem" @click="toggleTheme">
@@ -128,7 +128,7 @@ onBeforeUnmount(() => {
         <button type="button" role="menuitem" @click="pick('open-mindmap')">{{ t('nav.mindmap') }}</button>
         <button type="button" role="menuitem" @click="pick('open-progress')">{{ t('nav.progress') }}</button>
         <button type="button" role="menuitem" @click="pick('open-history')">{{ t('nav.history') }}</button>
-        <button type="button" role="menuitem" @click="pick('open-trace')">日志</button>
+        <button type="button" role="menuitem" @click="pick('open-trace')">{{ t('topNav.4') }}</button>
       </div>
     </div>
   </nav>

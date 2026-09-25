@@ -5,16 +5,20 @@
  * 触控：标题栏拖动手势独占，不让页面跟着滚；加减号仍可点。
  */
 import { computed, onBeforeUnmount } from 'vue'
+import { useI18n } from '@/i18n'
 import { useSpace } from '@/composables/useSpace'
 
 const props = defineProps({
   id: { type: String, required: true },
 })
+const { t } = useI18n()
 
 const { windows, zOrder, WIN_META, shrink, grow, moveTo, bringFront, barWidth, layoutMode, clampPos, viewW } = useSpace()
 
 const win = computed(() => windows[props.id])
-const title = WIN_META[props.id]?.title || props.id
+const meta = WIN_META[props.id]
+// 标题走 i18n；WIN_META.title 仅作兜底
+const title = computed(() => (meta?.titleKey ? t(meta.titleKey) : meta?.title) || props.id)
 const studyLayout = computed(() => layoutMode.value === 'study')
 
 const boxStyle = computed(() => {
@@ -93,8 +97,8 @@ onBeforeUnmount(() => {
       <span class="win-name">{{ title }}</span>
       <span class="win-extra"><slot name="title-extra" /></span>
       <div class="win-btns">
-        <button type="button" class="sq" title="缩小" aria-label="缩小" @click="shrink(id)">−</button>
-        <button type="button" class="sq" title="放大" aria-label="放大" @click="grow(id)">+</button>
+        <button type="button" class="sq" :title="t('floatWin.1')" :aria-label="t('floatWin.2')" @click="shrink(id)">−</button>
+        <button type="button" class="sq" :title="t('floatWin.3')" :aria-label="t('floatWin.4')" @click="grow(id)">+</button>
       </div>
     </header>
     <div v-show="!win.collapsed" class="win-body">

@@ -3,6 +3,7 @@
  * DateDock —— 月历 + 当日备忘，存 localStorage zjxt.dates。
  */
 import { computed, ref } from 'vue'
+import { useI18n } from '@/i18n'
 import { useSpace } from '@/composables/useSpace'
 import CountdownTimer from './CountdownTimer.vue'
 
@@ -22,7 +23,7 @@ function fmt(d) {
   return `${y}-${m}-${day}`
 }
 
-const monthLabel = computed(() => `${year.value}年${month.value + 1}月`)
+const monthLabel = computed(() => t('date.ym', { y: year.value, m: month.value + 1 }))
 
 const cells = computed(() => {
   const first = new Date(year.value, month.value, 1)
@@ -58,6 +59,7 @@ function onNote(e) {
   if (!v.trim()) delete dateNotes[selected.value]
   else dateNotes[selected.value] = v
 }
+const { t } = useI18n()
 </script>
 
 <template>

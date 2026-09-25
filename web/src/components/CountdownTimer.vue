@@ -5,11 +5,13 @@
  * compact：标题栏只显示最近一条未来事件。没有未来事件不渲染。
  */
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { useI18n } from '@/i18n'
 import { useSpace } from '@/composables/useSpace'
 
 const props = defineProps({
   compact: { type: Boolean, default: false },
 })
+const { t } = useI18n()
 
 const { countdowns, parseYmd } = useSpace()
 const titleDraft = ref('')
@@ -97,11 +99,11 @@ function removeItem(id) {
     :title="compactLabel"
   >{{ compactLabel }}</span>
   <div v-else-if="!compact" class="cd">
-    <h3>倒数日</h3>
+    <h3>{{ t('countdownTimer.4') }}</h3>
     <form class="add" @submit.prevent="addItem">
-      <input v-model="titleDraft" type="text" maxlength="20" placeholder="事件，如期末考试" />
-      <input v-model="dateDraft" type="date" aria-label="目标日期" />
-      <button type="submit">添加</button>
+      <input v-model="titleDraft" type="text" maxlength="20" :placeholder="t('countdownTimer.1')" />
+      <input v-model="dateDraft" type="date" :aria-label="t('countdownTimer.2')" />
+      <button type="submit">{{ t('countdownTimer.5') }}</button>
     </form>
     <ul v-if="sorted.length" class="list">
       <li
@@ -113,10 +115,10 @@ function removeItem(id) {
           <b>{{ item.title }}</b>
           <span>{{ itemPhrase(item) }}</span>
         </div>
-        <button type="button" class="del" aria-label="删除" @click="removeItem(item.id)">×</button>
+        <button type="button" class="del" :aria-label="t('countdownTimer.3')" @click="removeItem(item.id)">×</button>
       </li>
     </ul>
-    <p v-else class="empty">写下事件和目标日，这里会显示距离某件事还有几天。</p>
+    <p v-else class="empty">{{ t('countdownTimer.6') }}</p>
   </div>
 </template>
 

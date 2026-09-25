@@ -8,6 +8,7 @@
  * Lv5「保持 / 进化」弹层（showEvolve，z-index 118）走原逻辑，与本 emit 互不干扰。
  */
 import { ref, watch } from 'vue'
+import { useI18n } from '@/i18n'
 import PetSprite from './PetSprite.vue'
 import { usePet } from '@/composables/usePet'
 
@@ -16,6 +17,7 @@ defineProps({
 })
 
 const emit = defineEmits(['open-profile'])
+const { t } = useI18n()
 
 const {
   pet,
@@ -60,7 +62,7 @@ watch(levelStamp, () => {
       v-if="visible && hasPet"
       class="buddy"
       :class="{ pulse: pulsing }"
-      aria-label="学伴宠物，点击查看档案"
+      :aria-label="t('petCompanion.1')"
       role="button"
       tabindex="0"
       @click="openProfile"
@@ -68,17 +70,17 @@ watch(levelStamp, () => {
     >
       <div class="hud">
         <div class="row">
-          <b>学伴宠物</b>
+          <b>{{ t('petCompanion.3') }}</b>
           <span>Lv {{ pet.level }}</span>
         </div>
-        <p class="exp-cap">学伴宠物经验</p>
+        <p class="exp-cap">{{ t('petCompanion.4') }}</p>
         <div
           class="bar"
           role="progressbar"
           :aria-valuenow="pet.exp"
           :aria-valuemin="0"
           :aria-valuemax="need"
-          :aria-label="'学伴宠物经验 ' + pet.exp + ' / ' + need"
+          :aria-label="t('petCompanionX.1') + pet.exp + ' / ' + need"
         >
           <i :style="{ width: pct(ratio) + '%' }" />
         </div>
@@ -92,17 +94,14 @@ watch(levelStamp, () => {
       v-if="visible && hasPet && showEvolve"
       class="mask"
       role="dialog"
-      aria-label="学伴宠物升级"
+      :aria-label="t('petCompanion.2')"
     >
       <div class="card">
         <h3>学伴宠物升到了 {{ pet.level }} 级</h3>
-        <p>
-          可以保持现在的形态，也可以换上进阶形态。
-          进阶形态只是外观变化，能力不变，等级和经验都保留。
-        </p>
+        <p>{{ t('petCompanion.5') }}</p>
         <div class="pair">
-          <button type="button" class="ghost" @click="keepForm">保持学伴宠物形态</button>
-          <button type="button" class="ok" @click="evolve">学伴宠物继续进化</button>
+          <button type="button" class="ghost" @click="keepForm">{{ t('petCompanion.6') }}</button>
+          <button type="button" class="ok" @click="evolve">{{ t('petCompanion.7') }}</button>
         </div>
       </div>
     </div>

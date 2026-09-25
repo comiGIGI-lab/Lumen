@@ -37,11 +37,11 @@ const capability = computed(() => {
   return 'full'
 })
 
-const capText = computed(() => ({
-  full: '当前环境支持录音 + 实时转写',
-  'no-speech': '当前浏览器没有语音识别引擎，可录音后手动补文字',
-  'no-recorder': '当前浏览器不支持录音（MediaRecorder 不可用）',
-  insecure: '当前是非安全上下文（http），浏览器禁止访问麦克风',
+const capText = computed(() => t({
+  full: 'cap.full',
+  'no-speech': 'cap.noSpeech',
+  'no-recorder': 'cap.noRecorder',
+  insecure: 'cap.insecure',
 }[capability.value]))
 
 // ---------- 录音状态 ----------
@@ -308,13 +308,10 @@ function downloadAudio() {
       <div>
         <p class="kicker">Lecture capture</p>
         <h1>{{ t('page.recordTitle') }}</h1>
-        <p class="sub">
-          录下课堂内容，边录边出文字；转写稿可以一键存进知识库，
-          之后在课程问答里就能直接问到它。
-        </p>
+        <p class="sub">{{ t('recordPage.2') }}</p>
       </div>
       <div class="head-actions">
-        <button type="button" class="btn btn-ghost" @click="emit('back')">返回</button>
+        <button type="button" class="btn btn-ghost" @click="emit('back')">{{ t('recordPage.3') }}</button>
       </div>
     </header>
 
@@ -323,16 +320,8 @@ function downloadAudio() {
       <span class="cap-dot" />
       <div>
         <b>{{ capText }}</b>
-        <p v-if="capability === 'insecure'" class="cap-detail">
-          浏览器规定：麦克风与语音识别只在 <code>https</code> 或 <code>localhost</code> 下开放。
-          当前站点走的是 <code>http</code>，所以拿不到麦克风 —— 这不是功能坏了，
-          是浏览器安全策略。可以先用下面的「粘贴整理」通道，或在本机
-          <code>http://127.0.0.1:5173</code> 打开体验完整录音。
-        </p>
-        <p v-else-if="capability === 'no-speech'" class="cap-detail">
-          能录音，但这个浏览器没带语音识别引擎（Chrome / Edge 才有）。
-          录完后可以回放，并把文字手动补进下面的输入框。
-        </p>
+        <p v-if="capability === 'insecure'" class="cap-detail">{{ t('recordPage.4') }}<code>https</code> 或 <code>localhost</code>{{ t('recordPage.5') }}<code>http</code>{{ t('recordPage.6') }}<code>http://127.0.0.1:5173</code>{{ t('recordPage.7') }}</p>
+        <p v-else-if="capability === 'no-speech'" class="cap-detail">{{ t('recordPage.8') }}</p>
       </div>
     </div>
 
@@ -344,11 +333,11 @@ function downloadAudio() {
           class="rec-btn"
           :class="{ on: recording }"
           :disabled="!canRecord"
-          :title="canRecord ? '' : '当前环境无法录音'"
+          :title="canRecord ? '' : t('recordPageX.1')"
           @click="recording ? stop() : start()"
         >
           <span class="rec-ico">{{ recording ? '■' : '●' }}</span>
-          <span>{{ recording ? '停止录音' : '开始录音' }}</span>
+          <span>{{ recording ? t('recordPageX.2') : t('recordPageX.3') }}</span>
         </button>
 
         <div class="rec-meta">
@@ -358,8 +347,8 @@ function downloadAudio() {
           </div>
           <div class="rec-hint">
             {{ recording
-              ? (canTranscribe ? '正在录音并实时转写…' : '正在录音…')
-              : '点开始录音，浏览器会请求麦克风权限' }}
+              ? (canTranscribe ? t('recordPageX.4') : t('recordPageX.5'))
+              : t('recordPageX.6') }}
           </div>
         </div>
       </div>
@@ -367,12 +356,12 @@ function downloadAudio() {
       <p v-if="errorText" class="rec-err">{{ errorText }}</p>
 
       <div v-if="audioUrl" class="playback">
-        <div class="pb-label">录音回放</div>
+        <div class="pb-label">{{ t('recordPage.9') }}</div>
         <audio :src="audioUrl" controls preload="metadata" />
         <div class="pb-actions">
           <span class="pb-size">{{ fmtSize(audioBlob?.size) }}</span>
-          <button type="button" class="btn btn-ghost sm" @click="downloadAudio">下载音频</button>
-          <button type="button" class="btn btn-ghost sm" @click="reset">清空重录</button>
+          <button type="button" class="btn btn-ghost sm" @click="downloadAudio">{{ t('recordPage.10') }}</button>
+          <button type="button" class="btn btn-ghost sm" @click="reset">{{ t('recordPage.11') }}</button>
         </div>
       </div>
     </div>
@@ -380,7 +369,7 @@ function downloadAudio() {
     <!-- 转写区 -->
     <div class="txt-card">
       <div class="txt-head">
-        <h2>转写稿</h2>
+        <h2>{{ t('recordPage.12') }}</h2>
         <div class="txt-actions">
           <span class="cnt">{{ fullText.length }} 字</span>
           <button
@@ -388,7 +377,7 @@ function downloadAudio() {
             class="btn btn-ghost sm"
             :disabled="!fullText"
             @click="transcript = ''; interim = ''"
-          >清空</button>
+          >{{ t('recordPage.13') }}</button>
         </div>
       </div>
 
@@ -399,8 +388,8 @@ function downloadAudio() {
         class="txt-area"
         rows="12"
         :placeholder="canTranscribe
-          ? '开始录音后，识别到的文字会自动出现在这里，也可以手动修改或直接粘贴'
-          : '把课堂笔记、别处转写的文字粘贴到这里，同样可以整理入库'"
+          ? t('recordPageX.7')
+          : t('recordPageX.8')"
       />
 
       <div class="save-row">
@@ -408,19 +397,15 @@ function downloadAudio() {
           v-model="saveTitle"
           class="save-title"
           type="text"
-          placeholder="存入知识库的标题（留空则自动按时间命名）"
+          :placeholder="t('recordPage.1')"
         />
         <button type="button" class="btn btn-primary" :disabled="saving || !fullText" @click="saveToKnowledge">
-          {{ saving ? '保存中…' : '存入知识库' }}
+          {{ saving ? t('recordPageX.9') : t('recordPageX.10') }}
         </button>
-        <button type="button" class="btn btn-ghost" :disabled="!fullText" @click="downloadText">
-          下载 txt
-        </button>
+        <button type="button" class="btn btn-ghost" :disabled="!fullText" @click="downloadText">{{ t('recordPage.14') }}</button>
       </div>
 
-      <p class="tip">
-        存进知识库之后，去「课程问答」提问时，系统会优先依据这份转写稿回答。
-      </p>
+      <p class="tip">{{ t('recordPage.15') }}</p>
     </div>
   </section>
 </template>

@@ -4,6 +4,7 @@
  * 可指定某一条置顶（同时只一条）。
  */
 import { computed, ref } from 'vue'
+import { useI18n } from '@/i18n'
 import { useSpace } from '@/composables/useSpace'
 
 const { todos } = useSpace()
@@ -39,13 +40,15 @@ function pin(id) {
 function remove(id) {
   todos.value = todos.value.filter((t) => t.id !== id)
 }
+const { t } = useI18n()
+
 </script>
 
 <template>
   <div class="todo">
     <form class="add" @submit.prevent="addTodo">
-      <input v-model="draft" type="text" maxlength="80" placeholder="写下一项" />
-      <button type="submit">添加</button>
+      <input v-model="draft" type="text" maxlength="80" :placeholder="t('todoDock.1')" />
+      <button type="submit">{{ t('todoDock.3') }}</button>
     </form>
     <ul v-if="sorted.length" class="list">
       <li v-for="item in sorted" :key="item.id" :class="{ done: item.done, pinned: item.pinned }">
@@ -57,14 +60,14 @@ function remove(id) {
           type="button"
           class="pin"
           :class="{ on: item.pinned }"
-          :aria-label="item.pinned ? '取消置顶' : '置顶'"
-          :title="item.pinned ? '取消置顶' : '置顶'"
+          :aria-label="item.pinned ? t('todoDockX.1') : t('todoDockX.2')"
+          :title="item.pinned ? t('todoDockX.1') : t('todoDockX.2')"
           @click="pin(item.id)"
-        >置顶</button>
-        <button type="button" class="del" aria-label="删除" @click="remove(item.id)">×</button>
+        >{{ t('todoDock.4') }}</button>
+        <button type="button" class="del" :aria-label="t('todoDock.2')" @click="remove(item.id)">×</button>
       </li>
     </ul>
-    <p v-else class="empty">还没有待办</p>
+    <p v-else class="empty">{{ t('todoDock.5') }}</p>
   </div>
 </template>
 

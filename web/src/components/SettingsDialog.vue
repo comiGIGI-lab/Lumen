@@ -11,6 +11,7 @@
  *   6. 使用说明：可展开的帮助面板
  */
 import { computed, reactive, ref, watch } from 'vue'
+import { useI18n } from '@/i18n'
 import ModalDialog from './ModalDialog.vue'
 import { api } from '@/api/client'
 
@@ -18,6 +19,7 @@ const props = defineProps({
   open: { type: Boolean, default: false },
   mode: { type: Object, default: () => ({}) },
 })
+const { t } = useI18n()
 
 const emit = defineEmits(['close', 'saved', 'show-tour'])
 
@@ -27,12 +29,23 @@ const PLATFORMS = [
   { name: 'OpenAI', base_url: 'https://api.openai.com/v1', model: 'gpt-4o-mini' },
   {
     name: '通义千问 (Qwen)',
+    labelKey: 'plat.qwen',
     base_url: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
     model: 'qwen-plus',
   },
-  { name: '智谱 GLM', base_url: 'https://open.bigmodel.cn/api/paas/v4', model: 'glm-4-flash' },
-  { name: '月之暗面 (Kimi)', base_url: 'https://api.moonshot.cn/v1', model: 'moonshot-v1-8k' },
-  { name: '自定义', base_url: '', model: '' },
+  {
+    name: '智谱 GLM',
+    labelKey: 'plat.zhipu',
+    base_url: 'https://open.bigmodel.cn/api/paas/v4',
+    model: 'glm-4-flash',
+  },
+  {
+    name: '月之暗面 (Kimi)',
+    labelKey: 'plat.kimi',
+    base_url: 'https://api.moonshot.cn/v1',
+    model: 'moonshot-v1-8k',
+  },
+  { name: '自定义', labelKey: 'plat.custom', base_url: '', model: '' },
 ]
 
 const form = reactive({
@@ -195,12 +208,12 @@ async function clearCache() {
 </script>
 
 <template>
-  <ModalDialog :open="open" title="AI 模型设置" icon="🪄" width="640px" @close="emit('close')">
+  <ModalDialog :open="open" :title="t('settingsDialog.1')" icon="🪄" width="640px" @close="emit('close')">
     <!-- ============ 运行模式：两段等宽 ============ -->
     <section class="block">
       <div class="block-head">
-        <h4>运行模式</h4>
-        <span class="block-sub">调用在线大模型 API</span>
+        <h4>{{ t('settingsDialog.3') }}</h4>
+        <span class="block-sub">{{ t('settingsDialog.4') }}</span>
       </div>
       <div class="seg">
         <button
@@ -208,32 +221,28 @@ async function clearCache() {
           :class="{ on: form.provider === 'mock' }"
           type="button"
           @click="pickMode('mock')"
-        >
-          离线 Mock 模式
-        </button>
+        >{{ t('settingsDialog.5') }}</button>
         <button
           class="seg-btn"
           :class="{ on: form.provider === 'llm' }"
           type="button"
           @click="pickMode('llm')"
-        >
-          在线 LLM 模式
-        </button>
+        >{{ t('settingsDialog.6') }}</button>
       </div>
     </section>
 
     <!-- ============ 模型配置 ============ -->
     <section class="block">
       <div class="block-head">
-        <h4>模型配置</h4>
-        <span class="block-sub">（可提前配置；切到 LLM 模式后生效）</span>
+        <h4>{{ t('settingsDialog.7') }}</h4>
+        <span class="block-sub">{{ t('settingsDialog.8') }}</span>
       </div>
 
       <div class="field">
-        <label class="lbl">平台</label>
+        <label class="lbl">{{ t('settingsDialog.9') }}</label>
         <div class="ctl">
           <select v-model="form.platform" class="input" @change="pickPlatform">
-            <option v-for="p in PLATFORMS" :key="p.name" :value="p.name">{{ p.name }}</option>
+            <option v-for="p in PLATFORMS" :key="p.name" :value="p.name">{{ t(p.labelKey) || p.name }}</option>
           </select>
         </div>
       </div>
@@ -245,30 +254,26 @@ async function clearCache() {
             v-model="form.api_key"
             class="input"
             :type="ui.showKey ? 'text' : 'password'"
-            :placeholder="ui.wantClearKey ? '（保存后将清空已存密钥）' : keyPlaceholder"
+            :placeholder="ui.wantClearKey ? t('settingsDialogX.1') : keyPlaceholder"
             autocomplete="off"
             @input="ui.wantClearKey = false"
           />
           <button class="btn btn-ghost tiny" type="button" @click="ui.showKey = !ui.showKey">
-            {{ ui.showKey ? '隐藏' : '显示' }}
+            {{ ui.showKey ? t('settingsDialogX.2') : t('settingsDialogX.3') }}
           </button>
           <button
             v-if="hasSavedKey && !ui.wantClearKey"
             class="btn btn-ghost tiny"
             type="button"
-            title="清空本机已保存的 API Key"
+            :title="t('settingsDialog.2')"
             @click="markClearKey"
-          >
-            清空
-          </button>
+          >{{ t('settingsDialog.10') }}</button>
         </div>
       </div>
-      <p class="req" :class="{ dim: !isLLM }">
-        * 必填（LLM 模式下需要）
-        <span v-if="hasSavedKey && !ui.wantClearKey" class="req-note">
+      <p class="req" :class="{ dim: !isLLM }">{{ t('settingsDialog.11') }}<span v-if="hasSavedKey && !ui.wantClearKey" class="req-note">
           · 留空则保持已保存的 {{ savedKeyMasked }}
         </span>
-        <span v-if="ui.wantClearKey" class="req-warn">· 已标记清空</span>
+        <span v-if="ui.wantClearKey" class="req-warn">{{ t('settingsDialog.12') }}</span>
       </p>
 
       <div class="field">
@@ -279,7 +284,7 @@ async function clearCache() {
       </div>
 
       <div class="field">
-        <label class="lbl">模型名称</label>
+        <label class="lbl">{{ t('settingsDialog.13') }}</label>
         <div class="ctl">
           <input v-model="form.model" class="input" placeholder="deepseek-chat" />
         </div>
@@ -294,9 +299,9 @@ async function clearCache() {
             :disabled="ui.testing || !isLLM"
             @click="testConnection"
           >
-            {{ ui.testing ? '测试中…' : '测试连接' }}
+            {{ ui.testing ? t('settingsDialogX.4') : t('settingsDialogX.5') }}
           </button>
-          <span v-if="!isLLM" class="test-msg dim">Mock 模式下无需测试连接</span>
+          <span v-if="!isLLM" class="test-msg dim">{{ t('settingsDialog.14') }}</span>
           <span v-else-if="ui.testMsg" class="test-msg" :class="ui.testTone">{{ ui.testMsg }}</span>
         </div>
       </div>
@@ -304,53 +309,41 @@ async function clearCache() {
 
     <!-- ============ 小提示 / 使用说明 ============ -->
     <section class="block tips">
-      <div class="tips-head">💡 小提示</div>
+      <div class="tips-head">{{ t('settingsDialog.15') }}</div>
       <ul>
-        <li>DeepSeek / OpenAI / 通义千问 / 智谱 GLM / 月之暗面都兼容 OpenAI 格式。</li>
+        <li>{{ t('settingsDialog.16') }}</li>
         <li>
-          <b>没填 Key 也能用</b>：会自动回落到内置模板，结果里会标注
-          <code>degraded</code>，不会报错中断。
-        </li>
-        <li>API Key 只保存在本机，不会上传到任何地方。</li>
+          <b>{{ t('settingsDialog.17') }}</b>{{ t('settingsDialog.18') }}<code>degraded</code>{{ t('settingsDialog.19') }}</li>
+        <li>{{ t('settingsDialog.20') }}</li>
       </ul>
     </section>
 
     <div v-if="ui.showHelp" class="help">
-      <div class="help-title">📖 使用说明</div>
+      <div class="help-title">{{ t('settingsDialog.21') }}</div>
       <ol>
-        <li>在「运行模式」里选择 <b>在线 LLM 模式</b>。</li>
-        <li>「平台」下拉选服务商，Base URL 与模型名会<strong>自动填好</strong>（选「自定义」则手动填）。</li>
-        <li>把你的 API Key 粘进「API Key」，点「显示」可以核对是否粘错。</li>
-        <li>点「测试连接」验证 Key 是否可用（可选）。</li>
-        <li>点「保存设置」完成 —— 立即生效，无需重启。</li>
+        <li>{{ t('settingsDialog.22') }}<b>{{ t('settingsDialog.23') }}</b>。</li>
+        <li>{{ t('settingsDialog.24') }}<strong>{{ t('settingsDialog.25') }}</strong>{{ t('settingsDialog.26') }}</li>
+        <li>{{ t('settingsDialog.27') }}</li>
+        <li>{{ t('settingsDialog.28') }}</li>
+        <li>{{ t('settingsDialog.29') }}</li>
       </ol>
-      <div class="help-title">🔐 关于 API Key</div>
-      <p>
-        只保存在本机配置文件 <code>settings.json</code>，不会上传到任何地方。
-        DeepSeek 注册送额度，新用户够用一段时间。
-      </p>
-      <div class="help-title">📚 关于学习计划</div>
-      <p>
-        根据你输入的目标（学什么、花多久、每天几小时）生成大纲 + 日历。
-        可以多次生成对比，挑一个最合适的保存。
-      </p>
+      <div class="help-title">{{ t('settingsDialog.30') }}</div>
+      <p>{{ t('settingsDialog.31') }}<code>settings.json</code>{{ t('settingsDialog.32') }}</p>
+      <div class="help-title">{{ t('settingsDialog.33') }}</div>
+      <p>{{ t('settingsDialog.34') }}</p>
     </div>
 
     <div v-if="ui.msg" class="feedback" :class="ui.tone">{{ ui.msg }}</div>
 
     <template #footer>
       <button class="btn btn-ghost foot-left" type="button" @click="ui.showHelp = !ui.showHelp">
-        {{ ui.showHelp ? '收起说明' : '? 使用说明' }}
+        {{ ui.showHelp ? t('settingsDialogX.6') : t('settingsDialogX.7') }}
       </button>
-      <button class="btn btn-ghost" type="button" @click="emit('show-tour')">
-        查看新手指引
-      </button>
-      <button class="btn btn-ghost" type="button" :disabled="ui.busy" @click="clearCache">
-        清空缓存
-      </button>
-      <button class="btn btn-ghost" type="button" @click="emit('close')">取消</button>
+      <button class="btn btn-ghost" type="button" @click="emit('show-tour')">{{ t('settingsDialog.35') }}</button>
+      <button class="btn btn-ghost" type="button" :disabled="ui.busy" @click="clearCache">{{ t('settingsDialog.36') }}</button>
+      <button class="btn btn-ghost" type="button" @click="emit('close')">{{ t('settingsDialog.37') }}</button>
       <button class="btn btn-primary" type="button" :disabled="ui.busy" @click="save">
-        {{ ui.busy ? '保存中…' : '保存设置' }}
+        {{ ui.busy ? t('settingsDialogX.8') : t('settingsDialogX.9') }}
       </button>
     </template>
   </ModalDialog>

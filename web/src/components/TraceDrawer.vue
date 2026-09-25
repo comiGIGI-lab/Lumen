@@ -4,6 +4,7 @@
  * 直接展示后端 data/trace.log 的内容（与桌面版「📜 历史 / trace 回放」同源）。
  */
 import { computed, ref } from 'vue'
+import { useI18n } from '@/i18n'
 
 const props = defineProps({
   open: { type: Boolean, default: false },
@@ -11,6 +12,7 @@ const props = defineProps({
   traceFile: { type: String, default: '' },
   error: { type: String, default: '' },
 })
+const { t } = useI18n()
 
 const emit = defineEmits(['close', 'refresh'])
 
@@ -49,20 +51,20 @@ const fileBase = computed(() => (props.traceFile || '').split(/[\\/]/).pop() || 
     <aside v-if="open" class="drawer">
       <div class="drawer-head">
         <div>
-          <div class="drawer-title">📜 日志回放</div>
+          <div class="drawer-title">{{ t('traceDrawer.1') }}</div>
           <div class="drawer-sub">{{ fileBase }} · {{ lines.length }} 行</div>
         </div>
         <div class="drawer-actions">
-          <button class="btn btn-ghost tiny" @click="emit('refresh')">刷新</button>
-          <button class="btn btn-ghost tiny" @click="emit('close')">关闭</button>
+          <button class="btn btn-ghost tiny" @click="emit('refresh')">{{ t('traceDrawer.2') }}</button>
+          <button class="btn btn-ghost tiny" @click="emit('close')">{{ t('traceDrawer.3') }}</button>
         </div>
       </div>
 
       <div class="filters">
         <button
           v-for="f in [
-            { k: 'all', t: '全部' },
-            { k: 'trace-only', t: '流水线' },
+            { k: 'all', t: t('traceDrawerX.1') },
+            { k: 'trace-only', t: t('traceDrawerX.2') },
             { k: 'agents', t: 'Agent' },
           ]"
           :key="f.k"
@@ -78,14 +80,14 @@ const fileBase = computed(() => (props.traceFile || '').split(/[\\/]/).pop() || 
         <!-- 后端不可用时给出明确提示，而不是静默显示 0 行 -->
         <div v-if="error && !visible.length" class="drawer-empty drawer-err">
           <span>⚠️</span>
-          <p><b>读取日志失败</b></p>
+          <p><b>{{ t('traceDrawer.4') }}</b></p>
           <p class="err-msg">{{ error }}</p>
-          <p class="err-hint">请确认后端已启动（默认 127.0.0.1:8000）。双击项目根目录的 start.bat 可一并启动前后端。</p>
+          <p class="err-hint">{{ t('traceDrawer.5') }}</p>
         </div>
 
         <div v-else-if="!visible.length" class="drawer-empty">
           <span>📭</span>
-          <p>暂无日志。生成一次方案后这里会出现完整的执行轨迹。</p>
+          <p>{{ t('traceDrawer.6') }}</p>
         </div>
 
         <div v-for="(l, i) in visible" :key="i" class="trace-line">

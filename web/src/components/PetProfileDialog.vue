@@ -17,12 +17,14 @@
  *   - 更换学伴宠物（emit change-pet）
  */
 import { computed } from 'vue'
+import { useI18n } from '@/i18n'
 import PetSprite from './PetSprite.vue'
 import { usePet } from '@/composables/usePet'
 
 const props = defineProps({
   open: { type: Boolean, default: false },
 })
+const { t } = useI18n()
 
 const emit = defineEmits(['close', 'change-pet'])
 
@@ -68,10 +70,10 @@ function formatTime(iso) {
 <template>
   <transition name="dlg">
     <div v-if="open && hasPet" class="mask" @click.self="emit('close')">
-      <div class="dialog" role="dialog" aria-modal="true" aria-label="学伴宠物档案">
+      <div class="dialog" role="dialog" aria-modal="true" :aria-label="t('petProfileDialog.1')">
         <header>
-          <h3>学伴宠物档案</h3>
-          <button class="x" type="button" aria-label="关闭" @click="emit('close')">✕</button>
+          <h3>{{ t('petProfileDialog.3') }}</h3>
+          <button class="x" type="button" :aria-label="t('petProfileDialog.2')" @click="emit('close')">✕</button>
         </header>
 
         <div class="body">
@@ -106,29 +108,29 @@ function formatTime(iso) {
           <!-- 性格 + 学习类型 pill -->
           <section class="traits">
             <div class="pill">
-              <span class="k">性格</span>
+              <span class="k">{{ t('petProfileDialog.4') }}</span>
               <span class="v">{{ currentSpecies?.personality || '—' }}</span>
             </div>
             <div class="pill">
-              <span class="k">学习类型</span>
+              <span class="k">{{ t('petProfileDialog.5') }}</span>
               <span class="v">{{ currentSpecies?.learningStyle || '—' }}</span>
             </div>
           </section>
 
           <!-- 连签 + 找回池 -->
           <section class="streak">
-            <span>连签 <b>{{ pet.streak }}</b> 天 · 找回池 <b>{{ pet.streakPool }}</b> / {{ STREAK_POOL_MAX }}</span>
+            <span>{{ t('petProfileDialog.6') }}<b>{{ pet.streak }}</b>{{ t('petProfileDialog.7') }}<b>{{ pet.streakPool }}</b> / {{ STREAK_POOL_MAX }}</span>
           </section>
 
           <!-- 升级时间（仅已进化） -->
           <section v-if="pet.form === 'evolved'" class="evolved">
-            <span class="k">升级时间</span>
+            <span class="k">{{ t('petProfileDialog.8') }}</span>
             <span class="v">{{ evolvedAtText || '—' }}</span>
           </section>
 
           <!-- 成长记录最近 10 条倒序 -->
           <section class="log">
-            <h4>成长记录</h4>
+            <h4>{{ t('petProfileDialog.9') }}</h4>
             <ul v-if="expLogRecent.length">
               <li v-for="(e, idx) in expLogRecent" :key="e.time + '-' + idx">
                 <span class="t">{{ formatTime(e.time) }}</span>
@@ -138,15 +140,13 @@ function formatTime(iso) {
                 </span>
               </li>
             </ul>
-            <p v-else class="empty">还没有成长记录，去自习或生成方案试试。</p>
+            <p v-else class="empty">{{ t('petProfileDialog.10') }}</p>
           </section>
         </div>
 
         <footer>
-          <button class="ghost" type="button" @click="emit('close')">知道了</button>
-          <button class="ok" type="button" @click="emit('change-pet')">
-            更换学伴宠物
-          </button>
+          <button class="ghost" type="button" @click="emit('close')">{{ t('petProfileDialog.11') }}</button>
+          <button class="ok" type="button" @click="emit('change-pet')">{{ t('petProfileDialog.12') }}</button>
         </footer>
       </div>
     </div>

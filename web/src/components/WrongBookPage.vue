@@ -169,13 +169,11 @@ function resetFilter() {
       <div>
         <p class="kicker">Wrong book</p>
         <h1>{{ t('page.wrongbookTitle') }}</h1>
-        <p class="sub">
-          把做错的题、错因和正解记在这里，按课程归类，复习一次就记一笔。
-        </p>
+        <p class="sub">{{ t('wrongBookPage.9') }}</p>
       </div>
       <div class="head-actions">
-        <button type="button" class="btn btn-primary" @click="openAdd">＋ 记一道错题</button>
-        <button type="button" class="btn btn-ghost" @click="emit('back')">返回</button>
+        <button type="button" class="btn btn-primary" @click="openAdd">{{ t('wrongBookPage.10') }}</button>
+        <button type="button" class="btn btn-ghost" @click="emit('back')">{{ t('wrongBookPage.11') }}</button>
       </div>
     </header>
 
@@ -183,25 +181,25 @@ function resetFilter() {
     <div class="stat-row">
       <div class="stat">
         <span class="s-num">{{ stats.total }}</span>
-        <span class="s-label">错题总数</span>
+        <span class="s-label">{{ t('wrongBookPage.12') }}</span>
       </div>
       <div class="stat">
         <span class="s-num">{{ stats.unmastered }}</span>
-        <span class="s-label">未掌握</span>
+        <span class="s-label">{{ t('wrongBookPage.13') }}</span>
       </div>
       <div class="stat">
         <span class="s-num">{{ stats.mastered }}</span>
-        <span class="s-label">已掌握</span>
+        <span class="s-label">{{ t('wrongBookPage.14') }}</span>
       </div>
       <div class="stat">
         <span class="s-num">{{ stats.due }}</span>
-        <span class="s-label">待复习</span>
+        <span class="s-label">{{ t('wrongBookPage.15') }}</span>
       </div>
       <div class="stat wide">
-        <div class="bar" role="img" :aria-label="`掌握度 ${percent}%`">
+        <div class="bar" role="img" :aria-label="t('stat.mastered', { n: percent })">
           <i :style="{ width: percent + '%' }" />
         </div>
-        <span class="s-label">掌握度 {{ percent }}%</span>
+        <span class="s-label">{{ t('stat.mastered', { n: percent }) }}</span>
       </div>
     </div>
 
@@ -211,11 +209,11 @@ function resetFilter() {
         v-model="keyword"
         class="f-input"
         type="search"
-        placeholder="搜题干 / 答案 / 错因 / 标签"
+        :placeholder="t('wrongBookPage.1')"
         @keyup.enter="load"
       />
       <select v-model="courseFilter" class="f-select" @change="load">
-        <option value="">全部课程</option>
+        <option value="">{{ t('wrongBookPage.16') }}</option>
         <option v-for="c in courses" :key="c" :value="c">{{ c }}</option>
       </select>
       <div class="seg">
@@ -223,37 +221,35 @@ function resetFilter() {
           type="button"
           :class="{ on: statusFilter === '' }"
           @click="statusFilter = ''; load()"
-        >全部</button>
+        >{{ t('wrongBookPage.17') }}</button>
         <button
           type="button"
           :class="{ on: statusFilter === 'unmastered' }"
           @click="statusFilter = 'unmastered'; load()"
-        >未掌握</button>
+        >{{ t('wrongBookPage.18') }}</button>
         <button
           type="button"
           :class="{ on: statusFilter === 'mastered' }"
           @click="statusFilter = 'mastered'; load()"
-        >已掌握</button>
+        >{{ t('wrongBookPage.19') }}</button>
       </div>
-      <button type="button" class="btn btn-ghost sm" @click="load">查询</button>
-      <button v-if="activeHint" type="button" class="btn btn-ghost sm" @click="resetFilter">
-        清除筛选
-      </button>
+      <button type="button" class="btn btn-ghost sm" @click="load">{{ t('wrongBookPage.20') }}</button>
+      <button v-if="activeHint" type="button" class="btn btn-ghost sm" @click="resetFilter">{{ t('wrongBookPage.21') }}</button>
       <span v-if="activeHint" class="f-hint">{{ activeHint }}</span>
     </div>
 
     <!-- 列表 -->
-    <div v-if="loading" class="empty">加载中…</div>
+    <div v-if="loading" class="empty">{{ t('wrongBookPage.22') }}</div>
 
     <div v-else-if="!items.length" class="empty">
       <p class="e-ico">📕</p>
-      <p class="e-title">{{ stats.total ? '当前筛选下没有错题' : '错题本还是空的' }}</p>
+      <p class="e-title">{{ stats.total ? t('wrongBookPageX.1') : t('wrongBookPageX.2') }}</p>
       <p class="e-sub">
         {{ stats.total
-          ? '换个筛选条件看看，或者清除筛选。'
-          : '点右上角「记一道错题」把第一题记下来；也可以从课程问答的回复里随时补录。' }}
+          ? t('wrongBookPageX.3')
+          : t('wrongBookPageX.4') }}
       </p>
-      <button type="button" class="btn btn-primary" @click="openAdd">＋ 记一道错题</button>
+      <button type="button" class="btn btn-primary" @click="openAdd">{{ t('wrongBookPage.23') }}</button>
     </div>
 
     <ul v-else class="list">
@@ -261,7 +257,7 @@ function resetFilter() {
         <div class="c-top">
           <span v-if="it.course" class="chip">{{ it.course }}</span>
           <span class="chip" :class="it.mastered ? 'chip-success' : 'chip-warn'">
-            {{ it.mastered ? '已掌握' : '未掌握' }}
+            {{ it.mastered ? t('wrongBookPageX.5') : t('wrongBookPageX.6') }}
           </span>
           <span v-for="t in it.tags" :key="t" class="tag">#{{ t }}</span>
           <span class="spacer" />
@@ -272,76 +268,76 @@ function resetFilter() {
 
         <div class="c-body">
           <div v-if="it.my_answer" class="c-line wrong">
-            <b>我的答案</b>
+            <b>{{ t('wrongBookPage.24') }}</b>
             <span>{{ it.my_answer }}</span>
           </div>
           <div v-if="it.answer" class="c-line right">
-            <b>正解 / 解析</b>
+            <b>{{ t('wrongBookPage.25') }}</b>
             <span>{{ it.answer }}</span>
           </div>
           <div v-if="it.reason" class="c-line">
-            <b>错因</b>
+            <b>{{ t('wrongBookPage.26') }}</b>
             <span>{{ it.reason }}</span>
           </div>
         </div>
 
         <div class="c-actions">
-          <button type="button" class="btn btn-ghost sm" @click="review(it, null)">记一次复习</button>
+          <button type="button" class="btn btn-ghost sm" @click="review(it, null)">{{ t('wrongBookPage.27') }}</button>
           <button type="button" class="btn btn-ghost sm" @click="toggleMastered(it)">
-            {{ it.mastered ? '标记为未掌握' : '标记为已掌握' }}
+            {{ it.mastered ? t('wrongBookPageX.7') : t('wrongBookPageX.8') }}
           </button>
-          <button type="button" class="btn btn-ghost sm" @click="openEdit(it)">编辑</button>
-          <button type="button" class="btn btn-ghost sm danger" @click="remove(it)">删除</button>
+          <button type="button" class="btn btn-ghost sm" @click="openEdit(it)">{{ t('wrongBookPage.28') }}</button>
+          <button type="button" class="btn btn-ghost sm danger" @click="remove(it)">{{ t('wrongBookPage.29') }}</button>
         </div>
       </li>
     </ul>
 
     <!-- 表单 -->
     <div v-if="form" class="mask" @click.self="form = null">
-      <div class="dialog" role="dialog" aria-label="错题详情">
-        <h2>{{ form.id ? '编辑错题' : '记一道错题' }}</h2>
+      <div class="dialog" role="dialog" :aria-label="t('wrongBookPage.2')">
+        <h2>{{ form.id ? t('wrongBookPageX.9') : t('wrongBookPageX.10') }}</h2>
 
         <label class="field">
-          <span>题干 <em>*</em></span>
-          <textarea v-model="form.question" rows="3" placeholder="题目内容，或你自己的一句话概括" />
+          <span>{{ t('wrongBookPage.30') }}<em>*</em></span>
+          <textarea v-model="form.question" rows="3" :placeholder="t('wrongBookPage.3')" />
         </label>
 
         <div class="row2">
           <label class="field">
-            <span>课程</span>
-            <input v-model="form.course" type="text" placeholder="如：数据结构" list="wb-courses" />
+            <span>{{ t('wrongBookPage.31') }}</span>
+            <input v-model="form.course" type="text" :placeholder="t('wrongBookPage.4')" list="wb-courses" />
             <datalist id="wb-courses">
               <option v-for="c in courses" :key="c" :value="c" />
             </datalist>
           </label>
           <label class="field">
-            <span>标签（逗号分隔）</span>
-            <input v-model="form.tagsText" type="text" placeholder="如：索引, 边界条件" />
+            <span>{{ t('wrongBookPage.32') }}</span>
+            <input v-model="form.tagsText" type="text" :placeholder="t('wrongBookPage.5')" />
           </label>
         </div>
 
         <label class="field">
-          <span>我的答案（错在哪）</span>
-          <textarea v-model="form.my_answer" rows="2" placeholder="当时的错误答案或思路" />
+          <span>{{ t('wrongBookPage.33') }}</span>
+          <textarea v-model="form.my_answer" rows="2" :placeholder="t('wrongBookPage.6')" />
         </label>
 
         <label class="field">
-          <span>正解 / 解析</span>
-          <textarea v-model="form.answer" rows="3" placeholder="正确答案与关键步骤" />
+          <span>{{ t('wrongBookPage.34') }}</span>
+          <textarea v-model="form.answer" rows="3" :placeholder="t('wrongBookPage.7')" />
         </label>
 
         <label class="field">
-          <span>错因</span>
-          <input v-model="form.reason" type="text" placeholder="如：把下标从 1 开始数、概念混淆" />
+          <span>{{ t('wrongBookPage.35') }}</span>
+          <input v-model="form.reason" type="text" :placeholder="t('wrongBookPage.8')" />
         </label>
 
         <p v-if="formError" class="f-err">{{ formError }}</p>
 
         <div class="d-actions">
           <button type="button" class="btn btn-primary" :disabled="saving" @click="save">
-            {{ saving ? '保存中…' : '保存' }}
+            {{ saving ? t('wrongBookPageX.11') : t('wrongBookPageX.12') }}
           </button>
-          <button type="button" class="btn btn-ghost" @click="form = null">取消</button>
+          <button type="button" class="btn btn-ghost" @click="form = null">{{ t('wrongBookPage.36') }}</button>
         </div>
       </div>
     </div>

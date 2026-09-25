@@ -11,10 +11,13 @@
  * 长尾文案（引导气泡、设置弹窗细节等）暂留中文，见文件末尾 TO_BE_TRANSLATED。
  */
 import { computed, ref } from 'vue'
+import autoZh from './auto-zh.json'
+import autoEn from './auto-en.json'
 
 const KEY = 'zjxt.lang'
 
-const PACKS = {
+/** 手工维护的核心文案（导航、通用词、页面标题，key 是语义化的点号路径） */
+const MANUAL = {
   'zh-CN': {
     nav: {
       course: '学习方案生成',
@@ -124,10 +127,24 @@ const PACKS = {
   },
 }
 
+/**
+ * 合并两份来源：
+ *   - MANUAL：手工维护，key 形如 nav.course（点号路径，便于阅读与复用）
+ *   - auto-*：脚本从模板抽取，key 形如 courseForm.1（平铺，量大）
+ * 两边 key 空间不重叠，直接展开合并即可。
+ */
+const PACKS = {
+  'zh-CN': { ...MANUAL['zh-CN'], ...autoZh },
+  'en-US': { ...MANUAL['en-US'], ...autoEn },
+}
+
 const lang = ref('zh-CN')
 let inited = false
 
 function resolve(pack, path) {
+  // 自动抽取的 key 是平铺的（courseForm.1），先直接命中；
+  // 没命中再按点号路径逐层下钻（nav.course）
+  if (Object.prototype.hasOwnProperty.call(pack, path)) return pack[path]
   return path.split('.').reduce((o, k) => (o == null ? undefined : o[k]), pack)
 }
 
@@ -163,14 +180,25 @@ export function useI18n() {
   /**
    * 取文案。缺翻译时逐级回退，永远不会返回 undefined。
    * @param {string} key 形如 'nav.course'
-   * @param {string} [fallback] 中英都缺时用
+   * @param {object|string} [params] 插值变量 {n: 3}，模板里写 {n}。
+   *   中英语序不同（「共 3 条」vs "3 in total"），必须参数化而不是字符串拼接。
+   *   传字符串时按旧签名当 fallback。
    */
-  function t(key, fallback) {
-    const v = resolve(PACKS[lang.value], key)
-    if (v != null) return v
-    const z = resolve(PACKS['zh-CN'], key)
-    if (z != null) return z
-    return fallback != null ? fallback : key
+  function t(key, params) {
+    // key 可能是 undefined（例如 v-for 里未配置的 labelKey），必须挡住，
+    // 否则 resolve 里的 path.split 会抛 TypeError 把整个组件拖垮
+    if (key == null || key === '') return typeof params === 'string' ? params : ''
+
+    let v = resolve(PACKS[lang.value], key)
+    if (v == null) v = resolve(PACKS['zh-CN'], key)
+    if (v == null) v = typeof params === 'string' ? params : key
+
+    if (params && typeof params === 'object') {
+      Object.keys(params).forEach((k) => {
+        v = String(v).split('{' + k + '}').join(String(params[k]))
+      })
+    }
+    return v
   }
 
   return {

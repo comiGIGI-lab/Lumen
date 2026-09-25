@@ -4,6 +4,7 @@
  * 数据结构完全对齐后端 run_plan_pipeline() 的返回（outline / resources / plan）。
  */
 import { computed } from 'vue'
+import { useI18n } from '@/i18n'
 import ResultPanel from './ResultPanel.vue'
 
 const props = defineProps({
@@ -12,6 +13,7 @@ const props = defineProps({
   /** 学习进度：{outline:[{title,done}], plan:[{title,done}]}，索引与 result 一一对应 */
   progress: { type: Object, default: () => ({ outline: [], plan: [] }) },
 })
+const { t } = useI18n()
 
 const emit = defineEmits(['copy-outline', 'copy-plan', 'toggle-progress'])
 
@@ -91,8 +93,8 @@ const dayNo = (item, i) => item?.day ?? i + 1
     <div class="crisis-head">
       <div class="crisis-mark">♡</div>
       <div>
-        <h3 class="crisis-title">先不着急做学习计划</h3>
-        <p class="crisis-sub">我们检测到你可能正在经历很困难的时刻，这件事比课程更重要</p>
+        <h3 class="crisis-title">{{ t('resultsGrid.6') }}</h3>
+        <p class="crisis-sub">{{ t('resultsGrid.7') }}</p>
       </div>
     </div>
 
@@ -117,7 +119,7 @@ const dayNo = (item, i) => item?.day ?? i + 1
   <section v-else class="grid">
     <!-- ① 课程大纲 -->
     <ResultPanel
-      title="课程大纲"
+      :title="t('resultsGrid.1')"
       icon="📑"
       unit="章"
       :count="outline.length"
@@ -131,7 +133,7 @@ const dayNo = (item, i) => item?.day ?? i + 1
         class="outline-item"
         :class="{ done: isDone('outline', i) }"
       >
-        <label class="pick" title="标记这一章已学完">
+        <label class="pick" :title="t('resultsGrid.2')">
           <input
             type="checkbox"
             :checked="isDone('outline', i)"
@@ -148,40 +150,40 @@ const dayNo = (item, i) => item?.day ?? i + 1
       </div>
 
       <template #footer>
-        <button class="btn-link" @click="emit('copy-outline')">📋 复制大纲</button>
+        <button class="btn-link" @click="emit('copy-outline')">{{ t('resultsGrid.8') }}</button>
       </template>
     </ResultPanel>
 
     <!-- ② 推荐资源 -->
     <ResultPanel
-      title="推荐资源"
+      :title="t('resultsGrid.3')"
       icon="🔗"
       unit="项"
       :count="resources.length"
       :loading="loading"
-      empty-text="Searcher 会为课程检索书籍 / 视频 / 网站等学习资源"
+      :empty-text="t('stage.searcherEmpty')"
       accent="#191919"
     >
       <div v-for="(r, i) in resources" :key="i" class="res-item">
         <div class="res-top">
-          <span class="chip" :class="typeChip(r.type)">{{ r.type || '资源' }}</span>
+          <span class="chip" :class="typeChip(r.type)">{{ r.type || t('resultsGridX.1') }}</span>
           <span class="res-title">{{ r.title }}</span>
         </div>
         <a v-if="r.url" class="res-url" :href="r.url" target="_blank" rel="noopener noreferrer">
           {{ r.url }}
         </a>
-        <span v-else class="res-url muted">（无直接链接）</span>
+        <span v-else class="res-url muted">{{ t('resultsGrid.9') }}</span>
       </div>
 
       <template #footer>
-        来源：{{ result?.degraded ? '内置资源库（LLM 不可用时兜底）' : 'Searcher Agent' }}
-        <span class="res-disclaimer">· AI 推荐可能存在偏差，链接请自行核实</span>
+        来源：{{ result?.degraded ? t('resultsGridX.2') : 'Searcher Agent' }}
+        <span class="res-disclaimer">{{ t('resultsGrid.10') }}</span>
       </template>
     </ResultPanel>
 
     <!-- ③ 学习计划 -->
     <ResultPanel
-      title="学习计划"
+      :title="t('resultsGrid.4')"
       icon="📅"
       unit="天"
       :count="planItems.length"
@@ -195,7 +197,7 @@ const dayNo = (item, i) => item?.day ?? i + 1
         class="plan-item"
         :class="{ done: isDone('plan', planIndex(item, i)) }"
       >
-        <label class="pick" title="标记这一天已完成">
+        <label class="pick" :title="t('resultsGrid.5')">
           <input
             type="checkbox"
             :checked="isDone('plan', planIndex(item, i))"
@@ -217,7 +219,7 @@ const dayNo = (item, i) => item?.day ?? i + 1
       </div>
 
       <template #footer>
-        <button class="btn-link" @click="emit('copy-plan')">📋 复制计划</button>
+        <button class="btn-link" @click="emit('copy-plan')">{{ t('resultsGrid.11') }}</button>
       </template>
     </ResultPanel>
   </section>

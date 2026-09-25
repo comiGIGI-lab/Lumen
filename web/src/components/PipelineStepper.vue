@@ -1,4 +1,5 @@
 <script setup>
+import { useI18n } from '@/i18n'
 /**
  * PipelineStepper —— Agent 流水线可视化
  *
@@ -16,6 +17,7 @@ const props = defineProps({
   progress: { type: Object, default: () => ({ done: 0, total: 4, percent: 0 }) },
   meta: { type: Object, default: null },
 })
+const { t } = useI18n()
 
 /** 把节点产出的计数翻译成人话 */
 function summary(key, data) {
@@ -40,13 +42,15 @@ function nodeClass(key, index) {
 /** 节点描述文案：运行中显示动作，完成后显示真实产出，空闲显示职责 */
 function desc(key, stage) {
   const st = props.steps[key]
-  if (!st) return stage.desc
-  if (st.status === 'running') return st.hint || `${stage.title}处理中…`
+  if (!st) return t(stage.descKey)
+  if (st.status === 'running') return st.hint || t('stage.running', { title: t(stage.titleKey) })
   if (st.status === 'done') {
     const sum = summary(key, st.data)
-    return sum ? `${stage.title}已生成（${sum}）` : `${stage.title}已完成`
+    return sum
+      ? t('stage.generated', { title: t(stage.titleKey), n: sum })
+      : t('stage.done', { title: t(stage.titleKey) })
   }
-  return stage.desc
+  return t(stage.descKey)
 }
 </script>
 
@@ -54,9 +58,7 @@ function desc(key, stage) {
   <section class="pipeline card">
     <div class="pipe-head">
       <div class="pipe-title">
-        <span class="dot"></span>
-        Agent 执行链路
-        <span class="stage-count">
+        <span class="dot"></span>{{ t('pipelineStepper.1') }}<span class="stage-count">
           {{ progress.done }} / {{ progress.total }}
         </span>
       </div>
@@ -67,7 +69,7 @@ function desc(key, stage) {
           <span v-if="meta.profile_text" class="pipe-profile">{{ meta.profile_text }}</span>
         </template>
         <template v-else>
-          <span class="pipe-hint">输入课程名后点击「生成方案」，这里会实时显示链路推进</span>
+          <span class="pipe-hint">{{ t('pipelineStepper.2') }}</span>
         </template>
       </div>
     </div>
@@ -114,15 +116,9 @@ function desc(key, stage) {
     </div>
 
     <div v-if="status === 'running'" class="pipe-foot running">
-      <span class="pulse"></span>
-      正在执行 <code>run_plan_pipeline()</code>，事件来自后端 data/trace.log 实时推送…
-    </div>
-    <div v-else-if="status === 'done'" class="pipe-foot ok">
-      ✓ 链路跑通：Planner → Searcher → Writer → Reviewer 全部完成
-    </div>
-    <div v-else-if="status === 'error'" class="pipe-foot err">
-      ✗ 链路中断，详见下方错误提示
-    </div>
+      <span class="pulse"></span>{{ t('pipelineStepper.3') }}<code>run_plan_pipeline()</code>{{ t('pipelineStepper.4') }}</div>
+    <div v-else-if="status === 'done'" class="pipe-foot ok">{{ t('pipelineStepper.5') }}</div>
+    <div v-else-if="status === 'error'" class="pipe-foot err">{{ t('pipelineStepper.6') }}</div>
   </section>
 </template>
 

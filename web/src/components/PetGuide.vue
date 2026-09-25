@@ -5,10 +5,12 @@
  * 选中一位化身才能继续；选择写入 zjxt.pet，下次不再出现。
  */
 import { ref } from 'vue'
+import { useI18n } from '@/i18n'
 import PetSprite from './PetSprite.vue'
 import { usePet } from '@/composables/usePet'
 
 const emit = defineEmits(['done'])
+const { t } = useI18n()
 
 const { PETS, choosePet } = usePet()
 const picked = ref('')
@@ -22,19 +24,15 @@ function confirm() {
 
 <template>
   <Teleport to="body">
-    <div class="guide" role="dialog" aria-label="选择你的化身">
+    <div class="guide" role="dialog" :aria-label="t('petGuide.1')">
       <div class="inner">
         <p class="wordmark">LUMEN</p>
-        <h1 class="title">每个麻瓜，都有一点自己的魔法</h1>
-        <p class="lead">
-          这里的魔法不是咒语，是智慧<br />
-          把课件、板书和录音变成大纲与学习计划，就是你在念的咒语<br />
-          同行的化身是你头脑的模样：你学习，它成长；你升级，它进化。
-        </p>
+        <h1 class="title">{{ t('petGuide.3') }}</h1>
+        <p class="lead">{{ t('petGuide.4') }}<br />{{ t('petGuide.5') }}<br />{{ t('petGuide.6') }}</p>
 
         <div class="pick">
-          <h2 class="pick-title">选一位学伴宠物，与你同行</h2>
-          <div class="cards" role="radiogroup" aria-label="化身选择">
+          <h2 class="pick-title">{{ t('petGuide.7') }}</h2>
+          <div class="cards" role="radiogroup" :aria-label="t('petGuide.2')">
             <button
               v-for="p in PETS"
               :key="p.id"
@@ -54,7 +52,7 @@ function confirm() {
         </div>
 
         <button type="button" class="go" :disabled="!picked" @click="confirm">
-          {{ picked ? '就选它' : '先选一位学伴宠物' }}
+          {{ picked ? t('petGuideX.1') : t('petGuideX.2') }}
         </button>
       </div>
     </div>

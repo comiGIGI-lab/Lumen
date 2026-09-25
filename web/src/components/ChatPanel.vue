@@ -6,6 +6,7 @@
  * 后端在该接口一并返回 retrieved（命中的条目与分数），可用于展示「参考资料」。
  */
 import { nextTick, ref } from 'vue'
+import { useI18n } from '@/i18n'
 import { api } from '@/api/client'
 import { renderMarkdown, handleMdAction } from '@/utils/markdown'
 
@@ -13,6 +14,7 @@ const props = defineProps({
   courseContext: { type: String, default: '' },
   mode: { type: Object, default: () => ({}) },
 })
+const { t } = useI18n()
 
 const emit = defineEmits(['notify'])
 
@@ -78,29 +80,29 @@ function md(text) {
 <template>
   <section class="card card-pad chat">
     <div class="chat-head">
-      <div class="lead">💬 课程问答</div>
+      <div class="lead">{{ t('chatPanel.2') }}</div>
       <span v-if="courseContext" class="chip chip-brand">当前课程：{{ courseContext }}</span>
-      <span v-else class="muted">先「生成方案」，AI 会围绕该课程作答</span>
-      <button class="btn-link right" @click="clear">🗑 清空对话</button>
+      <span v-else class="muted">{{ t('chatPanel.3') }}</span>
+      <button class="btn-link right" @click="clear">{{ t('chatPanel.4') }}</button>
     </div>
 
     <div class="chat-input-row">
       <input
         v-model="question"
         class="input"
-        placeholder="例如：零基础能学会吗？推荐什么参考书？第 3 章讲什么？"
+        :placeholder="t('chatPanel.1')"
         :disabled="busy"
         @keyup.enter="ask"
       />
       <button class="btn btn-accent" :disabled="busy" @click="ask">
-        {{ busy ? '思考中…' : '提问' }}
+        {{ busy ? t('chatPanelX.1') : t('chatPanelX.2') }}
       </button>
     </div>
 
     <div ref="listRef" class="chat-list" @click="handleMdAction">
       <div v-if="!messages.length" class="chat-empty">
         <span>🤖</span>
-        <p>先从你的知识库里检索相关片段，再交给大模型基于这些片段作答；材料里没有才按常识回答。</p>
+        <p>{{ t('chatPanel.5') }}</p>
       </div>
 
       <div
@@ -116,14 +118,14 @@ function md(text) {
           <span v-if="m.role === 'ai' && m.source" class="src">
             来源：{{
               m.source === 'knowledge'
-                ? '知识库'
+                ? t('chatPanelX.3')
                 : m.source === 'llm'
-                  ? '大模型'
+                  ? t('chatPanelX.4')
                   : m.source === 'intent'
-                    ? '意图识别'
+                    ? t('chatPanelX.5')
                     : m.source === 'crisis_intervention'
-                      ? '危机干预'
-                      : '错误'
+                      ? t('chatPanelX.6')
+                      : t('chatPanelX.7')
             }}
           </span>
         </div>
