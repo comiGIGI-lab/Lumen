@@ -20,8 +20,10 @@ const emit = defineEmits([
   'open-history',
   'open-knowledge',
   'open-import',
+  'open-record',
   'open-chat',
   'open-wrongbook',
+  'open-mindmap',
   'open-study',
   'open-progress',
   'go-course',
@@ -44,8 +46,10 @@ const emit = defineEmits([
         @go-course="emit('go-course')"
         @open-knowledge="emit('open-knowledge')"
         @open-import="emit('open-import')"
+        @open-record="emit('open-record')"
         @open-chat="emit('open-chat')"
         @open-wrongbook="emit('open-wrongbook')"
+        @open-mindmap="emit('open-mindmap')"
         @open-study="emit('open-study')"
         @open-progress="emit('open-progress')"
         @open-settings="emit('open-settings')"
@@ -62,8 +66,8 @@ const emit = defineEmits([
   z-index: 128;
   overflow: visible;
   background: rgba(251, 249, 246, 0.92);
-  color: #191919;
-  border-bottom: 1px solid #e4ded5;
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--border);
 }
 
 .hero-inner {
@@ -90,7 +94,7 @@ const emit = defineEmits([
   font-size: 13px;
   letter-spacing: 0.28em;
   color: #e51520;
-  border: 1px solid #e4ded5;
+  border: 1px solid var(--border);
   padding: 10px 10px 8px;
   line-height: 1;
 }

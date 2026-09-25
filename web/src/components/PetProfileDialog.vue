@@ -172,7 +172,7 @@ function formatTime(iso) {
   max-height: calc(100vh - 48px);
   display: flex;
   flex-direction: column;
-  background: #fbf9f6;
+  background: var(--bg-app);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg);
@@ -231,7 +231,7 @@ header h3 {
   width: 96px;
   height: 96px;
   flex: none;
-  background: #fff;
+  background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: 14px;
   display: grid;
@@ -262,7 +262,7 @@ header h3 {
 /* 等级 + 经验值进度条 */
 .exp {
   padding: 10px 12px;
-  background: #fff;
+  background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: 10px;
 }
@@ -379,7 +379,7 @@ header h3 {
   border: 1px solid var(--border);
   border-radius: 8px;
   overflow: hidden;
-  background: #fff;
+  background: var(--bg-card);
 }
 
 .log li {
@@ -422,7 +422,7 @@ header h3 {
   padding: 10px 12px;
   font-size: 12px;
   color: var(--text-muted);
-  background: #fff;
+  background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: 8px;
 }
@@ -446,7 +446,7 @@ footer {
 
 .ghost {
   border: 1px solid var(--border);
-  background: #fff;
+  background: var(--bg-card);
   color: var(--text-secondary);
 }
 

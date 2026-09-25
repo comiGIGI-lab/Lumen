@@ -252,7 +252,7 @@ function desc(key, stage) {
   display: grid;
   place-items: center;
   font-size: 14px;
-  background: #fff;
+  background: var(--bg-card);
   border: 1px solid var(--border);
 }
 
@@ -296,7 +296,7 @@ function desc(key, stage) {
   font-weight: 700;
   padding: 0 6px;
   border-radius: 999px;
-  background: #fff;
+  background: var(--bg-card);
   border: 1px solid var(--border);
   color: var(--text-muted);
 }

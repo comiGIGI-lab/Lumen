@@ -420,7 +420,7 @@ h2 { font-size: 32px; margin: 6px 0 10px; }
 .drop.on { border-color: var(--accent); background: #ffe8d6; }
 .queue, .card, .done {
   margin-top: 16px;
-  background: #fff;
+  background: var(--bg-card);
   border: 1px solid var(--border);
 }
 .queue header, .done, .act, .q-row, .card p {
@@ -444,7 +444,7 @@ h2 { font-size: 32px; margin: 6px 0 10px; }
   font-size: 13px;
 }
 .ok { border: 1px solid var(--primary); background: var(--primary); color: #fff; }
-.ghost { border: 1px solid var(--border); background: #fff; }
+.ghost { border: 1px solid var(--border); background: var(--bg-card); }
 .ok:disabled { opacity: 0.6; }
 .card { display: flex; flex-direction: column; gap: 10px; }
 .card label, .chk { display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: var(--text-muted); }
@@ -452,7 +452,7 @@ h2 { font-size: 32px; margin: 6px 0 10px; }
 select, .new-note input {
   height: 36px;
   border: 1px solid var(--border);
-  background: #fff;
+  background: var(--bg-card);
   width: 100%;
   padding: 0 10px;
 }

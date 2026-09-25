@@ -7,8 +7,10 @@
  */
 import { computed, onMounted, ref } from 'vue'
 import { api } from '@/api/client'
+import { useI18n } from '@/i18n'
 
 const emit = defineEmits(['back', 'go-course', 'notify'])
+const { t } = useI18n()
 
 const loading = ref(false)
 const items = ref([])
@@ -166,7 +168,7 @@ function resetFilter() {
     <header class="wb-head">
       <div>
         <p class="kicker">Wrong book</p>
-        <h1>错题本</h1>
+        <h1>{{ t('page.wrongbookTitle') }}</h1>
         <p class="sub">
           把做错的题、错因和正解记在这里，按课程归类，复习一次就记一笔。
         </p>
@@ -453,7 +455,7 @@ function resetFilter() {
 .f-input,
 .f-select {
   border: 1px solid var(--border);
-  background: #fff;
+  background: var(--bg-card);
   border-radius: 8px;
   padding: 7px 11px;
   font-size: 13px;
@@ -470,7 +472,7 @@ function resetFilter() {
   border: 1px solid var(--border);
   border-radius: 8px;
   overflow: hidden;
-  background: #fff;
+  background: var(--bg-card);
 }
 
 .seg button {
@@ -690,7 +692,7 @@ function resetFilter() {
   font-size: 13px;
   font-family: inherit;
   color: var(--text-primary);
-  background: #fff;
+  background: var(--bg-card);
   resize: vertical;
 }
 

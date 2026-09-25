@@ -114,7 +114,7 @@ function onNote(e) {
   width: 24px;
   height: 24px;
   border: 1px solid var(--border);
-  background: #fff;
+  background: var(--bg-card);
   border-radius: 6px;
 }
 
@@ -178,7 +178,7 @@ textarea {
   resize: vertical;
   min-height: 64px;
   font-size: 12.5px;
-  background: #fff;
+  background: var(--bg-card);
   color: var(--text-primary);
 }
 </style>

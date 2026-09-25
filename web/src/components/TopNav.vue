@@ -6,6 +6,8 @@
  */
 import { onBeforeUnmount, ref } from 'vue'
 import { useSpace } from '@/composables/useSpace'
+import { useTheme } from '@/composables/useTheme'
+import { useI18n } from '@/i18n'
 
 const props = defineProps({
   current: { type: String, default: 'course' },
@@ -16,8 +18,10 @@ const emit = defineEmits([
   'go-course',
   'open-knowledge',
   'open-import',
+  'open-record',
   'open-chat',
   'open-wrongbook',
+  'open-mindmap',
   'open-study',
   'open-progress',
   'open-settings',
@@ -27,6 +31,8 @@ const emit = defineEmits([
 
 const openMore = ref(false)
 const { panelOpen } = useSpace()
+const { isDark, toggle: toggleTheme } = useTheme()
+const { t, isEn, toggle: toggleLang } = useI18n()
 
 function pick(action) {
   openMore.value = false
@@ -58,37 +64,43 @@ onBeforeUnmount(() => {
       class="nav-link"
       :class="{ on: current === 'course' }"
       @click="emit('go-course')"
-    >学习方案生成</button>
+    >{{ t('nav.course') }}</button>
     <button
       type="button"
       class="nav-link"
       :class="{ on: current === 'knowledge' }"
       @click="emit('open-knowledge')"
-    >知识库</button>
+    >{{ t('nav.knowledge') }}</button>
     <button
       type="button"
       class="nav-link"
       :class="{ on: current === 'import' }"
       @click="emit('open-import')"
-    >文档导入</button>
+    >{{ t('nav.import') }}</button>
+    <button
+      type="button"
+      class="nav-link"
+      :class="{ on: current === 'record' }"
+      @click="emit('open-record')"
+    >{{ t('nav.record') }}</button>
     <button
       type="button"
       class="nav-link"
       :class="{ on: current === 'chat' }"
       @click="emit('open-chat')"
-    >课程问答</button>
+    >{{ t('nav.chat') }}</button>
     <button
       type="button"
       class="nav-link"
       :class="{ on: current === 'wrongbook' }"
       @click="emit('open-wrongbook')"
-    >错题本</button>
+    >{{ t('nav.wrongbook') }}</button>
     <button
       type="button"
       class="nav-link"
       :class="{ on: current === 'study' }"
       @click="emit('open-study')"
-    >自习空间</button>
+    >{{ t('nav.study') }}</button>
     <div class="more-wrap">
       <button
         type="button"
@@ -100,13 +112,22 @@ onBeforeUnmount(() => {
         @click.stop="openMore = !openMore"
       >更多</button>
       <div v-if="openMore" class="more-menu" role="menu">
-        <button type="button" role="menuitem" @click="openSpace">个人空间</button>
-        <button type="button" role="menuitem" @click="pick('open-settings')">
-          AI 模型设置
-          <em v-if="needsKey">填入 API Key</em>
+        <button type="button" role="menuitem" @click="openSpace">{{ t('nav.space') }}</button>
+        <button type="button" role="menuitem" @click="toggleTheme">
+          {{ isDark ? t('nav.toLight') : t('nav.toDark') }}
+          <em>{{ isDark ? '☀' : '☾' }}</em>
         </button>
-        <button type="button" role="menuitem" @click="pick('open-progress')">学习进度</button>
-        <button type="button" role="menuitem" @click="pick('open-history')">历史</button>
+        <button type="button" role="menuitem" @click="toggleLang">
+          {{ isEn ? t('nav.toZh') : t('nav.toEn') }}
+          <em>⇄</em>
+        </button>
+        <button type="button" role="menuitem" @click="pick('open-settings')">
+          {{ t('nav.settings') }}
+          <em v-if="needsKey">{{ t('nav.needKey') }}</em>
+        </button>
+        <button type="button" role="menuitem" @click="pick('open-mindmap')">{{ t('nav.mindmap') }}</button>
+        <button type="button" role="menuitem" @click="pick('open-progress')">{{ t('nav.progress') }}</button>
+        <button type="button" role="menuitem" @click="pick('open-history')">{{ t('nav.history') }}</button>
         <button type="button" role="menuitem" @click="pick('open-trace')">日志</button>
       </div>
     </div>
@@ -124,9 +145,9 @@ onBeforeUnmount(() => {
 }
 
 .nav-link {
-  border: 1px solid #e4ded5;
-  background: #fff;
-  color: #191919;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text-primary);
   border-radius: 1000px;
   padding: 7px 14px;
   font-size: 12.5px;
@@ -152,8 +173,8 @@ onBeforeUnmount(() => {
   top: calc(100% + 8px);
   right: 0;
   min-width: 176px;
-  background: #fff;
-  border: 1px solid #e4ded5;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
   border-radius: 12px;
   box-shadow: var(--shadow);
   padding: 6px;
@@ -169,11 +190,11 @@ onBeforeUnmount(() => {
   padding: 8px 10px;
   border-radius: 8px;
   font-size: 13px;
-  color: #191919;
+  color: var(--text-primary);
 }
 
 .more-menu button:hover {
-  background: #f8f3ec;
+  background: var(--bg-soft);
 }
 
 .more-menu em {

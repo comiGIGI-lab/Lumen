@@ -81,7 +81,7 @@ function remove(id) {
   border: 1px solid var(--border);
   border-radius: 1000px;
   padding: 6px 12px;
-  background: #fff;
+  background: var(--bg-card);
   font-size: 13px;
 }
 
@@ -136,7 +136,7 @@ function remove(id) {
 
 .pin {
   border: 1px solid var(--border);
-  background: #fff;
+  background: var(--bg-card);
   color: var(--text-muted);
   border-radius: 1000px;
   padding: 2px 8px;

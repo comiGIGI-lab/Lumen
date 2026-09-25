@@ -132,7 +132,7 @@ watch(levelStamp, () => {
   min-width: 108px;
   padding: 6px 8px 7px;
   background: rgba(251, 249, 246, 0.92);
-  border: 1px solid #e4ded5;
+  border: 1px solid var(--border);
   border-radius: 4px;
   pointer-events: auto;
 }
@@ -143,13 +143,13 @@ watch(levelStamp, () => {
   justify-content: space-between;
   gap: 8px;
   font-size: 11px;
-  color: #4a4540;
+  color: var(--text-secondary);
 }
 
 .row b {
   font-family: Georgia, "Times New Roman", "Songti SC", "Noto Serif CJK SC", serif;
   font-weight: 400;
-  color: #191919;
+  color: var(--text-primary);
 }
 
 .exp-cap {
@@ -186,7 +186,7 @@ watch(levelStamp, () => {
 
 @keyframes lv-pop {
   0% {
-    color: #191919;
+    color: var(--text-primary);
     transform: none;
   }
   20% {
@@ -198,7 +198,7 @@ watch(levelStamp, () => {
     transform: none;
   }
   100% {
-    color: #191919;
+    color: var(--text-primary);
   }
 }
 
@@ -250,8 +250,8 @@ watch(levelStamp, () => {
 
 .card {
   width: min(360px, 100%);
-  background: #fbf9f6;
-  border: 1px solid #e4ded5;
+  background: var(--bg-app);
+  border: 1px solid var(--border);
   border-radius: 12px;
   padding: 18px 18px 14px;
 }
@@ -266,7 +266,7 @@ h3 {
 p {
   margin: 8px 0 0;
   font-size: 13px;
-  color: #4a4540;
+  color: var(--text-secondary);
   line-height: 1.6;
 }
 
@@ -285,8 +285,8 @@ p {
 }
 
 .ghost {
-  border: 1px solid #e4ded5;
-  background: #fff;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
 }
 
 .ok {

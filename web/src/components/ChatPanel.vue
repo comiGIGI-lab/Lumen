@@ -218,7 +218,7 @@ function md(text) {
   place-items: center;
   font-size: 12px;
   font-weight: 700;
-  background: #fff;
+  background: var(--bg-card);
   border: 1px solid var(--border);
 }
 
@@ -232,7 +232,7 @@ function md(text) {
   max-width: 78%;
   padding: 9px 12px;
   border-radius: 10px;
-  background: #fff;
+  background: var(--bg-card);
   border: 1px solid var(--border);
 }
 

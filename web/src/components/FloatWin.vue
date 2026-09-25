@@ -164,7 +164,7 @@ onBeforeUnmount(() => {
   height: 28px;
   border: 1px solid var(--border);
   border-radius: 6px;
-  background: #fff;
+  background: var(--bg-card);
   color: var(--text-primary);
   font-size: 16px;
   line-height: 1;

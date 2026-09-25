@@ -449,7 +449,7 @@ async function clearCache() {
   border-radius: var(--radius-sm);
   padding: 8px 11px;
   font-size: 13px;
-  background: #fff;
+  background: var(--bg-card);
   color: var(--text-primary);
 }
 
@@ -542,7 +542,7 @@ select.input {
   border-radius: var(--radius-sm);
   padding: 12px 14px;
   margin-bottom: 14px;
-  background: #fff;
+  background: var(--bg-card);
 }
 
 .help-title {

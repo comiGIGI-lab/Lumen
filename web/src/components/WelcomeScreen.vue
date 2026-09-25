@@ -20,8 +20,12 @@ const emit = defineEmits([
   'start',
   'open-knowledge',
   'open-import',
+  'open-record',
   'open-chat',
+  'open-wrongbook',
+  'open-mindmap',
   'open-study',
+  'open-progress',
   'open-settings',
   'open-history',
   'open-trace',
@@ -78,8 +82,12 @@ function cardStyle(i) {
           @go-course="onStart"
           @open-knowledge="emit('open-knowledge')"
           @open-import="emit('open-import')"
+          @open-record="emit('open-record')"
           @open-chat="emit('open-chat')"
+          @open-wrongbook="emit('open-wrongbook')"
+          @open-mindmap="emit('open-mindmap')"
           @open-study="emit('open-study')"
+          @open-progress="emit('open-progress')"
           @open-settings="emit('open-settings')"
           @open-history="emit('open-history')"
           @open-trace="emit('open-trace')"
@@ -328,8 +336,8 @@ function cardStyle(i) {
 }
 
 .wl-btn-light {
-  background: #fff;
-  color: #191919;
+  background: var(--bg-card);
+  color: var(--text-primary);
 }
 
 .wl-btn:hover {

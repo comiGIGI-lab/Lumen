@@ -209,7 +209,7 @@ function commitCustom() {
 .act,
 .chip {
   border: 1px solid var(--border);
-  background: #fff;
+  background: var(--bg-card);
   color: var(--text-primary);
   border-radius: 1000px;
   padding: 5px 11px;
@@ -223,7 +223,7 @@ function commitCustom() {
 }
 
 .act.run {
-  background: #fff;
+  background: var(--bg-card);
   color: var(--text-primary);
   border-color: var(--border);
 }
@@ -263,7 +263,7 @@ function commitCustom() {
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 4px 8px;
-  background: #fff;
+  background: var(--bg-card);
 }
 
 .hint {
@@ -286,7 +286,7 @@ function commitCustom() {
   gap: 8px;
   text-align: left;
   border: 1px solid var(--border);
-  background: #fff;
+  background: var(--bg-card);
   border-radius: 10px;
   padding: 6px 8px;
   font-size: 12px;

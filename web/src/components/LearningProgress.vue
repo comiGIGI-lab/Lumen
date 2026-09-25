@@ -8,8 +8,10 @@
  */
 import { computed, onMounted, ref } from 'vue'
 import { api } from '@/api/client'
+import { useI18n } from '@/i18n'
 
 const emit = defineEmits(['back', 'open-course', 'notify'])
+const { t } = useI18n()
 
 const loading = ref(false)
 const courses = ref([])
@@ -56,7 +58,7 @@ onMounted(load)
     <header class="lp-head">
       <div>
         <p class="kicker">Study progress</p>
-        <h1>学习进度</h1>
+        <h1>{{ t('page.progressTitle') }}</h1>
         <p class="sub">
           勾选动作在方案结果区完成（大纲每一章、计划每一天都能打勾），
           这里汇总所有课程的完成情况。

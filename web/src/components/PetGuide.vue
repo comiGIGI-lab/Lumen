@@ -67,8 +67,8 @@ function confirm() {
   inset: 0;
   z-index: 175;
   overflow-y: auto;
-  background: #fbf9f6;
-  color: #191919;
+  background: var(--bg-app);
+  color: var(--text-primary);
   animation: guide-in 0.24s ease both;
 }
 
@@ -104,7 +104,7 @@ function confirm() {
   max-width: 34em;
   font-size: 14.5px;
   line-height: 1.9;
-  color: #4a4540;
+  color: var(--text-secondary);
 }
 
 .pick {
@@ -134,8 +134,8 @@ function confirm() {
   align-items: center;
   gap: 8px;
   padding: 22px 12px 18px;
-  background: #ffffff;
-  border: 1px solid #e4ded5;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
   border-radius: 12px;
   cursor: pointer;
   transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
@@ -177,7 +177,7 @@ function confirm() {
 }
 
 .go:disabled {
-  border-color: #e4ded5;
+  border-color: var(--border);
   background: #f1ece4;
   color: #a39b92;
   box-shadow: none;

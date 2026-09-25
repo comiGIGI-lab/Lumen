@@ -200,6 +200,7 @@ from tools.markdown_export import render_plan_markdown, suggest_filename   # noq
 from tools.docx_export import render_plan_docx, suggest_docx_filename      # noqa: E402
 from tools import progress_store                                    # noqa: E402
 from tools import wrong_book_store                                  # noqa: E402
+from tools import mindmap_store                                     # noqa: E402
 from tools import cache_store                                       # noqa: E402
 from tools.knowledge_store import KnowledgeStore                    # noqa: E402
 from core.paths import data_dir as _data_dir                        # noqa: E402
@@ -1076,6 +1077,22 @@ class ApiHandler(BaseHTTPRequestHandler):
                     "courses": wrong_book_store.courses(cid),
                 })
 
+            if path == "/api/mindmap":
+                # 列表：只给「课程 / 更新时间 / 节点数」，不带节点，列表页够用
+                return self._send_json({
+                    "ok": True,
+                    "items": mindmap_store.list_maps(self._client_id(query)),
+                })
+
+            if path.startswith("/api/mindmap/"):
+                course = urllib.parse.unquote(path[len("/api/mindmap/"):])
+                entry = mindmap_store.get_map(self._client_id(query), course)
+                if not entry:
+                    return self._send_json({"ok": False, "error": "该课程还没有思维导图"}, 404)
+                out = dict(entry)
+                out.pop("_client", None)
+                return self._send_json({"ok": True, "map": out})
+
             if path == "/api/knowledge/capabilities":
                 # 前端据此置灰不支持的入口（例如没装 pypdf 时 PDF 不可用）
                 return self._send_json({"ok": True, **kb_capabilities()})
@@ -1320,6 +1337,18 @@ class ApiHandler(BaseHTTPRequestHandler):
                     "stats": {"done": done, "total": total, "ratio": round(ratio, 4)},
                 })
 
+            if path == "/api/mindmap":
+                # 整张图覆盖保存。前端负责布局与增删，后端只做结构校验：
+                # id 合法唯一、parent 存在、恰好一个根、无环（见 mindmap_store._clean_nodes）
+                entry, err = mindmap_store.save_map(
+                    self._client_id(),
+                    (body.get("course") or "").strip(),
+                    body.get("nodes"),
+                )
+                if err:
+                    return self._send_json({"ok": False, "error": err}, 400)
+                return self._send_json({"ok": True, "map": entry})
+
             if path == "/api/wrongbook":
                 cid = self._client_id()
                 try:
@@ -1386,6 +1415,12 @@ class ApiHandler(BaseHTTPRequestHandler):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path.rstrip("/") or "/"
         try:
+            if path.startswith("/api/mindmap/"):
+                course = urllib.parse.unquote(path[len("/api/mindmap/"):])
+                if not mindmap_store.delete_map(self._client_id(), course):
+                    return self._send_json({"ok": False, "error": "未找到该思维导图"}, 404)
+                return self._send_json({"ok": True, "course": course})
+
             if path.startswith("/api/wrongbook/"):
                 cid = self._client_id()
                 raw_id = urllib.parse.unquote(path[len("/api/wrongbook/"):])

@@ -59,6 +59,60 @@
   --font-mono: "JetBrains Mono", Consolas, "Courier New", monospace;
 }
 
+/* ============================================================
+   暗色主题
+   ------------------------------------------------------------
+   只覆盖变量，不碰具体组件 —— 组件里凡是用 var() 的地方自动适配。
+   （2026-09-25 已把 25 个组件里的 93 处硬编码色换成变量，
+     见 _agent-tmp/theme-tokenize.py；ExportPreview 除外，它是打印白纸）
+
+   配色取舍：
+   - 底色用偏暖的深墨（#14120f 系）而不是纯黑 —— 与品牌红同属暖调，
+     纯黑底配红会显得刺眼，也不像阅读器
+   - 品牌红在深底上提亮一档（#ff3b45），否则 #e51520 在深色里发闷
+   - 正文不用纯白（#ece7e0），纯白在长文阅读时过于刺眼
+   ============================================================ */
+[data-theme="dark"] {
+  --bg-app: #14120f;
+  --bg-card: #1d1a16;
+  --bg-hover: #262119;
+  --bg-soft: #221e19;
+  --bg-disabled: #2a251e;
+
+  --grad-from: #ff3b45;
+  --grad-to: #d81b26;
+  --primary: #ff3b45;
+  --primary-dark: #e51520;
+  --primary-light: #b3565c;
+  --primary-soft: #2e1a1c;
+  --accent: #ff3b45;
+  --accent-dark: #e51520;
+  --accent-soft: #2e1a1c;
+
+  --text-primary: #ece7e0;
+  --text-secondary: #b8b1a7;
+  --text-muted: #8b847a;
+  --text-faint: #6b655d;
+
+  --border: #312b23;
+  --border-strong: #453d32;
+
+  --success: #34d399;
+  --success-soft: #12261f;
+  --warning: #fbbf24;
+  --warning-soft: #2a2213;
+  --error: #ff3b45;
+  --error-soft: #2e1a1c;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.45);
+  --shadow: 0 4px 16px rgba(0, 0, 0, 0.55);
+  --shadow-lg: 0 18px 46px rgba(0, 0, 0, 0.65);
+  --shadow-btn: 0 5px 10px rgba(0, 0, 0, 0.5);
+
+  /* 让浏览器原生控件（滚动条 / 表单 / 日期选择器）也跟着变深 */
+  color-scheme: dark;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -520,7 +574,7 @@ a:hover {
   margin: 9px 0;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  background: #fff;
+  background: var(--bg-card);
   overflow: hidden;
 }
 
@@ -611,7 +665,7 @@ a:hover {
   margin: 0;
   border: 0;
   border-radius: 0;
-  background: #fff;
+  background: var(--bg-card);
 }
 
 /* ---------- 方案讲义打印 ---------- */
@@ -623,7 +677,7 @@ a:hover {
 
   html,
   body {
-    background: #fff !important;
+    background: var(--bg-card) !important;
   }
 
   html.export-preview-open {
@@ -645,7 +699,7 @@ a:hover {
   html.export-preview-open .export-preview {
     position: static !important;
     overflow: visible !important;
-    background: #fff !important;
+    background: var(--bg-card) !important;
   }
 
   html.export-preview-open .no-print {

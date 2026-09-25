@@ -99,7 +99,7 @@ function close() {
 
 .card {
   width: min(380px, 100%);
-  background: #fbf9f6;
+  background: var(--bg-app);
   border: 1px solid var(--border);
   border-radius: 16px;
   padding: 16px 18px 14px;
@@ -176,7 +176,7 @@ em {
 .traits {
   margin: 0 0 12px;
   padding: 10px 12px;
-  background: #fff;
+  background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: 10px;
 }
@@ -201,7 +201,7 @@ em {
   flex-direction: column;
   gap: 2px;
   padding: 6px 8px;
-  background: #f8f3ec;
+  background: var(--bg-soft);
   border-radius: 6px;
 }
 
@@ -274,7 +274,7 @@ em {
 
 .picks button {
   border: 1px solid var(--border);
-  background: #fff;
+  background: var(--bg-card);
   border-radius: 1000px;
   padding: 4px 10px;
   font-size: 12px;
@@ -301,7 +301,7 @@ em {
 
 .ghost {
   border: 1px solid var(--border);
-  background: #fff;
+  background: var(--bg-card);
 }
 
 .ok {

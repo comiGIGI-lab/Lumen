@@ -108,8 +108,8 @@ function onDismiss() {
   pointer-events: auto;
   width: 280px;
   max-width: calc(100vw - 32px);
-  background: #fbf9f6;
-  border: 1px solid #e4ded5;
+  background: var(--bg-app);
+  border: 1px solid var(--border);
   border-radius: 12px;
   padding: 12px 14px 10px;
   box-shadow: 0 8px 22px rgba(25, 25, 25, 0.12);
@@ -137,7 +137,7 @@ function onDismiss() {
   font-family: Georgia, "Times New Roman", "Songti SC", "Noto Serif CJK SC", serif;
   font-weight: 400;
   font-size: 14px;
-  color: #191919;
+  color: var(--text-primary);
 }
 
 .x {
@@ -152,14 +152,14 @@ function onDismiss() {
 
 .x:hover {
   background: #f1ece4;
-  color: #191919;
+  color: var(--text-primary);
 }
 
 .body {
   margin: 0 0 10px;
   font-size: 12.5px;
   line-height: 1.7;
-  color: #4a4540;
+  color: var(--text-secondary);
 }
 
 .foot {
@@ -177,9 +177,9 @@ function onDismiss() {
 }
 
 .ghost {
-  border: 1px solid #e4ded5;
-  background: #fff;
-  color: #4a4540;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text-secondary);
 }
 
 .ok {

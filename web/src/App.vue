@@ -24,10 +24,12 @@ import SceneBackdrop from './components/SceneBackdrop.vue'
 import SpaceLayer from './components/SpaceLayer.vue'
 import KnowledgePage from './components/KnowledgePage.vue'
 import ImportPage from './components/ImportPage.vue'
+import RecordPage from './components/RecordPage.vue'
 import ChatPage from './components/ChatPage.vue'
 import StudySpacePage from './components/StudySpacePage.vue'
 import WrongBookPage from './components/WrongBookPage.vue'
 import LearningProgress from './components/LearningProgress.vue'
+import MindMapPage from './components/MindMapPage.vue'
 import ExportPreview from './components/ExportPreview.vue'
 import { usePlanStream } from './composables/usePlanStream'
 import { useSpace } from './composables/useSpace'
@@ -251,6 +253,11 @@ function goImport() {
   appView.value = 'import'
 }
 
+function goRecord() {
+  if (showWelcome.value) onWelcomeDone()
+  appView.value = 'record'
+}
+
 function goChat() {
   if (showWelcome.value) onWelcomeDone()
   appView.value = 'chat'
@@ -269,6 +276,11 @@ function goWrongBook() {
 function goProgress() {
   if (showWelcome.value) onWelcomeDone()
   appView.value = 'progress'
+}
+
+function goMindMap() {
+  if (showWelcome.value) onWelcomeDone()
+  appView.value = 'mindmap'
 }
 
 // 欢迎层显示期间锁住 body 滚动，避免底层工具界面跟着滚
@@ -715,8 +727,12 @@ const degradedBanner = computed(() => {
       @start="onWelcomeDone"
       @open-knowledge="goKnowledge"
       @open-import="goImport"
+      @open-record="goRecord"
       @open-chat="goChat"
+      @open-wrongbook="goWrongBook"
+      @open-mindmap="goMindMap"
       @open-study="goStudy"
+      @open-progress="goProgress"
       @open-settings="openSettings"
       @open-history="openHistory"
       @open-trace="openLogs"
@@ -736,8 +752,10 @@ const degradedBanner = computed(() => {
       @open-history="openHistory"
       @open-knowledge="goKnowledge"
       @open-import="goImport"
+      @open-record="goRecord"
       @open-chat="goChat"
       @open-wrongbook="goWrongBook"
+      @open-mindmap="goMindMap"
       @open-study="goStudy"
       @open-progress="goProgress"
     />
@@ -754,6 +772,12 @@ const degradedBanner = computed(() => {
         @back="goCourse"
         @open-knowledge="goKnowledge"
         @go-course="goCourse"
+      />
+      <RecordPage
+        v-else-if="appView === 'record'"
+        @back="goCourse"
+        @go-course="goCourse"
+        @notify="notify"
       />
       <ChatPage
         v-else-if="appView === 'chat'"
@@ -772,6 +796,11 @@ const degradedBanner = computed(() => {
         v-else-if="appView === 'progress'"
         @back="goCourse"
         @open-course="onOpenCourseFromProgress"
+        @notify="notify"
+      />
+      <MindMapPage
+        v-else-if="appView === 'mindmap'"
+        @back="goCourse"
         @notify="notify"
       />
       <StudySpacePage v-else-if="appView === 'study'" />
@@ -1097,7 +1126,7 @@ const degradedBanner = computed(() => {
   font-weight: 600;
   box-shadow: var(--shadow);
   animation: fade-up 0.22s ease both;
-  background: #fff;
+  background: var(--bg-card);
   border-left: 4px solid var(--primary);
   color: var(--text-secondary);
 }

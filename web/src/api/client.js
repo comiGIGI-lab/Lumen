@@ -317,6 +317,31 @@ export const api = {
   wrongBookDelete(id) {
     return request(`/wrongbook/${id}`, { method: 'DELETE' })
   },
+
+  // ---------------- 思维导图 ----------------
+
+  /** 已保存的导图列表（只给课程 / 更新时间 / 节点数） */
+  mindmapList() {
+    return request('/mindmap')
+  },
+
+  /** 取某门课的导图 */
+  mindmapGet(course) {
+    return request(`/mindmap/${encodeURIComponent(course)}`)
+  },
+
+  /** 覆盖保存某门课的导图；nodes 是扁平数组 [{id, parent, text}] */
+  mindmapSave(course, nodes) {
+    return request('/mindmap', {
+      method: 'POST',
+      body: JSON.stringify({ course, nodes }),
+    })
+  },
+
+  /** 删除某门课的导图 */
+  mindmapDelete(course) {
+    return request(`/mindmap/${encodeURIComponent(course)}`, { method: 'DELETE' })
+  },
 }
 
 /**

@@ -451,7 +451,7 @@ h2 {
 textarea {
   width: 100%;
   border: 1px solid var(--border);
-  background: #fff;
+  background: var(--bg-card);
   padding: 10px 12px;
   border-radius: 1000px;
 }
@@ -467,7 +467,7 @@ textarea {
 }
 aside {
   min-width: 0;
-  background: #fff;
+  background: var(--bg-card);
   border: 1px solid var(--border);
   padding: 10px;
 }
@@ -541,14 +541,14 @@ aside {
 .chip.on {
   background: #191919;
   color: #fff;
-  border-color: #191919;
+  border-color: var(--text-primary);
 }
 .meta {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
   margin: 0;
-  background: #fff;
+  background: var(--bg-card);
   border: 1px solid var(--border);
   padding: 12px;
 }
@@ -558,7 +558,7 @@ dt {
 }
 .table-wrap {
   overflow-x: auto;
-  background: #fff;
+  background: var(--bg-card);
   border: 1px solid var(--border);
 }
 table {
@@ -588,7 +588,7 @@ th, td {
 .remark,
 .title-lab,
 .empty {
-  background: #fff;
+  background: var(--bg-card);
   border: 1px solid var(--border);
   padding: 14px;
 }
@@ -610,12 +610,12 @@ th, td {
 }
 .ghost {
   border: 1px solid var(--border);
-  background: #fff;
+  background: var(--bg-card);
 }
 .danger {
   border: 1px solid var(--error);
   color: var(--error);
-  background: #fff;
+  background: var(--bg-card);
 }
 .remark-row em {
   opacity: 0;
@@ -668,7 +668,7 @@ th, td {
 }
 .modal {
   width: min(520px, 100%);
-  background: #fbf9f6;
+  background: var(--bg-app);
   border: 1px solid var(--border);
   padding: 16px;
 }

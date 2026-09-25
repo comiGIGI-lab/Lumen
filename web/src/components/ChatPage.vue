@@ -76,7 +76,7 @@ h2 {
 }
 .ghost {
   border: 1px solid var(--border);
-  background: #fff;
+  background: var(--bg-card);
   color: var(--text-primary);
   border-radius: 1000px;
   padding: 7px 14px;

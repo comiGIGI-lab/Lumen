@@ -156,7 +156,7 @@ h3 {
   border-radius: 1000px;
   padding: 5px 10px;
   font-size: 12px;
-  background: #fff;
+  background: var(--bg-card);
   min-width: 0;
   color: var(--text-primary);
 }

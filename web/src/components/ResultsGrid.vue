@@ -284,7 +284,7 @@ const dayNo = (item, i) => item?.day ?? i + 1
   font-size: 11px;
   font-weight: 700;
   color: var(--primary);
-  background: #fff;
+  background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: 6px;
   width: 26px;
@@ -373,7 +373,7 @@ const dayNo = (item, i) => item?.day ?? i + 1
   font-size: 11px;
   font-weight: 800;
   color: var(--primary-dark);
-  background: #fff;
+  background: var(--bg-card);
   border: 1px solid #f3c4c7;
   border-radius: 6px;
   padding: 2px 7px;
@@ -403,7 +403,7 @@ const dayNo = (item, i) => item?.day ?? i + 1
   font-size: 10.5px;
   padding: 1px 7px;
   border-radius: 999px;
-  background: #fff;
+  background: var(--bg-card);
   border: 1px dashed var(--border-strong);
   color: var(--text-muted);
 }
