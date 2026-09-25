@@ -7,6 +7,7 @@
  */
 import { nextTick, ref } from 'vue'
 import { api } from '@/api/client'
+import { renderMarkdown, handleMdAction } from '@/utils/markdown'
 
 const props = defineProps({
   courseContext: { type: String, default: '' },
@@ -67,6 +68,11 @@ async function ask() {
 function clear() {
   messages.value = []
 }
+
+/** AI 回复走 Markdown 渲染（大模型习惯输出 ## / ** / - 这类标记，直接塞进 <p> 会显示成源码） */
+function md(text) {
+  return renderMarkdown(text)
+}
 </script>
 
 <template>
@@ -91,7 +97,7 @@ function clear() {
       </button>
     </div>
 
-    <div ref="listRef" class="chat-list">
+    <div ref="listRef" class="chat-list" @click="handleMdAction">
       <div v-if="!messages.length" class="chat-empty">
         <span>🤖</span>
         <p>先从你的知识库里检索相关片段，再交给大模型基于这些片段作答；材料里没有才按常识回答。</p>
@@ -105,7 +111,8 @@ function clear() {
       >
         <div class="avatar">{{ m.role === 'user' ? '你' : '🤖' }}</div>
         <div class="bubble">
-          <p class="text">{{ m.text }}</p>
+          <p v-if="m.role === 'user'" class="text">{{ m.text }}</p>
+          <div v-else class="text md-body" v-html="md(m.text)"></div>
           <span v-if="m.role === 'ai' && m.source" class="src">
             来源：{{
               m.source === 'knowledge'
@@ -240,6 +247,12 @@ function clear() {
   white-space: pre-wrap;
   word-break: break-word;
   line-height: 1.65;
+}
+
+/* AI 回复交给 Markdown 渲染（.md-body 全局样式在 src/styles/global.css），
+   这里只撤掉 pre-wrap —— 否则渲染出来的标签间换行会变成多余空行 */
+.text.md-body {
+  white-space: normal;
 }
 
 .src {

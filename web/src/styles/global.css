@@ -353,6 +353,267 @@ a:hover {
   animation: fade-up 0.28s ease both;
 }
 
+/* ---------- Markdown 渲染（大模型回答，渲染器见 src/utils/markdown.js） ---------- */
+.md-body {
+  font-size: 13px;
+  line-height: 1.68;
+  color: var(--text-secondary);
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.md-body > *:first-child {
+  margin-top: 0;
+}
+
+.md-body > *:last-child {
+  margin-bottom: 0;
+}
+
+.md-body .md-p {
+  margin: 0 0 7px;
+}
+
+.md-body .md-h {
+  font-family: var(--font-serif);
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.4;
+  margin: 12px 0 6px;
+}
+
+.md-body .md-h1 {
+  font-size: 16px;
+}
+
+.md-body .md-h2 {
+  font-size: 15px;
+}
+
+.md-body .md-h3 {
+  font-size: 14px;
+}
+
+.md-body .md-h4,
+.md-body .md-h5,
+.md-body .md-h6 {
+  font-size: 13px;
+}
+
+.md-body .md-list {
+  margin: 4px 0 7px;
+  padding-left: 19px;
+}
+
+.md-body .md-list .md-list {
+  margin: 3px 0 0;
+}
+
+.md-body .md-li {
+  margin: 2px 0;
+}
+
+.md-body .md-li::marker {
+  color: var(--primary-light);
+}
+
+.md-body .md-quote {
+  margin: 7px 0;
+  padding: 6px 11px;
+  border-left: 3px solid var(--primary-light);
+  background: var(--bg-soft);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  color: var(--text-muted);
+}
+
+.md-body .md-quote .md-p {
+  margin: 0;
+}
+
+.md-body .md-code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  background: #f3eee6;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 5px;
+  color: var(--primary-dark);
+}
+
+.md-body .md-pre {
+  margin: 7px 0;
+  padding: 9px 11px;
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow-x: auto;
+}
+
+.md-body .md-pre .md-code {
+  display: block;
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre;
+}
+
+.md-body .md-hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 10px 0;
+}
+
+.md-body a {
+  color: var(--primary);
+  text-decoration: none;
+  border-bottom: 1px solid var(--primary-soft);
+  word-break: break-all;
+}
+
+.md-body a:hover {
+  border-bottom-color: var(--primary);
+}
+
+.md-body .md-table-wrap {
+  overflow-x: auto;
+  margin: 7px 0;
+}
+
+.md-body .md-table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 12.5px;
+}
+
+.md-body .md-table th,
+.md-body .md-table td {
+  border: 1px solid var(--border);
+  padding: 5px 8px;
+  text-align: left;
+}
+
+.md-body .md-table th {
+  background: var(--bg-soft);
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.md-body strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.md-body em {
+  font-style: italic;
+}
+
+.md-body del {
+  color: var(--text-faint);
+}
+
+/* ---------- 渲染块操作栏：表格 / 代码块顶部的「标签 + 复制 + 下载」 ---------- */
+.md-body .md-block {
+  margin: 9px 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: #fff;
+  overflow: hidden;
+}
+
+.md-body .md-block-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 5px 9px;
+  background: var(--bg-soft);
+  border-bottom: 1px solid var(--border);
+}
+
+.md-body .md-block-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: 0.02em;
+}
+
+.md-body .md-block-code .md-block-name {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+.md-body .md-block-acts {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.md-body .md-act {
+  width: 24px;
+  height: 24px;
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    color 0.15s;
+}
+
+.md-body .md-act:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.md-body .md-act:active {
+  background: var(--border);
+}
+
+.md-body .md-act[data-state='ok'] {
+  color: var(--success);
+}
+
+/* 卡片内部不再重复画外框 */
+.md-body .md-block .md-table-wrap {
+  margin: 0;
+}
+
+.md-body .md-block .md-table th,
+.md-body .md-block .md-table td {
+  border: 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.md-body .md-block .md-table th {
+  background: var(--bg-app);
+}
+
+.md-body .md-block .md-table th + th,
+.md-body .md-block .md-table td + td {
+  border-left: 1px solid var(--border);
+}
+
+.md-body .md-block .md-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.md-body .md-block .md-pre {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: #fff;
+}
+
 /* ---------- 方案讲义打印 ---------- */
 @media print {
   @page {
