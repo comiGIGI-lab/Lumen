@@ -34,7 +34,9 @@ import { usePet } from './composables/usePet'
 import { api } from './api/client'
 import PetGuide from './components/PetGuide.vue'
 import PetCompanion from './components/PetCompanion.vue'
+import PetProfileDialog from './components/PetProfileDialog.vue'
 import TourDialog from './components/TourDialog.vue'
+import TourBubble from './components/TourBubble.vue'
 
 // ---------- 基础状态 ----------
 const booted = ref(false)
@@ -121,10 +123,100 @@ function openTour() {
   showTour.value = true
 }
 
-const { displayName } = usePet()
+// ---------- 宠物档案弹层：点击 PetCompanion 整体触发 ----------
+const showProfile = ref(false)
+function openProfile() {
+  showProfile.value = true
+}
+function closeProfile() {
+  showProfile.value = false
+}
+// 「更换学伴宠物」按钮：复用现有 SpacePanel 流程（打开个人空间面板）
+function onProfileChangePet() {
+  showProfile.value = false
+  // 与 TopNav / SpaceFAB 同款入口
+  spacePanelOpen.value = true
+}
 
-const { applyLayout, layoutMode } = useSpace()
-const { scene: activeScene } = useStudyTimer()
+const { displayName, logExp, grantStudyExp, grantPlanExp } = usePet()
+
+const { applyLayout, layoutMode, panelOpen: spacePanelOpen } = useSpace()
+const { scene: activeScene, onSessionComplete: registerSessionComplete } = useStudyTimer()
+
+// 自习完整跑完钩子：grantStudyExp 内部已走 logExp('自习') + logExp('当日首练加成')，并判 bonusDate 去重
+registerSessionComplete((minutes) => {
+  grantStudyExp(minutes)
+})
+
+// ---------- 单界面气泡：六个功能位首次进入时延迟 800ms 浮起 ----------
+// 与 TourDialog 总览互不冲突：总览只首访一次；气泡按 storage_key 各自独立。
+// storage_key 一旦写过 'true' 就再也不会弹；切换 appView / showSettings / panelOpen 时由 watch 触发。
+const bubble = ref({ open: false, title: '', body: '', storageKey: '' })
+const bubbleTimers = { plan: 0, kb: 0, chat: 0, study: 0, space: 0, settings: 0 }
+let bubbleTimer = 0
+function closeBubble() {
+  bubble.value.open = false
+  if (bubbleTimer) {
+    clearTimeout(bubbleTimer)
+    bubbleTimer = 0
+  }
+}
+function onBubbleDismiss() {
+  // storage_key 已在 TourBubble.onDismiss 里写过 true，这里只收尾
+  bubble.value.open = false
+  if (bubbleTimer) {
+    clearTimeout(bubbleTimer)
+    bubbleTimer = 0
+  }
+}
+function maybeShowBubble(viewId, title, body, storageKey) {
+  try {
+    if (localStorage.getItem(storageKey) === 'true') return
+  } catch (_) {
+    /* 取不到就当没看过，照弹 */
+  }
+  if (bubble.value.open) return // 同时只浮一个
+  clearTimeout(bubbleTimers[viewId])
+  bubbleTimers[viewId] = setTimeout(() => {
+    bubble.value = { open: true, title, body, storageKey }
+    bubbleTimer = bubbleTimers[viewId]
+    bubbleTimers[viewId] = 0
+  }, 800)
+}
+// 六个气泡对应文案 + storage_key（首次进入各功能界面时浮一次）
+const BUBBLES = {
+  plan: {
+    title: '学习方案',
+    body: '把课件、板书和录音交给这里，Agent 流水线会生成大纲、资源和学习计划。入门 / 进阶 / 大牛 三档画像匹配时长和深度。',
+    storageKey: 'zjxt.tour_plan',
+  },
+  kb: {
+    title: '知识库',
+    body: '先在导入页把文档拖进来，这里就能搜到。问答会引用来源段落，不用担心它瞎编。',
+    storageKey: 'zjxt.tour_kb',
+  },
+  chat: {
+    title: '课程问答',
+    body: '对刚生成的方案追问、或者新开一个会话都行。回答会带上引用来源，点一下就能跳回去。',
+    storageKey: 'zjxt.tour_chat',
+  },
+  study: {
+    title: '自习空间',
+    body: '视频为主体，三扇固定窗：场景、计时、控件。时长按入门 / 进阶 / 大牛三档，完整跑完才计经验。',
+    storageKey: 'zjxt.tour_study',
+  },
+  space: {
+    title: '个人空间',
+    body: '这里看当前化身、性格与学习类型、升级进度。要换化身走下方「更换学伴宠物」。',
+    storageKey: 'zjxt.tour_space',
+  },
+  settings: {
+    title: '设置',
+    body: 'base_url 两种填法：调 LLM 时填官方 / 中转地址；本地 Key 加密存盘。provider 列表自动从后端拉。',
+    storageKey: 'zjxt.tour_settings',
+  },
+}
+
 const appView = ref('course')
 
 function goCourse() {
@@ -207,6 +299,42 @@ watch(activeScene, (s) => {
   document.documentElement.classList.toggle('has-scene', !!s)
 }, { immediate: true })
 
+// appView 切换触发：course / knowledge / import / chat / study 各自对应气泡
+watch(appView, (v) => {
+  if (showGuide.value || showWelcome.value) return
+  if (v === 'course') {
+    maybeShowBubble('plan', BUBBLES.plan.title, BUBBLES.plan.body, BUBBLES.plan.storageKey)
+  } else if (v === 'knowledge' || v === 'import') {
+    maybeShowBubble('kb', BUBBLES.kb.title, BUBBLES.kb.body, BUBBLES.kb.storageKey)
+  } else if (v === 'chat') {
+    maybeShowBubble('chat', BUBBLES.chat.title, BUBBLES.chat.body, BUBBLES.chat.storageKey)
+  } else if (v === 'study') {
+    maybeShowBubble('study', BUBBLES.study.title, BUBBLES.study.body, BUBBLES.study.storageKey)
+  }
+})
+// 设置弹窗打开时浮一次气泡（首次进入）
+watch(showSettings, (v) => {
+  if (!v) return
+  if (showGuide.value || showWelcome.value) return
+  maybeShowBubble(
+    'settings',
+    BUBBLES.settings.title,
+    BUBBLES.settings.body,
+    BUBBLES.settings.storageKey,
+  )
+})
+// 个人空间（SpacePanel）打开时浮一次气泡（首次进入）
+watch(spacePanelOpen, (v) => {
+  if (!v) return
+  if (showGuide.value || showWelcome.value) return
+  maybeShowBubble(
+    'space',
+    BUBBLES.space.title,
+    BUBBLES.space.body,
+    BUBBLES.space.storageKey,
+  )
+})
+
 // ---------- 状态栏 ----------
 const statusText = ref('就绪')
 const statusTone = ref('normal')
@@ -245,7 +373,7 @@ const {
 
 const busy = computed(() => status.value === 'running')
 
-// 把链路状态同步到状态栏
+// 把链路状态同步到状态栏；方案生成 done 时调 grantPlanExp（内部走 logExp('方案生成', 40)）
 watch(status, (v) => {
   if (v === 'running') {
     statusTone.value = 'warn'
@@ -253,6 +381,7 @@ watch(status, (v) => {
     statusTone.value = 'error'
   } else if (v === 'done') {
     statusTone.value = 'success'
+    grantPlanExp()
   } else {
     statusTone.value = 'normal'
   }
@@ -487,7 +616,10 @@ const degradedBanner = computed(() => {
   <div class="app" :class="{ 'has-scene': !!activeScene }">
     <SceneBackdrop v-if="appView !== 'study'" :scene="activeScene" />
     <SpaceLayer v-show="!showGuide" />
-    <PetCompanion :visible="!showGuide && !showWelcome" />
+    <PetCompanion
+      :visible="!showGuide && !showWelcome"
+      @open-profile="openProfile"
+    />
 
     <!-- 角色引导：没选过宠物先选化身 -->
     <PetGuide v-if="showGuide" @done="onGuideDone" />
@@ -645,6 +777,23 @@ const degradedBanner = computed(() => {
       :pet-name="displayName"
       @close="onTourClose"
       @dismiss="onTourDismiss"
+    />
+
+    <!-- 单界面气泡：六个功能位首次进入时延迟 800ms 浮起，无遮罩，z-index 150 -->
+    <TourBubble
+      :open="bubble.open"
+      :title="bubble.title"
+      :body="bubble.body"
+      :storage-key="bubble.storageKey"
+      @close="closeBubble"
+      @dismiss="onBubbleDismiss"
+    />
+
+    <!-- 宠物档案弹层：点击宠物本体触发，z-index 155（高于悬浮窗 140 不盖总览 160） -->
+    <PetProfileDialog
+      :open="showProfile"
+      @close="closeProfile"
+      @change-pet="onProfileChangePet"
     />
 
     <HistoryDialog

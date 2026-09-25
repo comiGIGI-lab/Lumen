@@ -38,7 +38,10 @@ export const PETS = [
   {
     id: 'yaya',
     name: '芽芽',
-    line: '踏实型：先扎根，再生长',
+    // 性格 / 学习类型 / 引导页副标语（PetGuide 卡片底部按这三字段渲染）
+    personality: '踏实型',
+    learningStyle: '阅读型',
+    tagline: '先扎根，再生长',
     baseFile: 'yaya',
     evolvedFile: 'yaya-evo',
     evolvedName: '芽芽·树',
@@ -46,7 +49,9 @@ export const PETS = [
   {
     id: 'yanzai',
     name: '焰仔',
-    line: '热忱型：越学越有劲',
+    personality: '热忱型',
+    learningStyle: '视觉型',
+    tagline: '越学越有劲',
     baseFile: 'yanzai',
     evolvedFile: 'yanzai-evo',
     evolvedName: '焰仔·龙',
@@ -54,7 +59,9 @@ export const PETS = [
   {
     id: 'paopao',
     name: '泡泡',
-    line: '稳健型：稳稳游向深处',
+    personality: '稳健型',
+    learningStyle: '听觉型',
+    tagline: '稳稳游向深处',
     baseFile: 'paopao',
     evolvedFile: 'paopao-evo',
     evolvedName: '泡泡·甲',
@@ -62,7 +69,9 @@ export const PETS = [
   {
     id: 'dengdeng',
     name: '灯灯',
-    line: '灵动型：一触即发的灵感',
+    personality: '灵动型',
+    learningStyle: '动手型',
+    tagline: '一触即发的灵感',
     baseFile: 'dengdeng',
     evolvedFile: 'dengdeng-evo',
     evolvedName: '灯灯·闪',
@@ -70,7 +79,9 @@ export const PETS = [
   {
     id: 'momo',
     name: '墨墨',
-    line: '善变型：你学什么它就偏什么',
+    personality: '善变型',
+    learningStyle: '视觉型',
+    tagline: '你学什么它就偏什么',
     baseFile: 'momo',
     evolvedFile: 'momo-evo',
     evolvedName: '墨墨·仙',
@@ -78,7 +89,9 @@ export const PETS = [
   {
     id: 'douding',
     name: '豆丁',
-    line: '温润型：慢慢把知识焐热',
+    personality: '温润型',
+    learningStyle: '阅读型',
+    tagline: '慢慢把知识焐热',
     baseFile: 'douding',
     evolvedFile: 'douding-evo',
     evolvedName: '豆丁·焰',
@@ -86,7 +99,9 @@ export const PETS = [
   {
     id: 'tuantuan',
     name: '团团',
-    line: '好奇型：见缝就钻进去看',
+    personality: '好奇型',
+    learningStyle: '动手型',
+    tagline: '见缝就钻进去看',
     baseFile: 'tuantuan',
     evolvedFile: 'tuantuan-evo',
     evolvedName: '团团·六六',
@@ -94,7 +109,9 @@ export const PETS = [
   {
     id: 'chouchou',
     name: '丑丑',
-    line: '潜力型：丑小鸭也会发光',
+    personality: '潜力型',
+    learningStyle: '听觉型',
+    tagline: '丑小鸭也会发光',
     baseFile: 'chouchou',
     evolvedFile: 'chouchou-evo',
     evolvedName: '丑丑·仙仙',
@@ -102,7 +119,9 @@ export const PETS = [
   {
     id: 'jiujiu',
     name: '啾啾',
-    line: '松弛型：唱着歌就把事做了',
+    personality: '松弛型',
+    learningStyle: '阅读型',
+    tagline: '唱着歌就把事做了',
     baseFile: 'jiujiu',
     evolvedFile: 'jiujiu-evo',
     evolvedName: '啾啾·胖',
@@ -168,6 +187,21 @@ function loadPet() {
       streakPool: Math.max(0, Number(data.streakPool) || 0),
       streakPoolWeek:
         typeof data.streakPoolWeek === 'string' ? data.streakPoolWeek : '',
+      // 性格 / 学习类型 / 引导页副标语：旧数据缺这三字段按空串补全，等级经验等不动
+      personality: typeof data.personality === 'string' ? data.personality : '',
+      learningStyle: typeof data.learningStyle === 'string' ? data.learningStyle : '',
+      tagline: typeof data.tagline === 'string' ? data.tagline : '',
+      // 成长记录与进化时间戳：旧数据缺按 [] / '' 补全
+      expLog: Array.isArray(data.expLog)
+        ? data.expLog.filter(
+            (e) =>
+              e &&
+              typeof e.time === 'string' &&
+              typeof e.source === 'string' &&
+              typeof e.amount === 'number',
+          )
+        : [],
+      evolvedAt: typeof data.evolvedAt === 'string' ? data.evolvedAt : '',
     }
   } catch (_) {
     return null
@@ -186,6 +220,11 @@ const pet = reactive(loadPet() || {
   lastStudyDate: '',
   streakPool: 0,
   streakPoolWeek: '',
+  personality: '',
+  learningStyle: '',
+  tagline: '',
+  expLog: [],
+  evolvedAt: '',
 })
 // 知识产权兼容：旧侵权 id 已清空，立即把清空结果写回存储。
 // 这样首屏 hasPetSaved() 读到空 id → PetGuide 重新出现，用户重选化身时等级 / 经验 / 连签等成长由 choosePet 原样保留。
@@ -265,17 +304,19 @@ function choosePet(id) {
     persist()
     return
   }
-  pet.level = 1
-  pet.exp = 0
-  pet.bonusDate = ''
-  pet.planDate = ''
-  pet.planCount = 0
-  pet.streak = 0
-  pet.lastStudyDate = ''
-  pet.streakPool = 0
-  pet.streakPoolWeek = ''
-  hasPet.value = true
-  persist()
+pet.level = 1
+    pet.exp = 0
+    pet.bonusDate = ''
+    pet.planDate = ''
+    pet.planCount = 0
+    pet.streak = 0
+    pet.lastStudyDate = ''
+    pet.streakPool = 0
+    pet.streakPoolWeek = ''
+    pet.expLog = []
+    pet.evolvedAt = ''
+    hasPet.value = true
+    persist()
 }
 
 /** 加经验；经验满自动升级。Lv5 起且未进化才弹「保持 / 进化」，之前正常升 */
@@ -295,6 +336,31 @@ function grantExp(amount) {
     }
   }
   persist()
+}
+
+/**
+ * 经验事件入口：所有加经验路径（自习 / 方案 / 课程问答 / 当日首练加成）走这里，
+ * 内部调 grantExp 加经验并往 expLog 追加一条记录（含 ISO 时间戳、来源、amount、变动前后等级/Exp）。
+ * amount=0 也允许：用于「课程问答不加经验但留痕」。
+ */
+function logExp(source, amount) {
+  if (!hasPet.value) return
+  const value = Math.max(0, Number(amount) || 0)
+  const lvBefore = pet.level
+  const expBefore = pet.exp
+  grantExp(value)
+  try {
+    const entry = {
+      time: new Date().toISOString(),
+      source: String(source || ''),
+      amount: value,
+      lv_before: lvBefore,
+      lv_after: pet.level,
+    }
+    pet.expLog = Array.isArray(pet.expLog) ? pet.expLog.concat([entry]) : [entry]
+  } catch (_) {
+    /* expLog 写不上不阻塞主流程 */
+  }
 }
 
 /** 连签 + 找回池：每天首次完整自习结算时调用 */
@@ -324,13 +390,14 @@ function grantStudyExp(minutes) {
   const gain = Math.max(0, Math.round(Number(minutes) || 0))
   if (gain <= 0) return
   const today = todayStr()
-  let total = gain * XP_STUDY_PER_MIN
+  // 自习按分钟累加经验
+  logExp('自习', gain * XP_STUDY_PER_MIN)
   if (pet.bonusDate !== today) {
-    total += XP_STUDY_DAILY_BONUS
+    // 当天首次完整自习额外 +10（独立一条成长记录）
     pet.bonusDate = today
     updateStreak(today)
+    logExp('当日首练加成', XP_STUDY_DAILY_BONUS)
   }
-  grantExp(total)
 }
 
 /** 生成一次学习方案：每天前 XP_PLAN_DAILY_CAP 次给经验，之后不给 */
@@ -343,16 +410,17 @@ function grantPlanExp() {
   }
   if (pet.planCount >= XP_PLAN_DAILY_CAP) return
   pet.planCount += 1
-  grantExp(XP_PLAN)
+  logExp('方案生成', XP_PLAN)
 }
 
 function keepForm() {
   showEvolve.value = false
 }
 
-/** 进化只换图与形态字段，等级经验不动 */
+/** 进化只换图与形态字段，等级经验不动；首次进化打 ISO 时间戳存到 evolvedAt */
 function evolve() {
   pet.form = 'evolved'
+  if (!pet.evolvedAt) pet.evolvedAt = new Date().toISOString()
   showEvolve.value = false
   persist()
 }
@@ -380,6 +448,7 @@ export function usePet() {
     expNeed,
     choosePet,
     grantExp,
+    logExp,
     grantStudyExp,
     grantPlanExp,
     keepForm,

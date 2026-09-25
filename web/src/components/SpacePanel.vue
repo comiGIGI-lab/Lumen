@@ -1,10 +1,17 @@
 <script setup>
 /**
  * SpacePanel —— 个人空间设置：开关三个悬浮窗，大小已随窗口操作写入 localStorage。
+ * 兼有当前学伴宠物展示：性格 / 学习类型只读、升级经验条、更换学伴宠物。
  */
+import { computed } from 'vue'
 import { useSpace } from '@/composables/useSpace'
+import { usePet } from '@/composables/usePet'
 
 const { WIN_IDS, WIN_META, windows, panelOpen, setOn, resetLayout } = useSpace()
+const { PETS, pet, hasPet, displayName, need, ratio, speciesOf, changeAvatar } = usePet()
+
+/** 当前化身的 PETS 条目（含 personality/learningStyle/tagline） */
+const currentSpecies = computed(() => speciesOf(pet.id))
 
 function close() {
   panelOpen.value = false
@@ -29,6 +36,47 @@ function close() {
           <em>{{ windows[id].collapsed ? '已收起' : '大小 ' + windows[id].size }}</em>
         </li>
       </ul>
+
+      <div v-if="hasPet" class="avatar">
+        <p class="who">当前学伴宠物 · {{ displayName }}</p>
+        <!-- 性格与学习类型：只读静态展示，要换请走下方「更换学伴宠物」 -->
+        <section class="traits" aria-label="性格与学习类型">
+          <h4>性格与学习类型</h4>
+          <div class="trait-row">
+            <div class="trait">
+              <span class="k">性格</span>
+              <span class="v">{{ currentSpecies?.personality || '—' }}</span>
+            </div>
+            <div class="trait">
+              <span class="k">学习类型</span>
+              <span class="v">{{ currentSpecies?.learningStyle || '—' }}</span>
+            </div>
+          </div>
+          <p class="hint">文案不可编辑。要换请走下方「更换学伴宠物」。</p>
+        </section>
+        <!-- 升级经验条 -->
+        <section class="exp" aria-label="升级经验">
+          <div class="exp-head">
+            <span>Lv {{ pet.level }}</span>
+            <span>{{ pet.exp }} / {{ need }}</span>
+          </div>
+          <div class="exp-bar" :aria-valuenow="pet.exp" :aria-valuemin="0" :aria-valuemax="need" role="progressbar">
+            <i :style="{ width: Math.round((ratio || 0) * 100) + '%' }" />
+          </div>
+        </section>
+
+        <p class="change-label">更换学伴宠物</p>
+        <div class="picks">
+          <button
+            v-for="p in PETS"
+            :key="p.id"
+            type="button"
+            :class="{ on: pet.id === p.id }"
+            @click="changeAvatar(p.id)"
+          >{{ p.name }}</button>
+        </div>
+      </div>
+
       <div class="foot">
         <button type="button" class="ghost" @click="resetLayout">恢复默认位置</button>
         <button type="button" class="ok" @click="close">完成</button>
@@ -112,6 +160,131 @@ em {
   color: var(--text-muted);
 }
 
+.avatar {
+  margin-top: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.who {
+  margin: 0 0 10px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+/* 性格与学习类型：只读静态展示 */
+.traits {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.traits h4 {
+  margin: 0 0 8px;
+  font-family: var(--font-serif);
+  font-size: 13.5px;
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+}
+
+.trait-row {
+  display: flex;
+  gap: 10px;
+}
+
+.trait {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 8px;
+  background: #f8f3ec;
+  border-radius: 6px;
+}
+
+.trait .k {
+  font-size: 11px;
+  color: var(--text-muted);
+  letter-spacing: 0.06em;
+}
+
+.trait .v {
+  font-family: var(--font-serif);
+  font-size: 14.5px;
+  font-weight: 400;
+  color: var(--text-primary);
+}
+
+.traits .hint {
+  margin: 8px 0 0;
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+/* 升级经验条 */
+.exp {
+  margin: 0 0 12px;
+}
+
+.exp-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-bottom: 5px;
+}
+
+.exp-head span:first-child {
+  font-family: var(--font-serif);
+  font-size: 14px;
+  color: var(--text-primary);
+}
+
+.exp-bar {
+  height: 4px;
+  background: var(--border);
+  border-radius: 1000px;
+  overflow: hidden;
+}
+
+.exp-bar i {
+  display: block;
+  height: 100%;
+  background: var(--primary);
+  transition: width 0.4s ease;
+}
+
+.change-label {
+  margin: 0 0 8px;
+  font-weight: 500;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+
+.picks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.picks button {
+  border: 1px solid var(--border);
+  background: #fff;
+  border-radius: 1000px;
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+.picks button.on {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
 .foot {
   display: flex;
   justify-content: space-between;
@@ -135,5 +308,11 @@ em {
   border: 1px solid var(--primary);
   background: var(--primary);
   color: #fff;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .exp-bar i {
+    transition: none;
+  }
 }
 </style>

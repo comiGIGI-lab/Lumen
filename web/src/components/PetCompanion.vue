@@ -2,6 +2,10 @@
 /**
  * 主界面右下常驻学伴（头脑的化身）。z-index 低于弹窗（120+），高于正文。
  * 不挡顶栏、不挡左下「空间」、不挡自习大窗；390 宽缩小。
+ *
+ * 点击 aside 整体（HUD + 经验条 + 本体）触发 emit 'open-profile'，
+ * 由父组件 App.vue 弹 PetProfileDialog（z-index 155）。
+ * Lv5「保持 / 进化」弹层（showEvolve，z-index 118）走原逻辑，与本 emit 互不干扰。
  */
 import { ref, watch } from 'vue'
 import PetSprite from './PetSprite.vue'
@@ -10,6 +14,8 @@ import { usePet } from '@/composables/usePet'
 defineProps({
   visible: { type: Boolean, default: true },
 })
+
+const emit = defineEmits(['open-profile'])
 
 const {
   pet,
@@ -24,6 +30,17 @@ const {
 } = usePet()
 
 const pct = (n) => Math.round((n || 0) * 100)
+
+function openProfile() {
+  emit('open-profile')
+}
+
+function onKey(e) {
+  if (e.key === 'Enter' || e.key === ' ') {
+    e.preventDefault()
+    emit('open-profile')
+  }
+}
 
 // 升级反馈：经验条发光 + 等级数字变红一瞬 + 本体闪一下（纯 CSS，见 .buddy.pulse）
 const pulsing = ref(false)
@@ -43,7 +60,11 @@ watch(levelStamp, () => {
       v-if="visible && hasPet"
       class="buddy"
       :class="{ pulse: pulsing }"
-      aria-label="学伴宠物"
+      aria-label="学伴宠物，点击查看档案"
+      role="button"
+      tabindex="0"
+      @click="openProfile"
+      @keydown="onKey"
     >
       <div class="hud">
         <div class="row">
@@ -98,7 +119,13 @@ watch(levelStamp, () => {
   flex-direction: column;
   align-items: flex-end;
   gap: 6px;
-  pointer-events: none;
+  cursor: pointer;
+}
+
+.buddy:focus-visible {
+  outline: 2px solid #e51520;
+  outline-offset: 6px;
+  border-radius: 6px;
 }
 
 .hud {
@@ -107,7 +134,7 @@ watch(levelStamp, () => {
   background: rgba(251, 249, 246, 0.92);
   border: 1px solid #e4ded5;
   border-radius: 4px;
-  pointer-events: none;
+  pointer-events: auto;
 }
 
 .row {

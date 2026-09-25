@@ -125,6 +125,7 @@ function applyCustom(min) {
 function start() {
   if (remaining.value <= 0) remaining.value = currentMinutes() * 60
   if (durationSec.value <= 0) durationSec.value = remaining.value || currentMinutes() * 60
+  sessionMinutes = Math.round(durationSec.value / 60)
   running.value = true
   playMix()
   clearTick()
@@ -134,6 +135,13 @@ function start() {
       running.value = false
       clearTick()
       pauseMix()
+      if (sessionCallback) {
+        try {
+          sessionCallback(sessionMinutes)
+        } catch (_) {
+          /* 回调出错不阻塞 */
+        }
+      }
       return
     }
     remaining.value -= 1
@@ -182,6 +190,17 @@ const mixCount = computed(() => {
   const music = musicId.value && musicVolume.value > 0 ? 1 : 0
   return env + music
 })
+
+/**
+ * 自习完整跑完钩子：start() 起点记下本次 durationMin，每秒扣时，remaining<=1 时
+ * 调 fireSessionComplete(minutes) 给外部注册的回调；App.vue 那边注册并走 logExp。
+ * 没注册回调也不会报错。
+ */
+let sessionMinutes = 0
+let sessionCallback = null
+function onSessionComplete(cb) {
+  sessionCallback = typeof cb === 'function' ? cb : null
+}
 const scene = computed(() => {
   const s = SCENES.find((item) => item.id === sceneId.value)
   if (!s) return null
@@ -230,5 +249,6 @@ export function useStudyTimer() {
     onMusicVolume,
     playMix,
     pauseMix,
+    onSessionComplete,
   }
 }

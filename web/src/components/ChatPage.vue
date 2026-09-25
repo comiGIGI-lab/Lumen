@@ -3,7 +3,9 @@
  * ChatPage —— 课程问答独立页
  * 同一份 ChatPanel 全页展示；课程页底部那块问答保留不动。
  */
+import { onMounted } from 'vue'
 import ChatPanel from './ChatPanel.vue'
+import { usePet } from '@/composables/usePet'
 
 defineProps({
   courseContext: { type: String, default: '' },
@@ -11,6 +13,12 @@ defineProps({
 })
 
 const emit = defineEmits(['notify', 'go-course'])
+
+const { logExp } = usePet()
+// 首次进入问答页留一条成长记录（amount=0，遵循 P62 既有规则「问答不加分」）
+onMounted(() => {
+  logExp('课程问答', 0)
+})
 </script>
 
 <template>

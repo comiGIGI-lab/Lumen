@@ -48,7 +48,7 @@ function confirm() {
             >
               <PetSprite :pet-id="p.id" form="base" :size="88" />
               <b>{{ p.name }}</b>
-              <span>{{ p.line }}</span>
+              <span>{{ p.personality }}：{{ p.tagline }}</span>
             </button>
           </div>
         </div>
