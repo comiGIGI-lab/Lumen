@@ -384,3 +384,45 @@ du -sh /home/admin/ai-coding/vendor/study-liu/data/
 # 限速是否在拦人
 sudo tail -20 /var/log/nginx/error.log | grep -i limiting || echo "  最近没有触发限速"
 ```
+
+---
+
+## 12. 语音转写（Vosk）—— 模型不在仓库里，换服务器必须手动搬
+
+`/api/asr` 依赖两个**仓库外**的东西（模型 66MB，进不了 git，Gitee 会拒）：
+
+| 路径 | 内容 | 体积 |
+|---|---|---|
+| `/home/admin/asr/libs` | `pip3 install --target` 装出来的 vosk + cffi 等 | 33MB |
+| `/home/admin/asr/vosk-model-small-cn-0.22` | 中文小模型 | 66MB |
+
+代码里的默认路径就是这两个；本地调试可用环境变量覆盖：
+`STUDY_LIU_ASR_LIBS` / `STUDY_LIU_ASR_MODEL`。
+
+**新服务器上怎么恢复**（两条命令 + 一次重启）：
+
+```bash
+mkdir -p /home/admin/asr
+pip3 install --target /home/admin/asr/libs --no-cache-dir \
+  -i https://pypi.tuna.tsinghua.edu.cn/simple vosk
+# 模型从旧机器 scp 过来，或从 https://alphacephei.com/vosk/models 下载
+scp -r 旧机器:/home/admin/asr/vosk-model-small-cn-0.22 /home/admin/asr/
+pm2 restart my-api
+```
+
+**没搬模型也不会出事**：`server/asr.py` 里 vosk 是**延迟 import** 的，
+引擎或模型缺失时只有 `/api/asr` 返回中文提示（界面会把入口置灰并说明原因），
+`api_server` 照常启动，其它功能完全不受影响。
+排查就一句：`curl -s localhost:8000/api/asr` —— `available` 为 false 时会带上 `reason`。
+
+**资源占用**（2 vCPU / 1.6G 的机器上实测）：模型加载 0.61s；
+PM2 常驻内存从 49MB 涨到约 162MB（峰值 178MB）；
+120 秒音频解码 12.66s（约 10 倍实时），期间并发请求 21~33ms 正常返回
+（vosk 的 C 调用会释放 GIL，长音频**不会**卡住整站）。
+单次上限 15MB ≈ 8.2 分钟，卡在 nginx `client_max_body_size 20m` 之下。
+
+**别上大模型**：`vosk-model-cn-0.22`（1.3GB）加载后放不进 1.6G 的机器。
+
+**回滚**：`rm -rf /home/admin/asr` 即彻底移除依赖；代码侧 revert 对应 commit 后
+重新 `npm run build` + `pm2 restart my-api`。部署前备份在 `/home/admin/backups/dist-pre-asr-*`。
+
