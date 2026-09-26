@@ -8,6 +8,7 @@ import { onBeforeUnmount, ref } from 'vue'
 import { useSpace } from '@/composables/useSpace'
 import { useTheme } from '@/composables/useTheme'
 import { useI18n } from '@/i18n'
+import { useAuth } from '@/composables/useAuth'
 
 const props = defineProps({
   current: { type: String, default: 'course' },
@@ -33,7 +34,14 @@ const emit = defineEmits([
 const openMore = ref(false)
 const { panelOpen } = useSpace()
 const { isDark, toggle: toggleTheme } = useTheme()
-const { t, isEn, toggle: toggleLang } = useI18n()
+const { t } = useI18n()
+// 更多菜单里的登录入口：登录后显示退出，未登录显示登录
+const { user, isLoggedIn, logout } = useAuth()
+
+function doLogout() {
+  logout()
+  openMore.value = false
+}
 
 function pick(action) {
   openMore.value = false
@@ -120,6 +128,16 @@ onBeforeUnmount(() => {
         @click.stop="openMore = !openMore"
       >{{ t('topNav.3') }}</button>
       <div v-if="openMore" class="more-menu" role="menu">
+        <!-- 账号：登录后显示「退出登录」，未登录显示「登录」 -->
+        <button v-if="isLoggedIn" type="button" role="menuitem" class="menu-account" @click="doLogout">
+          <span>{{ t('auth.logout') }}</span>
+          <em>{{ user.username }}</em>
+        </button>
+        <button v-else type="button" role="menuitem" @click="pick('open-login')">
+          {{ t('auth.login') }}
+          <em>→</em>
+        </button>
+        <div v-if="isLoggedIn" class="menu-sep" role="separator"></div>
         <button type="button" role="menuitem" @click="openSpace">{{ t('nav.space') }}</button>
         <button type="button" role="menuitem" @click="toggleTheme">
           {{ isDark ? t('nav.toLight') : t('nav.toDark') }}
@@ -226,5 +244,17 @@ onBeforeUnmount(() => {
     padding: 5px 8px;
     font-size: 11.5px;
   }
+}
+
+/* 更多菜单：登录/退出项与分隔线 */
+.menu-sep {
+  height: 1px;
+  margin: 6px 4px;
+  background: var(--border, #e4ded5);
+}
+.menu-account em {
+  font-style: normal;
+  opacity: 0.6;
+  font-size: 12px;
 }
 </style>

@@ -13,6 +13,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from '@/i18n'
 const { t } = useI18n()
 import AppHeader from './components/AppHeader.vue'
+import LoginDialog from './components/LoginDialog.vue'
 import WelcomeScreen from './components/WelcomeScreen.vue'
 import PipelineStepper from './components/PipelineStepper.vue'
 import CourseForm from './components/CourseForm.vue'
@@ -257,6 +258,7 @@ const BUBBLES = {
 }
 
 const appView = ref('course')
+const showLogin = ref(false)
 
 function goHome() {
   // 「首页」= 回到初始欢迎层。
@@ -815,6 +817,8 @@ const degradedBanner = computed(() => {
       @open-trace="openLogs"
     />
 
+    <LoginDialog :open="showLogin" @close="showLogin = false" />
+
     <AppHeader
       v-show="!showWelcome"
       :mode="mode"
@@ -825,6 +829,7 @@ const degradedBanner = computed(() => {
       @export="onExport"
       @go-course="goCourse"
         @go-home="goHome"
+        @open-login="showLogin = true"
       @open-trace="openLogs"
       @open-settings="openSettings"
       @open-history="openHistory"

@@ -215,6 +215,7 @@ from tools import progress_store                                    # noqa: E402
 from tools import wrong_book_store                                  # noqa: E402
 from tools import mindmap_store                                     # noqa: E402
 import error_text                                                    # noqa: E402
+import accounts                                                      # noqa: E402
 from tools import cache_store                                       # noqa: E402
 from tools.knowledge_store import KnowledgeStore                    # noqa: E402
 from core.paths import data_dir as _data_dir                        # noqa: E402
@@ -234,6 +235,11 @@ MAX_KB_NOTES = 3000
 TRACE_FILE = agent_loop_mod._TRACE_FILE
 # 历史 / 设置 / 缓存的实际落盘目录（源码运行时 = <源码>/data，不可写时回退 ~/.study-liu/data）
 DATA_DIR = _data_dir()
+
+# 账号体系：账号文件放 data/ 下（与其它运行数据一起，备份即整体搬走）。
+# 首次启动若一个管理员都没有，自动建 admin/admin123 —— 上线后请立刻改密。
+accounts.configure(DATA_DIR)
+_created_admin, _admin_msg = accounts.ensure_default_admin()
 # 内容安全命中明细的落盘位置（JSONL），与 client_history.json 同目录；
 # 写失败时 safety_gate 会静默降级为只打控制台，不影响主流程。
 set_audit_log(os.path.join(DATA_DIR, "safety_audit.jsonl"))
@@ -957,6 +963,26 @@ class ApiHandler(BaseHTTPRequestHandler):
             return
         sys.stderr.write("[api] %s\n" % (fmt % args))
 
+    def _auth(self):
+        """取当前登录用户；未登录返回 None。"""
+        return accounts.check_token(self.headers.get("X-Auth-Token") or "")
+
+    def _require_admin(self):
+        """管理员校验。
+
+        返回 None 表示放行；否则返回 (响应体, HTTP 状态码)，调用处直接回给前端。
+        注意：一个管理员都没有时（老部署还没建号）**放行**，避免升级后
+        把删除功能一键锁死 —— 我们会自动建默认管理员，所以正常情况不会走到这。
+        """
+        if not accounts.auth_enabled():
+            return None
+        user = self._auth()
+        if not user:
+            return {"ok": False, "error": "请先登录管理员账号"}, 401
+        if user.get("role") != "admin":
+            return {"ok": False, "error": "需要管理员权限"}, 403
+        return None
+
     def _client_id(self, query=None) -> str:
         """取客户端标识：优先 X-Client-Id 请求头，SSE 场景回落 client_id 查询参数。"""
         cid = (self.headers.get("X-Client-Id") or "").strip()
@@ -1005,6 +1031,21 @@ class ApiHandler(BaseHTTPRequestHandler):
         query = urllib.parse.parse_qs(parsed.query)
 
         try:
+            if path == "/api/me":
+                user = self._auth()
+                return self._send_json({
+                    "ok": bool(user),
+                    "username": (user or {}).get("username", ""),
+                    "role": (user or {}).get("role", ""),
+                    "auth_enabled": accounts.auth_enabled(),
+                })
+
+            if path == "/api/accounts":
+                guard = self._require_admin()
+                if guard:
+                    return self._send_json(guard[0], guard[1])
+                return self._send_json({"ok": True, "users": accounts.list_users()})
+
             if path == "/api/health":
                 return self._send_json({
                     "ok": True,
@@ -1162,6 +1203,61 @@ class ApiHandler(BaseHTTPRequestHandler):
         body = self._read_body()
 
         try:
+            # ---- 账号：登录 / 账号管理（读 body，必须放在 _read_body() 之后）----
+            if path == "/api/login":
+                username = (body.get("username") or "").strip()
+                password = body.get("password") or ""
+                user = accounts.verify(username, password)
+                if not user:
+                    # 不区分「账号不存在」和「密码错」，避免被拿来枚举账号
+                    return self._send_json({"ok": False, "error": "账号或密码不正确"}, 401)
+                return self._send_json({
+                    "ok": True,
+                    "token": accounts.issue_token(user),
+                    "username": user["username"],
+                    "role": user["role"],
+                })
+
+            if path == "/api/register":
+                # 自助注册：只建普通账号，注册完直接登录
+                username = (body.get("username") or "").strip()
+                password = body.get("password") or ""
+                ok, msg = accounts.register(username, password)
+                if not ok:
+                    return self._send_json({"ok": False, "error": msg}, 400)
+                user = accounts.verify(username, password)
+                if not user:
+                    return self._send_json({"ok": False, "error": "注册成功但登录失败，请手动登录"}, 500)
+                return self._send_json({
+                    "ok": True,
+                    "token": accounts.issue_token(user),
+                    "username": user["username"],
+                    "role": user["role"],
+                })
+
+            if path == "/api/accounts":
+                guard = self._require_admin()
+                if guard:
+                    return self._send_json(guard[0], guard[1])
+                act = body.get("action") or "create"
+                target = (body.get("username") or "").strip()
+                if act == "create":
+                    ok, msg = accounts.create_user(
+                        target, body.get("password") or "", body.get("role") or accounts.ROLE_USER
+                    )
+                elif act == "role":
+                    # 提拔 / 降级（如把某个账号设为管理员）
+                    ok, msg = accounts.set_role(target, body.get("role") or "")
+                elif act == "password":
+                    ok, msg = accounts.set_password(target, body.get("password") or "")
+                elif act == "delete":
+                    ok, msg = accounts.delete_user(target)
+                else:
+                    ok, msg = False, "未知操作"
+                if not ok:
+                    return self._send_json({"ok": False, "error": msg}, 400)
+                return self._send_json({"ok": True, "message": msg, "users": accounts.list_users()})
+
             if path == "/api/knowledge":
                 # 粘贴文本入库（与上传导入共用分块 + 内容安全逻辑）
                 text = (body.get("content") or body.get("text") or "").strip()
@@ -1462,6 +1558,10 @@ class ApiHandler(BaseHTTPRequestHandler):
                 })
 
             if path.startswith("/api/knowledge/"):
+                # 删除不可逆，且知识库是多人共用的 —— 只允许管理员
+                guard = self._require_admin()
+                if guard:
+                    return self._send_json(guard[0], guard[1])
                 raw_id = urllib.parse.unquote(path[len("/api/knowledge/"):])
                 try:
                     note_id = int(raw_id)

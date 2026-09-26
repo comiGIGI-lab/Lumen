@@ -23,12 +23,25 @@ export function clientId() {
   return id
 }
 
+/**
+ * 登录 token —— 管理员身份靠它带到后端（X-Auth-Token 头）。
+ * 存在 localStorage，刷新不掉线；校验由后端做，前端只负责携带。
+ */
+export function authToken() {
+  try {
+    return localStorage.getItem('zjxt.auth.token') || ''
+  } catch (_) {
+    return ''
+  }
+}
+
 async function request(path, options = {}) {
   const res = await fetch(`${BASE}${path}`, {
     ...options,
     headers: {
       'Content-Type': 'application/json',
       'X-Client-Id': clientId(),
+      'X-Auth-Token': authToken(),
       ...(options.headers || {}),
     },
   })
@@ -46,6 +59,27 @@ async function request(path, options = {}) {
 }
 
 export const api = {
+  /** 登录。成功返回 {ok, token, username, role}；失败返回 {ok:false, error}。 */
+  login(username, password) {
+    return request('/login', {
+      method: 'POST',
+      body: JSON.stringify({ username, password }),
+    })
+  },
+
+  /** 注册。只创建普通账号，成功后直接返回 token（注册即登录）。 */
+  register(username, password) {
+    return request('/register', {
+      method: 'POST',
+      body: JSON.stringify({ username, password }),
+    })
+  },
+
+  /** 当前登录用户（未登录时 ok=false）。用来在刷新后校验本地 token 是否还有效。 */
+  me() {
+    return request('/me')
+  },
+
   /** 启动元信息：运行模式 / 用户画像 / 可选项 / 历史 */
   bootstrap() {
     return request('/bootstrap')

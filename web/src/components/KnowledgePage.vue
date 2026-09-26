@@ -8,12 +8,15 @@
  */
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from '@/i18n'
+import { useAuth } from '@/composables/useAuth'
 import SnakeBar from './SnakeBar.vue'
 import { api } from '@/api/client'
 import { TAG_LABEL, useKnowledge } from '@/composables/useKnowledge'
 
 const emit = defineEmits(['back', 'open-import', 'go-course'])
 const { t } = useI18n()
+// 删除是管理员专属；服务端还会再校验一次角色
+const { isAdmin } = useAuth()
 
 const TAGS = [
   { id: 'all', label: '全部' },
@@ -312,7 +315,8 @@ onBeforeUnmount(() => {
                 <td>{{ d.chunks || '—' }}</td>
                 <td class="ops">
                   <button v-if="d.status === 'failed'" type="button" class="danger" @click="retryDoc(d)">{{ t('knowledgePage.37') }}</button>
-                  <button type="button" class="ghost small" @click="deleteDoc(d)">{{ t('knowledgePage.38') }}</button>
+                  <button v-if="isAdmin" type="button" class="ghost small" @click="deleteDoc(d)">{{ t('knowledgePage.38') }}</button>
+                  <span v-else class="admin-only" :title="t('auth.adminOnlyTip')">{{ t('auth.adminOnly') }}</span>
                 </td>
               </tr>
             </tbody>
