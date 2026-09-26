@@ -18,7 +18,6 @@ const emit = defineEmits([
   'go-course',
   'open-knowledge',
   'open-import',
-  'open-record',
   'open-chat',
   'open-wrongbook',
   'open-mindmap',
@@ -77,12 +76,6 @@ onBeforeUnmount(() => {
       :class="{ on: current === 'import' }"
       @click="emit('open-import')"
     >{{ t('nav.import') }}</button>
-    <button
-      type="button"
-      class="nav-link"
-      :class="{ on: current === 'record' }"
-      @click="emit('open-record')"
-    >{{ t('nav.record') }}</button>
     <button
       type="button"
       class="nav-link"
