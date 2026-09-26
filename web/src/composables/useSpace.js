@@ -11,7 +11,7 @@ export const SPACE_KEY = 'zjxt.space'
 export const TODOS_KEY = 'zjxt.todos'
 export const DATES_KEY = 'zjxt.dates'
 export const COUNTDOWNS_KEY = 'zjxt.countdowns'
-export const SPACE_VER = 6
+export const SPACE_VER = 7
 export const LAYOUTS = ['welcome', 'app', 'study']
 
 export const WIN_IDS = ['study', 'todo', 'date']
@@ -112,7 +112,7 @@ function defaultWin(id, vw, layout) {
       return {
         on: true,
         collapsed: true,
-        size: id === 'study' ? 3 : 2,
+        size: 2,  // 三块统一大小：study 原为 3（344px），与另两块不一致
         x: padX,
         y: padY + (stacked[id] || 0),
       }
@@ -120,7 +120,7 @@ function defaultWin(id, vw, layout) {
     const leftW = Math.round(total * 1.1 / 2)
     const rightX = padX + leftW + gap
     if (id === 'study') {
-      return { on: true, collapsed: true, size: 3, x: padX, y: padY }
+      return { on: true, collapsed: true, size: 2, x: padX, y: padY }
     }
     if (id === 'todo') {
       return { on: true, collapsed: true, size: 2, x: rightX, y: padY }
