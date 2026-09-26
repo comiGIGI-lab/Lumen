@@ -471,11 +471,15 @@ function setOn(id, on) {
 function shrink(id) {
   const w = windows[id]
   bringFront(id)
-  // 一次 − 就收到边签。继续缩小尺寸走已展开时的再次 −。
-  if (!w.collapsed) {
-    w.collapsed = true
+  if (w.collapsed) return
+  // 「−」的主作用是**减小尺寸**，不是收回。
+  // 先一档一档缩；已经到了最小档（size 1）再按，才收成边签。
+  // （旧实现是一按就收，用户反馈「减怎么变成收回了」）
+  if (w.size > 1) {
+    w.size -= 1
     return
   }
+  w.collapsed = true
 }
 
 function grow(id) {
