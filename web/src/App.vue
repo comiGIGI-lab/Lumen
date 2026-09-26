@@ -26,7 +26,6 @@ import SceneBackdrop from './components/SceneBackdrop.vue'
 import SpaceLayer from './components/SpaceLayer.vue'
 import KnowledgePage from './components/KnowledgePage.vue'
 import ImportPage from './components/ImportPage.vue'
-import RecordPage from './components/RecordPage.vue'
 import ChatPage from './components/ChatPage.vue'
 import StudySpacePage from './components/StudySpacePage.vue'
 import WrongBookPage from './components/WrongBookPage.vue'
@@ -286,11 +285,6 @@ function goKnowledge() {
 function goImport() {
   if (showWelcome.value) onWelcomeDone()
   appView.value = 'import'
-}
-
-function goRecord() {
-  if (showWelcome.value) onWelcomeDone()
-  appView.value = 'record'
 }
 
 function goChat() {
@@ -796,7 +790,6 @@ const degradedBanner = computed(() => {
       @start="onWelcomeDone"
       @open-knowledge="goKnowledge"
       @open-import="goImport"
-      @open-record="goRecord"
       @open-chat="goChat"
       @open-wrongbook="goWrongBook"
       @open-mindmap="goMindMap"
@@ -821,7 +814,6 @@ const degradedBanner = computed(() => {
       @open-history="openHistory"
       @open-knowledge="goKnowledge"
       @open-import="goImport"
-      @open-record="goRecord"
       @open-chat="goChat"
       @open-wrongbook="goWrongBook"
       @open-mindmap="goMindMap"
@@ -841,12 +833,6 @@ const degradedBanner = computed(() => {
         @back="goCourse"
         @open-knowledge="goKnowledge"
         @go-course="goCourse"
-      />
-      <RecordPage
-        v-else-if="appView === 'record'"
-        @back="goCourse"
-        @go-course="goCourse"
-        @notify="notify"
       />
       <ChatPage
         v-else-if="appView === 'chat'"
