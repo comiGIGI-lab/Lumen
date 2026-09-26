@@ -18,6 +18,7 @@ const emit = defineEmits([
   'go-course',
   'open-knowledge',
   'open-import',
+  'open-transcribe',
   'open-chat',
   'open-wrongbook',
   'open-mindmap',
@@ -76,6 +77,13 @@ onBeforeUnmount(() => {
       :class="{ on: current === 'import' }"
       @click="emit('open-import')"
     >{{ t('nav.import') }}</button>
+    <!-- 与「文档导入」并列：都是「把外部材料弄进来」，一个走文件、一个走音频 -->
+    <button
+      type="button"
+      class="nav-link"
+      :class="{ on: current === 'transcribe' }"
+      @click="emit('open-transcribe')"
+    >{{ t('nav.transcribe') }}</button>
     <button
       type="button"
       class="nav-link"

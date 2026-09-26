@@ -21,6 +21,7 @@ const emit = defineEmits([
   'open-history',
   'open-knowledge',
   'open-import',
+  'open-transcribe',
   'open-chat',
   'open-wrongbook',
   'open-mindmap',
@@ -47,6 +48,7 @@ const { t } = useI18n()
         @go-course="emit('go-course')"
         @open-knowledge="emit('open-knowledge')"
         @open-import="emit('open-import')"
+        @open-transcribe="emit('open-transcribe')"
         @open-chat="emit('open-chat')"
         @open-wrongbook="emit('open-wrongbook')"
         @open-mindmap="emit('open-mindmap')"

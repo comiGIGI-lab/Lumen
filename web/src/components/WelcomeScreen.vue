@@ -21,6 +21,7 @@ const emit = defineEmits([
   'start',
   'open-knowledge',
   'open-import',
+  'open-transcribe',
   'open-chat',
   'open-wrongbook',
   'open-mindmap',
@@ -34,6 +35,9 @@ const { t } = useI18n()
 const showPrivacy = ref(false)
 const activeCard = ref(0)
 
+// 01→02→03→04 是一条完整链路：两种输入（图文 / 语音）→ 结构化 → 答疑。
+// 语音那一张刻意排在「图文解析」之后、结构抽取之前，别挪到最后，
+// 否则读起来像三个阶段的流水线后面挂了个附件。
 const cards = [
   {
     num: '01',
@@ -42,11 +46,16 @@ const cards = [
   },
   {
     num: '02',
+    title: '语音离线转写',
+    body: '讲课录音、语音笔记直接转成文字。识别用离线中文模型跑在自己的服务器上，音频不经过任何第三方接口，转完可一键存进知识库参与后续问答',
+  },
+  {
+    num: '03',
     title: '知识点结构化抽取',
     body: '从解析结果中抽取知识点，整理为课程大纲与知识结构，并标注薄弱环节',
   },
   {
-    num: '03',
+    num: '04',
     title: '交互式答疑辅导',
     body: '先在你的材料里做相关性检索，再把命中的片段交给模型作答，答案标注出处，可以继续追问与逐条核对',
   },
@@ -109,6 +118,7 @@ function cardStyle(i) {
           <button class="wl-btn wl-btn-light" type="button" @click="onStart">{{ t('welcomeScreen.6') }}</button>
           <button class="wl-btn wl-btn-light" type="button" @click="emit('open-knowledge')">{{ t('welcomeScreen.7') }}</button>
           <button class="wl-btn wl-btn-light" type="button" @click="emit('open-import')">{{ t('welcomeScreen.8') }}</button>
+          <button class="wl-btn wl-btn-light" type="button" @click="emit('open-transcribe')">{{ t('nav.transcribe') }}</button>
         </div>
       </div>
     </section>
@@ -163,6 +173,7 @@ function cardStyle(i) {
           <button class="wl-btn" type="button" @click="onStart">{{ t('welcomeScreen.13') }}</button>
           <button class="wl-btn" type="button" @click="emit('open-knowledge')">{{ t('welcomeScreen.14') }}</button>
           <button class="wl-btn" type="button" @click="emit('open-import')">{{ t('welcomeScreen.15') }}</button>
+          <button class="wl-btn" type="button" @click="emit('open-transcribe')">{{ t('nav.transcribe') }}</button>
         </div>
       </div>
     </section>

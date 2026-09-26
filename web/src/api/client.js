@@ -342,6 +342,64 @@ export const api = {
   mindmapDelete(course) {
     return request(`/mindmap/${encodeURIComponent(course)}`, { method: 'DELETE' })
   },
+
+  // ---------------- 语音转写 ----------------
+
+  /**
+   * 语音转写能力探测。
+   * 引擎/模型没装好时（例如换服务器忘了搬模型），这里就能拿到原因，
+   * 界面可以提前置灰并说明怎么修，而不是让用户白录一遍再失败。
+   */
+  asrStatus() {
+    return request('/asr')
+  },
+
+  /**
+   * 上传 16k 单声道 16bit PCM（Int16Array 或其 ArrayBuffer）做**离线**转写。
+   *
+   * ⚠️ 刻意不复用 request()，两个原因：
+   *   1. request() 强制 `Content-Type: application/json`，而这里发的是原始二进制；
+   *   2. 8 分钟音频约 15MB，要用 XHR 才能拿到真实上传进度。
+   *
+   * 采样率转换在调用方完成（见 utils/audio.js 的 decodeToPcm16k）——
+   * 服务器没装 ffmpeg，也不打算装。
+   *
+   * @returns {Promise<{ok:boolean, text:string, duration:number, elapsed:number, rtf:number}>}
+   */
+  asrTranscribe(pcm, { onProgress } = {}) {
+    return new Promise((resolve, reject) => {
+      const buf = pcm instanceof ArrayBuffer ? pcm : pcm.buffer
+      if (!buf || !buf.byteLength) {
+        reject(new Error('没有音频数据'))
+        return
+      }
+      const xhr = new XMLHttpRequest()
+      xhr.open('POST', `${BASE}/asr`)
+      xhr.setRequestHeader('Content-Type', 'application/octet-stream')
+      xhr.setRequestHeader('X-Client-Id', clientId())
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable && onProgress) onProgress(e.loaded / e.total)
+      }
+      xhr.onload = () => {
+        let data = {}
+        try {
+          data = JSON.parse(xhr.responseText)
+        } catch (_) {
+          /* 后端异常时可能不是 JSON */
+        }
+        if (xhr.status >= 200 && xhr.status < 300 && data.ok !== false) {
+          resolve(data)
+        } else {
+          reject(new Error(data.error || `转写失败（HTTP ${xhr.status}）`))
+        }
+      }
+      xhr.onerror = () => reject(new Error('网络错误，音频没传上去'))
+      xhr.ontimeout = () => reject(new Error('转写超时，请换一段更短的音频'))
+      // 服务器实测约 10 倍实时（8 分钟音频 ≈ 50 秒），给足余量
+      xhr.timeout = 420000
+      xhr.send(buf)
+    })
+  },
 }
 
 /**

@@ -63,6 +63,10 @@ from crisis import (                                                 # noqa: E40
     strip_non_whitelist_numbers,
 )
 
+# 离线语音转写（Vosk）。刻意做成「可选模块」：asr 内部延迟 import vosk，
+# 引擎/模型缺失只让 /api/asr 返回明确的中文提示，不会拖垮整个服务。
+import asr as asr_mod                                               # noqa: E402
+
 
 def _looks_like_source(path: str) -> bool:
     """判断目录是否是 study-liu 源码根（含 core/agent_loop.py 与 agents/planner.py）。"""
@@ -910,6 +914,44 @@ class ApiHandler(BaseHTTPRequestHandler):
             "total": len(store.list_all()),
         }, 200 if ok_n > 0 else 400)
 
+    def _handle_asr_transcribe(self):
+        """POST /api/asr —— 16kHz 单声道 16bit PCM（原始字节流，非 multipart）→ 文字。
+
+        为什么不用 multipart：这里只有一个字段、且是二进制，套一层 multipart
+        只是白白多出 boundary 解析和 base64 风险。前端直接把 Int16Array 的
+        ArrayBuffer 当 body 发过来即可。
+
+        为什么采样率转换放在前端：服务器没装 ffmpeg（实测），
+        而浏览器的 OfflineAudioContext(1,1,16000).decodeAudioData() 能把
+        mp3/m4a/webm/ogg/wav 直接解成 16k 单声道，零依赖零安装。
+        """
+        try:
+            raw = self._read_raw_body(asr_mod.MAX_PCM_BYTES)
+        except MultipartError as e:
+            # 超长音频走到这里，_read_raw_body 的文案已经说清「多少 MB / 上限多少」
+            return self._send_json({"ok": False, "error": str(e)}, 413)
+        except Exception as e:
+            return self._send_json({"ok": False, "error": "读取音频失败：%s" % e}, 400)
+
+        if not raw:
+            return self._send_json({"ok": False, "error": "没有收到音频数据"}, 400)
+
+        try:
+            r = asr_mod.transcribe(raw)
+        except RuntimeError as e:
+            # 引擎/模型不可用、音频过长 —— 都是「用户能看懂并照做」的提示，原样返回
+            return self._send_json({"ok": False, "error": str(e)}, 503)
+        except Exception as e:
+            traceback.print_exc()  # 原始异常进日志，用户只看固定文案
+            return self._send_json(
+                {"ok": False, "error": error_text.internal_error(e)}, 500)
+
+        r["ok"] = True
+        if not r["text"]:
+            # 不是错误：说了话但没识别出来（纯音乐、环境噪音、方言口音重）
+            r["hint"] = "没有识别到中文内容。请确认音频里有人说话，且是普通话。"
+        return self._send_json(r)
+
     def log_message(self, fmt, *args):  # 收敛控制台噪音
         if self.path.startswith("/api/plan/stream"):
             return
@@ -1049,6 +1091,11 @@ class ApiHandler(BaseHTTPRequestHandler):
                     "courses": wrong_book_store.courses(cid),
                 })
 
+            if path == "/api/asr":
+                # 语音转写能力探测：引擎/模型缺失时这里就告诉前端，
+                # 界面可以直接把入口置灰并给出「去怎么修」的提示，而不是让用户白录一遍
+                return self._send_json(asr_mod.status())
+
             if path == "/api/mindmap":
                 # 列表：只给「课程 / 更新时间 / 节点数」，不带节点，列表页够用
                 return self._send_json({
@@ -1108,6 +1155,9 @@ class ApiHandler(BaseHTTPRequestHandler):
         # _read_body() 会把请求体整个读走并尝试 JSON 解析，multipart 会被它丢掉。
         if path == "/api/knowledge/import":
             return self._handle_knowledge_import()
+        # 同理：/api/asr 收的是原始 PCM 字节流，不是 JSON
+        if path == "/api/asr":
+            return self._handle_asr_transcribe()
 
         body = self._read_body()
 

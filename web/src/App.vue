@@ -26,6 +26,7 @@ import SceneBackdrop from './components/SceneBackdrop.vue'
 import SpaceLayer from './components/SpaceLayer.vue'
 import KnowledgePage from './components/KnowledgePage.vue'
 import ImportPage from './components/ImportPage.vue'
+import TranscribePage from './components/TranscribePage.vue'
 import ChatPage from './components/ChatPage.vue'
 import StudySpacePage from './components/StudySpacePage.vue'
 import WrongBookPage from './components/WrongBookPage.vue'
@@ -285,6 +286,11 @@ function goKnowledge() {
 function goImport() {
   if (showWelcome.value) onWelcomeDone()
   appView.value = 'import'
+}
+
+function goTranscribe() {
+  if (showWelcome.value) onWelcomeDone()
+  appView.value = 'transcribe'
 }
 
 function goChat() {
@@ -789,6 +795,7 @@ const degradedBanner = computed(() => {
       @start="onWelcomeDone"
       @open-knowledge="goKnowledge"
       @open-import="goImport"
+      @open-transcribe="goTranscribe"
       @open-chat="goChat"
       @open-wrongbook="goWrongBook"
       @open-mindmap="goMindMap"
@@ -813,6 +820,7 @@ const degradedBanner = computed(() => {
       @open-history="openHistory"
       @open-knowledge="goKnowledge"
       @open-import="goImport"
+      @open-transcribe="goTranscribe"
       @open-chat="goChat"
       @open-wrongbook="goWrongBook"
       @open-mindmap="goMindMap"
@@ -829,6 +837,12 @@ const degradedBanner = computed(() => {
       />
       <ImportPage
         v-else-if="appView === 'import'"
+        @back="goCourse"
+        @open-knowledge="goKnowledge"
+        @go-course="goCourse"
+      />
+      <TranscribePage
+        v-else-if="appView === 'transcribe'"
         @back="goCourse"
         @open-knowledge="goKnowledge"
         @go-course="goCourse"
