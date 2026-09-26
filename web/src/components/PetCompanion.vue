@@ -6,10 +6,10 @@
  * 指针：只有立绘 .sprite-in 接收指针，aside 与 HUD 的占位区域一律点穿，
  * 免得手机上盖住底下的按钮。点（位移很小的抬手）才 emit 'open-profile'，
  * 由父组件 App.vue 弹 PetProfileDialog（z-index 155）。
- * 拖动：按住立绘移动，松手落在哪儿就存哪儿（zjxt.pet_pos），刷新还在。
+ * 拖动：按住立绘移动，松手离左右缘 ≤24px 就收成探头。刷新 / 换页清掉位置。
  * Lv5「保持 / 进化」弹层（showEvolve，z-index 118）走原逻辑，与本 emit 互不干扰。
  */
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from '@/i18n'
 import PetSprite from './PetSprite.vue'
 import { usePet } from '@/composables/usePet'
@@ -61,7 +61,10 @@ const dragging = ref(false)
 // 窄屏再小一档：改尺寸而不是 transform: scale ——
 // scale 会让 getBoundingClientRect 与布局值不一致，第一次拖动就会跳一下。
 const isNarrow = ref(false)
-const spriteSize = computed(() => (isNarrow.value ? 52 : 72))
+const spriteSize = computed(() => {
+  if (dock.value) return isNarrow.value ? 44 : 52
+  return isNarrow.value ? 52 : 72
+})
 
 function loadPos() {
   try {
@@ -95,20 +98,64 @@ function savePos() {
   }
 }
 
+/** 空间面板「恢复默认位置」：回到 CSS 右下，清贴边。 */
+function resetPos() {
+  pos.value = null
+  dock.value = null
+  dockY.value = 0
+  dragging.value = false
+  try {
+    localStorage.removeItem(POS_KEY)
+  } catch (_) {
+    /* ignore */
+  }
+}
+
+function onSpaceReset() {
+  resetPos()
+  showActionMenu.value = false
+}
+
+const HINT_KEY = 'zjxt.tuck_hint_v2'
+const showTuckHint = ref(false)
+let hintTimer = 0
+
+function maybeShowTuckHint() {
+  try {
+    if (localStorage.getItem(HINT_KEY) === '1') return
+  } catch (_) {
+    /* ignore */
+  }
+  showTuckHint.value = true
+  hintTimer = setTimeout(dismissTuckHint, 7000)
+}
+
+function dismissTuckHint() {
+  if (!showTuckHint.value) return
+  showTuckHint.value = false
+  if (hintTimer) {
+    clearTimeout(hintTimer)
+    hintTimer = 0
+  }
+  try {
+    localStorage.setItem(HINT_KEY, '1')
+  } catch (_) {
+    /* ignore */
+  }
+}
+
 function clamp(x, y) {
-  const el = buddyEl.value
-  const w = el ? el.offsetWidth : spriteSize.value
-  const h = el ? el.offsetHeight : spriteSize.value
+  const w = spriteSize.value
+  const h = spriteSize.value
   return {
     x: Math.min(Math.max(0, x), Math.max(0, window.innerWidth - w)),
     y: Math.min(Math.max(0, y), Math.max(0, window.innerHeight - h)),
   }
 }
 
-/** 贴边时的纵向范围：上不压顶栏，下不出屏幕 */
+/** 贴边时的纵向范围：上不压顶栏，下不出屏幕。高度按立绘算。 */
 function clampDockY(y) {
-  const el = buddyEl.value
-  const h = el ? el.offsetHeight : spriteSize.value
+  const h = spriteSize.value
   const safe = TOP_SAFE.value
   const max = Math.max(safe, window.innerHeight - h - 8)
   return Math.min(Math.max(safe, y), max)
@@ -218,31 +265,34 @@ function onPointerUp(e) {
   }, 240)
 }
 
-/** 松手时贴到左右边缘，就吸成一条探头 */
+/** 松手时贴到左右边缘，就吸成一条探头。拖动时 HUD 还在，用整块宽度判边。 */
 function maybeDockOnRelease() {
   if (!pos.value) return
-  const el = buddyEl.value
-  const w = el ? el.offsetWidth : spriteSize.value
+  const w = spriteSize.value
   const right = pos.value.x + w
   if (pos.value.x <= DOCK_ZONE) {
     dock.value = 'left'
     dockY.value = clampDockY(pos.value.y)
+    dismissTuckHint()
   } else if (right >= window.innerWidth - DOCK_ZONE) {
     dock.value = 'right'
     dockY.value = clampDockY(pos.value.y)
+    dismissTuckHint()
   }
 }
 
-/** 点探头：滑回完整立绘，停在它贴的那一侧 */
+/** 点探头：滑回完整立绘，停在它贴的那一侧。HUD 重新占位后再夹一次，别顶出屏幕。 */
 function undock() {
   const side = dock.value
   if (!side) return
-  const el = buddyEl.value
-  const w = el ? el.offsetWidth : spriteSize.value
+  const w = spriteSize.value
   const x = side === 'left' ? 0 : Math.max(0, window.innerWidth - w)
   dock.value = null
-  pos.value = clamp(x, dockY.value)
-  savePos()
+  pos.value = { x, y: dockY.value }
+  nextTick(() => {
+    if (pos.value) pos.value = clamp(pos.value.x, pos.value.y)
+    savePos()
+  })
 }
 
 function onPointerCancel() {
@@ -281,17 +331,21 @@ function showCenterToast(text, duration = 3000) {
 
 onMounted(() => {
   syncNarrow()
-  loadPos()
+  // 刷新不恢复上次拖动 / 贴边；会话内拖动仍走 savePos，导航和「恢复默认位置」靠事件清掉。
   window.addEventListener('resize', onResize)
+  window.addEventListener('zjxt:reset-layout', onSpaceReset)
   interaction.startIdleWatcher()
+  maybeShowTuckHint()
 })
 onBeforeUnmount(() => {
   window.removeEventListener('resize', onResize)
+  window.removeEventListener('zjxt:reset-layout', onSpaceReset)
   interaction.stopIdleWatcher()
   clearTimeout(bubbleTimer)
   if (hudTimer) clearTimeout(hudTimer)
   if (tapTimer) clearTimeout(tapTimer)
   if (centerBubbleTimer) clearTimeout(centerBubbleTimer)
+  if (hintTimer) clearTimeout(hintTimer)
 })
 
 function openProfile() {
@@ -388,12 +442,12 @@ function handleMenuAction(action) {
       class="buddy"
       :class="{ pulse: pulsing, dragging, 'dock-left': dock === 'left', 'dock-right': dock === 'right' }"
       :style="buddyStyle"
-      :aria-label="dock ? t('petCompanion.1') : t('petCompanion.1')"
+      :aria-label="t('petCompanion.1')"
       role="button"
       tabindex="0"
       @keydown="onKey"
     >
-      <div class="hud" :class="{ 'hud-on': hudOn }">
+      <div v-show="!dock" class="hud" :class="{ 'hud-on': hudOn }">
         <div class="row">
           <span>Lv {{ pet.level }}</span>
         </div>
@@ -420,6 +474,7 @@ function handleMenuAction(action) {
       >
         <PetSprite :pet-id="pet.id" :form="pet.form" :size="spriteSize" />
       </div>
+      <p v-if="showTuckHint && !dock" class="tuck-hint" role="status">拖到左右缘可收成探头。浮窗点 − 、空间钮点 ‹ 收到边签。</p>
       <!-- 双击互动菜单：摸摸 / 喂食 / 玩耍 -->
       <div
         v-if="!dock && showActionMenu"
@@ -502,33 +557,68 @@ function handleMenuAction(action) {
   gap: 6px;
   /* 整块不接指针：HUD 收起时那块占位要能点穿到底下的按钮 */
   pointer-events: none;
-  --peek: 36px; /* 贴边成探头时露出的宽度 */
-  --peek-hover: 56px; /* 桌面悬停探头时多露一点 */
-  /* 只过渡 transform：点探头滑出 / 滑回才有动画，拖动改的是 left/top，跟手不拖影 */
+  /* 贴边改位移不改宽度；拖动改的是 left/top，跟手不拖影 */
   transition: transform 0.22s ease;
 }
 
-/* 贴边探头：整块推出屏幕，只留 --peek 宽的一条，像从边缝往外看。
-   露出来的那一块之外都被推出视口，屏幕上只有那一小条能接指针。 */
+/* 贴边探头：缩小立绘、米底边签，略叠进边缝，点一下拉回。 */
+.buddy.dock-left,
+.buddy.dock-right {
+  gap: 0;
+}
+
 .buddy.dock-left {
-  --peek-dir: 1; /* 贴左边：往右探头 */
-  transform: translateX(calc(-100% + var(--peek)));
+  --peek-dir: 1;
+  align-items: flex-start;
+  transform: translateX(-8px);
 }
 
 .buddy.dock-right {
-  --peek-dir: -1; /* 贴右边：往左探头 */
-  transform: translateX(calc(100% - var(--peek)));
+  --peek-dir: -1;
+  align-items: flex-end;
+  transform: translateX(8px);
+}
+
+.buddy.dock-left .sprite-in,
+.buddy.dock-right .sprite-in {
+  background: rgba(var(--bg-app-rgb), 0.92);
+  border: 1px solid var(--border);
+  opacity: 0.92;
+}
+
+.buddy.dock-left .sprite-in {
+  border-left: none;
+  border-right: 2px solid #e51520;
+  border-radius: 0 12px 12px 0;
+}
+
+.buddy.dock-right .sprite-in {
+  border-right: none;
+  border-left: 2px solid #e51520;
+  border-radius: 12px 0 0 12px;
+}
+
+.tuck-hint {
+  pointer-events: none;
+  align-self: flex-end;
+  max-width: 168px;
+  margin: 0;
+  padding: 6px 8px;
+  background: rgba(var(--bg-app-rgb), 0.96);
+  border: 1px solid var(--border);
+  border-left: 2px solid #e51520;
+  border-radius: 4px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1.5;
 }
 
 /* 桌面悬停探头时再多露一点，看清是谁在往外看。
    触控设备没有 hover，走点按展开那条路。 */
 @media (hover: hover) and (pointer: fine) {
-  .buddy.dock-left:hover {
-    transform: translateX(calc(-100% + var(--peek-hover)));
-  }
-
-  .buddy.dock-right:hover {
-    transform: translateX(calc(100% - var(--peek-hover)));
+  .buddy.dock-left .sprite-in:hover,
+  .buddy.dock-right .sprite-in:hover {
+    opacity: 1;
   }
 }
 
@@ -643,10 +733,10 @@ function handleMenuAction(action) {
 @keyframes buddy-peek {
   0%,
   100% {
-    transform: translateX(0);
+    transform: translateX(0) translateY(8px) scale(0.9);
   }
   50% {
-    transform: translateX(calc(var(--peek-dir, 1) * 5px));
+    transform: translateX(calc(var(--peek-dir, 1) * 4px)) translateY(8px) scale(0.9);
   }
 }
 
@@ -929,8 +1019,8 @@ p {
     right: 6px;
     bottom: 84px;
     gap: 4px;
-    --peek: 30px; /* 手机上立绘更小，探头也相应窄一点，但要够手指点 */
-    --peek-hover: 46px;
+    --peek: 34px; /* 手机上立绘更小，探头也相应窄一点，但要够手指点 */
+    --peek-hover: 48px;
   }
 
   .hud {

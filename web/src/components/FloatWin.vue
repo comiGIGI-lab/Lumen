@@ -2,6 +2,7 @@
 /**
  * FloatWin —— 个人空间悬浮窗壳
  * 标题栏：名称 + 减号缩小 / 收到标题栏 + 加号放大。可拖动。
+ * 收起后不再占原位标题栏，改成左右缘 30px 竖签（点签即 grow 展开）。
  * 触控：标题栏拖动手势独占，不让页面跟着滚；加减号仍可点。
  */
 import { computed, onBeforeUnmount } from 'vue'
@@ -13,18 +14,56 @@ const props = defineProps({
 })
 const { t } = useI18n()
 
-const { windows, zOrder, WIN_META, shrink, grow, moveTo, bringFront, barWidth, layoutMode, clampPos, viewW } = useSpace()
+const { windows, zOrder, WIN_IDS, WIN_META, shrink, grow, moveTo, bringFront, barWidth, layoutMode, clampPos, viewW, viewH, dateWinTitle, nearestCountdown } = useSpace()
 
 const win = computed(() => windows[props.id])
 const meta = WIN_META[props.id]
-// 标题走 i18n；WIN_META.title 仅作兜底
-const title = computed(() => (meta?.titleKey ? t(meta.titleKey) : meta?.title) || props.id)
+// 标题走 i18n；WIN_META.title 仅作兜底。倒数日窗有未到期事件时不再写「日期」。
+const title = computed(() => {
+  if (props.id === 'date' && dateWinTitle.value) return dateWinTitle.value
+  return (meta?.titleKey ? t(meta.titleKey) : meta?.title) || props.id
+})
+const peekLabel = computed(() => {
+  if (props.id === 'date' && nearestCountdown.value) return nearestCountdown.value.title
+  return title.value
+})
 const studyLayout = computed(() => layoutMode.value === 'study')
+
+/** 收起成探头时露出的签宽；高度按标题走，栈位按 WIN_IDS 错开，不挡左下「空间」。 */
+const PEEK_W = 36
+const PEEK_H = 108
+const PEEK_GAP = 10
+
+const peekSide = computed(() => {
+  const w = win.value
+  if (!w?.collapsed) return null
+  const compact = viewW.value <= 430
+  const width = barWidth(true, w.size, compact, layoutMode.value, props.id)
+  const shown = clampPos(props.id, w.x, w.y)
+  return shown.x + width / 2 < viewW.value / 2 ? 'left' : 'right'
+})
 
 const boxStyle = computed(() => {
   const w = win.value
   const compact = viewW.value <= 430
-  const width = barWidth(w.collapsed, w.size, compact, layoutMode.value, props.id)
+  if (w.collapsed) {
+    const stack = Math.max(0, WIN_IDS.indexOf(props.id))
+    const topSafe = compact ? 52 : 64
+    const top = Math.min(
+      topSafe + stack * (PEEK_H + PEEK_GAP),
+      Math.max(topSafe, viewH.value - PEEK_H - 56),
+    )
+    const side = peekSide.value
+    return {
+      left: side === 'left' ? '0px' : 'auto',
+      right: side === 'right' ? '0px' : 'auto',
+      top: `${Math.round(top)}px`,
+      width: `${PEEK_W}px`,
+      height: `${PEEK_H}px`,
+      zIndex: zOrder[props.id] || 129,
+    }
+  }
+  const width = barWidth(false, w.size, compact, layoutMode.value, props.id)
   const shown = clampPos(props.id, w.x, w.y)
   return {
     left: `${Math.round(shown.x)}px`,
@@ -40,7 +79,12 @@ function isControl(el) {
   return !!(el && el.closest && el.closest('.win-btns'))
 }
 
+function onPeekClick() {
+  grow(props.id)
+}
+
 function onPointerDown(e) {
+  if (win.value?.collapsed) return
   if (e.button != null && e.button !== 0) return
   if (isControl(e.target)) return
   bringFront(props.id)
@@ -90,20 +134,40 @@ onBeforeUnmount(() => {
 <template>
   <section
     class="win"
-    :class="['s-' + win.size, { collapsed: win.collapsed, 'layout-study': studyLayout }]"
+    :class="[
+      's-' + win.size,
+      {
+        collapsed: win.collapsed,
+        'layout-study': studyLayout,
+        'peek-left': peekSide === 'left',
+        'peek-right': peekSide === 'right',
+      },
+    ]"
     :style="boxStyle"
   >
-    <header class="win-bar" @pointerdown="onPointerDown">
-      <span class="win-name">{{ title }}</span>
-      <span class="win-extra"><slot name="title-extra" /></span>
-      <div class="win-btns">
-        <button type="button" class="sq" :title="t('floatWin.1')" :aria-label="t('floatWin.2')" @click="shrink(id)">−</button>
-        <button type="button" class="sq" :title="t('floatWin.3')" :aria-label="t('floatWin.4')" @click="grow(id)">+</button>
+    <button
+      v-if="win.collapsed"
+      type="button"
+      class="win-peek"
+      :title="title"
+      :aria-label="title"
+      @click="onPeekClick"
+    >
+      <span class="win-peek-name">{{ peekLabel }}</span>
+    </button>
+    <template v-else>
+      <header class="win-bar" @pointerdown="onPointerDown">
+        <span class="win-name">{{ title }}</span>
+        <span class="win-extra"><slot name="title-extra" /></span>
+        <div class="win-btns">
+          <button type="button" class="sq" :title="t('floatWin.1')" :aria-label="t('floatWin.2')" @click="shrink(id)">−</button>
+          <button type="button" class="sq" :title="t('floatWin.3')" :aria-label="t('floatWin.4')" @click="grow(id)">+</button>
+        </div>
+      </header>
+      <div class="win-body">
+        <slot />
       </div>
-    </header>
-    <div v-show="!win.collapsed" class="win-body">
-      <slot />
-    </div>
+    </template>
   </section>
 </template>
 
@@ -138,12 +202,63 @@ onBeforeUnmount(() => {
   border-bottom-color: var(--border);
 }
 
+/* 收起：贴左右缘的窄签。米底、1px 描边、内侧一根红线。点签展开。 */
+.win.collapsed {
+  overflow: hidden;
+  max-width: 36px;
+  box-shadow: none;
+  background: rgba(var(--bg-app-rgb), 0.92);
+}
+.win.collapsed.peek-left {
+  border-radius: 0 10px 10px 0;
+  border-left: none;
+  border-right: 2px solid #e51520;
+}
+.win.collapsed.peek-right {
+  border-radius: 10px 0 0 10px;
+  border-right: none;
+  border-left: 2px solid #e51520;
+}
+.win-peek {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 10px 0;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+.win-peek-name {
+  writing-mode: vertical-rl;
+  letter-spacing: 0.18em;
+  font-family: var(--font-serif);
+  font-size: 12px;
+  line-height: 1;
+  color: var(--text-primary);
+}
+.win-peek:hover .win-peek-name {
+  color: #e51520;
+}
+.win-peek:focus-visible {
+  outline: 2px solid #e51520;
+  outline-offset: -2px;
+}
+
 .win-name {
   font-family: var(--font-serif);
   font-size: 14px;
   letter-spacing: 0.06em;
   color: var(--text-primary);
-  flex: none;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .win-extra {

@@ -7,7 +7,7 @@ import { useI18n } from '@/i18n'
 import { useSpace } from '@/composables/useSpace'
 import CountdownTimer from './CountdownTimer.vue'
 
-const { dateNotes } = useSpace()
+const { dateNotes, dateWinTitle } = useSpace()
 
 const now = new Date()
 const year = ref(now.getFullYear())
@@ -63,7 +63,7 @@ const { t } = useI18n()
 </script>
 
 <template>
-  <div class="cal">
+  <div class="cal" :class="{ 'has-soon': dateWinTitle }">
     <CountdownTimer />
     <div class="nav">
       <button type="button" class="nav-btn" @click="prevMonth">‹</button>
@@ -103,6 +103,10 @@ const { t } = useI18n()
 </template>
 
 <style scoped>
+.cal.has-soon :deep(h3) {
+  display: none;
+}
+
 .nav {
   display: flex;
   align-items: center;

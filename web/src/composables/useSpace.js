@@ -2,6 +2,7 @@
  * 个人空间：三个悬浮窗（自习坞 / 待办 / 日期）的开关、尺寸、位置。
  * 存 localStorage zjxt.space；待办、日期、日倒数各自存键，不登录。
  * SPACE_VER 加一后旧坐标不再锁死，会落到新默认。
+ * v5 起桌面默认展开；刷新 / 换页只保留窗口开关，位置和折叠回到当前 layout 默认。
  * welcome / app / study 三套 x/y/size/collapsed 分开存；待办正文和倒数日走别的键。
  */
 import { computed, reactive, ref, watch } from 'vue'
@@ -10,7 +11,7 @@ export const SPACE_KEY = 'zjxt.space'
 export const TODOS_KEY = 'zjxt.todos'
 export const DATES_KEY = 'zjxt.dates'
 export const COUNTDOWNS_KEY = 'zjxt.countdowns'
-export const SPACE_VER = 3
+export const SPACE_VER = 5
 export const LAYOUTS = ['welcome', 'app', 'study']
 
 export const WIN_IDS = ['study', 'todo', 'date']
@@ -50,7 +51,7 @@ function normalizeLayout(mode) {
   return 'welcome'
 }
 
-function barWidth(collapsed, size, compact, layout, id) {
+function barWidthRaw(collapsed, size, compact, layout, id) {
   const { vw } = viewport()
   const maxW = Math.max(160, vw - 16)
   const widthFactor = getWidthFactor(compact, id)
@@ -83,6 +84,15 @@ function barWidth(collapsed, size, compact, layout, id) {
     return Math.round(Math.min(base * widthFactor, maxW))
   }
   return Math.min(desktop, maxW)
+}
+
+/** 倒数日窗比其他浮窗再宽 40%（收成探头时仍是竖签，不加宽）。 */
+function barWidth(collapsed, size, compact, layout, id) {
+  const width = barWidthRaw(collapsed, size, compact, layout, id)
+  if (collapsed || id !== 'date') return width
+  const { vw } = viewport()
+  const maxW = Math.max(160, vw - 16)
+  return Math.round(Math.min(maxW, width * 1.4))
 }
 
 function defaultWin(id, vw, layout) {
@@ -119,7 +129,8 @@ function defaultWin(id, vw, layout) {
   }
   const cascade = { study: 0, todo: 1, date: 2 }
   const i = cascade[id] || 0
-  const collapsed = layout === 'app' || compact
+  // 桌面默认展开，各就各位；窄屏才收成边签，免得三块窗盖住正文。
+  const collapsed = compact
   const size = 1
   const w = barWidth(collapsed, size, compact, layout, id)
   const gap = compact ? 6 : 12
@@ -184,6 +195,17 @@ function mergeWins(base, saved) {
   return next
 }
 
+/** 刷新 / 导航只保留开关；位置和折叠回到当前 layout 的默认。 */
+function mergeOnOnly(base, saved) {
+  const next = cloneWins(base)
+  WIN_IDS.forEach((id) => {
+    const w = saved?.[id]
+    if (!w || typeof w !== 'object') return
+    if ('on' in w) next[id].on = w.on !== false
+  })
+  return next
+}
+
 function initialLayout() {
   try {
     const qs = new URLSearchParams(window.location.search)
@@ -218,9 +240,10 @@ function loadSpace() {
     if (!raw) return base
     const saved = JSON.parse(raw)
     const ver = Number(saved?.ver)
-    if (ver === SPACE_VER && saved?.layouts && typeof saved.layouts === 'object') {
+    if ((ver === SPACE_VER || ver === 4 || ver === 3) && saved?.layouts && typeof saved.layouts === 'object') {
       LAYOUTS.forEach((key) => {
-        base.layouts[key] = mergeWins(base.layouts[key], saved.layouts[key])
+        // 坐标、折叠不跟刷新走：只把「开 / 关」从旧存档接回来。
+        base.layouts[key] = mergeOnOnly(base.layouts[key], saved.layouts[key])
       })
       if (saved.layout === 'welcome' || saved.layout === 'app' || saved.layout === 'study') {
         base.layout = saved.layout
@@ -231,7 +254,7 @@ function loadSpace() {
     }
     if (ver === 2 && saved?.windows) {
       const oldMode = saved.layout === 'app' ? 'app' : 'welcome'
-      base.layouts[oldMode] = mergeWins(base.layouts[oldMode], saved.windows)
+      base.layouts[oldMode] = mergeOnOnly(base.layouts[oldMode], saved.windows)
       if (oldMode === layout) base.layout = oldMode
       if (Number.isFinite(saved.zSeq)) base.zSeq = saved.zSeq
       base.windows = base.layouts[base.layout]
@@ -337,6 +360,8 @@ const windows = reactive(cloneWins(boot.windows))
 const zOrder = reactive(Object.fromEntries(WIN_IDS.map((id, i) => [id, 129 + i])))
 let zSeq = boot.zSeq || 132
 const panelOpen = ref(false)
+/** 左下「空间」钮本会话是否收到左边签。刷新 / 换页会清掉。 */
+const fabDocked = ref(false)
 const viewW = ref(typeof window === 'undefined' ? 1280 : window.innerWidth)
 const viewH = ref(typeof window === 'undefined' ? 800 : window.innerHeight)
 
@@ -444,12 +469,11 @@ function setOn(id, on) {
 function shrink(id) {
   const w = windows[id]
   bringFront(id)
-  if (!w.collapsed && w.size <= 1) {
+  // 一次 − 就收到边签。继续缩小尺寸走已展开时的再次 −。
+  if (!w.collapsed) {
     w.collapsed = true
     return
   }
-  if (w.collapsed) return
-  w.size = Math.max(1, w.size - 1)
 }
 
 function grow(id) {
@@ -483,16 +507,30 @@ function writeWins(target, src) {
   })
 }
 
+function resetPetPos() {
+  fabDocked.value = false
+  try {
+    localStorage.removeItem('zjxt.pet_pos')
+  } catch (_) {
+    /* ignore */
+  }
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('zjxt:reset-layout'))
+  }
+}
+
+function setFabDocked(on) {
+  fabDocked.value = !!on
+}
+
 function applyLayout(mode) {
   const nextMode = normalizeLayout(mode)
-  if (layoutMode.value === nextMode) {
-    persistSpace()
-    return
-  }
-  writeWins(layouts[layoutMode.value], snapshotWins(windows))
   layoutMode.value = nextMode
-  writeWins(windows, snapshotWins(layouts[nextMode]))
+  const fresh = defaultWins(nextMode)
+  writeWins(windows, fresh)
+  writeWins(layouts[nextMode], fresh)
   persistSpace()
+  resetPetPos()
 }
 
 function resetLayout() {
@@ -501,7 +539,39 @@ function resetLayout() {
   writeWins(windows, fresh)
   writeWins(layouts[mode], fresh)
   persistSpace()
+  resetPetPos()
 }
+
+function startOfDay(ts) {
+  const d = new Date(ts)
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
+}
+
+function daysUntil(ymd, now = Date.now()) {
+  const date = parseYmd(ymd)
+  if (!date) return null
+  const [y, mo, d] = date.split('-').map(Number)
+  const target = new Date(y, mo - 1, d)
+  return Math.round((startOfDay(target) - startOfDay(now)) / 86400000)
+}
+
+/** 最近一条未到期倒数日（不含今天、不含已过）。 */
+const nearestCountdown = computed(() => {
+  let best = null
+  countdowns.value.forEach((item) => {
+    const days = daysUntil(item.date)
+    if (days == null || days < 0) return
+    if (!best || days < best.days) best = { id: item.id, title: item.title, date: item.date, days }
+  })
+  return best
+})
+
+const dateWinTitle = computed(() => {
+  const n = nearestCountdown.value
+  if (!n) return ''
+  if (n.days === 0) return `距 ${n.title} 就是今天`
+  return `距 ${n.title} 还有 ${n.days} 天`
+})
 
 export function useSpace() {
   const widthFactor = computed(() => (viewW.value <= 430 ? WIDTH_FACTOR_MOBILE : WIDTH_FACTOR_DESKTOP))
@@ -516,6 +586,8 @@ export function useSpace() {
     windows,
     zOrder,
     panelOpen,
+    fabDocked,
+    setFabDocked,
     layoutMode,
     todos,
     dateNotes,
@@ -528,6 +600,8 @@ export function useSpace() {
     resetLayout,
     applyLayout,
     barWidth,
+    nearestCountdown,
+    dateWinTitle,
     clampPos,
     viewW,
     viewH,

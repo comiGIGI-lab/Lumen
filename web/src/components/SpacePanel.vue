@@ -11,6 +11,11 @@ import { usePet } from '@/composables/usePet'
 const { WIN_IDS, WIN_META, windows, panelOpen, setOn, resetLayout } = useSpace()
 const { PETS, pet, hasPet, displayName, need, ratio, speciesOf, changeAvatar } = usePet()
 
+/** 三个浮窗回到当前 layout 默认坐标，同时把学伴从贴边/拖动位置收回右下。 */
+function restoreDefaults() {
+  resetLayout()
+}
+
 /** 当前化身的 PETS 条目（含 personality/learningStyle/tagline） */
 const currentSpecies = computed(() => speciesOf(pet.id))
 
@@ -81,7 +86,7 @@ const { t } = useI18n()
       </div>
 
       <div class="foot">
-        <button type="button" class="ghost" @click="resetLayout">{{ t('spacePanel.12') }}</button>
+        <button type="button" class="ghost" @click="restoreDefaults">{{ t('spacePanel.12') }}</button>
         <button type="button" class="ok" @click="close">{{ t('spacePanel.13') }}</button>
       </div>
     </div>

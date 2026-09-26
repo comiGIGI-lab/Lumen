@@ -178,7 +178,7 @@ function onProfileChangePet() {
 const { displayName, logExp, grantStudyExp, grantPlanExp } = usePet()
 const { record: recordPlan } = usePlanHistory()
 
-const { applyLayout, layoutMode, panelOpen: spacePanelOpen } = useSpace()
+const { applyLayout, panelOpen: spacePanelOpen } = useSpace()
 const { scene: activeScene, onSessionComplete: registerSessionComplete } = useStudyTimer()
 
 // 自习完整跑完钩子：grantStudyExp 内部已走 logExp('自习') + logExp('当日首练加成')，并判 bonusDate 去重
@@ -323,8 +323,7 @@ watch(
   [showWelcome, appView],
   () => {
     document.body.style.overflow = showWelcome.value || showGuide.value ? 'hidden' : ''
-    const mode = currentSpaceLayout()
-    if (layoutMode.value !== mode) applyLayout(mode)
+    applyLayout(currentSpaceLayout())
   },
   { immediate: true },
 )
