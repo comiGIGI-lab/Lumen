@@ -23,7 +23,6 @@ const MANUAL = {
       course: '学习方案生成',
       knowledge: '知识库',
       import: '文档导入',
-      record: '录音转写',
       chat: '课程问答',
       wrongbook: '错题本',
       study: '自习空间',
@@ -56,7 +55,6 @@ const MANUAL = {
     page: {
       knowledgeTitle: '知识库',
       importTitle: '文档导入',
-      recordTitle: '课堂录音转写',
       chatTitle: '课程问答',
       wrongbookTitle: '错题本',
       progressTitle: '学习进度',
@@ -77,7 +75,6 @@ const MANUAL = {
       course: 'Generate Plan',
       knowledge: 'Knowledge Base',
       import: 'Import Docs',
-      record: 'Lecture Capture',
       chat: 'Course Q&A',
       wrongbook: 'Wrong-Answer Book',
       study: 'Study Space',
@@ -110,7 +107,6 @@ const MANUAL = {
     page: {
       knowledgeTitle: 'Knowledge Base',
       importTitle: 'Import Documents',
-      recordTitle: 'Lecture Capture',
       chatTitle: 'Course Q&A',
       wrongbookTitle: 'Wrong-Answer Book',
       progressTitle: 'Learning Progress',

@@ -225,7 +225,7 @@ function maybeShowBubble(viewId, title, body, storageKey) {
 const BUBBLES = {
   plan: {
     title: '学习方案',
-    body: '把课件、板书和录音交给这里，Agent 流水线会生成大纲、资源和学习计划。入门 / 进阶 / 冲刺 三档画像匹配时长和深度。',
+    body: '把课件、板书和笔记交给这里，Agent 流水线会生成大纲、资源和学习计划。入门 / 进阶 / 冲刺 三档画像匹配时长和深度。',
     storageKey: 'zjxt.tour_plan',
   },
   kb: {
