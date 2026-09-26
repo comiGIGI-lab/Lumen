@@ -109,11 +109,15 @@ function defaultWin(id, vw, layout) {
         todo: compact ? 52 : 300,
         date: compact ? 104 : 560,
       }
+      // 手机上（compact）三块窗默认都收成竖签 → 「自习空间」页会是一片空白：
+      // StudySpacePage 本身只有背景，这一页的全部内容就是自习坞这块窗。
+      // 所以 compact 时把自习坞展开，并让开左侧那列竖签（x=0..36）。
+      const expandStudy = compact && id === 'study'
       return {
         on: true,
-        collapsed: true,
+        collapsed: !expandStudy,
         size: 2,  // 三块统一大小：study 原为 3（344px），与另两块不一致
-        x: padX,
+        x: expandStudy ? 46 : padX,
         y: padY + (stacked[id] || 0),
       }
     }

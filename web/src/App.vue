@@ -1211,5 +1211,13 @@ const degradedBanner = computed(() => {
   .main.study-main {
     padding: 8px 8px 72px;
   }
+  /* 手机上三个悬浮窗都收成竖签，位置是固定的一列（x=0..36，每个 108 高）；
+     而主区左右只有 8px 内边距 → 竖签会压住正文（实测「课程问答」的「课」字、
+     「学习目标」都被盖住）。统一让出 46px = 36 竖签 + 10 间隙。 */
+  .main,
+  .main.study-main,
+  .main.under-wins {
+    padding-left: 46px;
+  }
 }
 </style>

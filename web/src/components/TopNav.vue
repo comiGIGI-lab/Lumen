@@ -215,10 +215,16 @@ onBeforeUnmount(() => {
 @media (max-width: 430px) {
   .top-nav {
     width: 100%;
+    /* 8 个入口在 390px 下原来要换 3 行、吃掉约 140px 高度
+       （还会把悬浮窗的 HEADER_H=64 定位算错）。收紧内边距与字号压到 2 行。
+       刻意不用 overflow-x 横向滚动：更多菜单是绝对定位在 .more-wrap 里的，
+       一旦外层变成滚动容器，下拉会被裁掉。 */
+    justify-content: center;
+    gap: 4px;
   }
   .nav-link {
-    padding: 6px 10px;
-    font-size: 12px;
+    padding: 5px 8px;
+    font-size: 11.5px;
   }
 }
 </style>
