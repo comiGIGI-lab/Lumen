@@ -210,6 +210,7 @@ from tools.docx_export import render_plan_docx, suggest_docx_filename      # noq
 from tools import progress_store                                    # noqa: E402
 from tools import wrong_book_store                                  # noqa: E402
 from tools import mindmap_store                                     # noqa: E402
+import error_text                                                    # noqa: E402
 from tools import cache_store                                       # noqa: E402
 from tools.knowledge_store import KnowledgeStore                    # noqa: E402
 from core.paths import data_dir as _data_dir                        # noqa: E402
@@ -474,10 +475,11 @@ def test_llm_connection(payload: dict) -> dict:
         return {
             "ok": False,
             "status": exc.code,
-            "error": "HTTP %s: %s" % (exc.code, detail[:200] or exc.reason),
+            # 网关原文（含模型名/额度信息）只进日志，不回显
+            "error": error_text.model_error(exc),
         }
     except Exception as exc:
-        return {"ok": False, "error": "%s: %s" % (type(exc).__name__, exc)}
+        return {"ok": False, "error": error_text.model_error(exc)}
 
 
 def mode_info() -> dict:
@@ -1095,8 +1097,8 @@ class ApiHandler(BaseHTTPRequestHandler):
 
             return self._send_json({"ok": False, "error": f"未知接口 {path}"}, 404)
         except Exception as e:
-            traceback.print_exc()
-            return self._send_json({"ok": False, "error": str(e)}, 500)
+            traceback.print_exc()  # 原始异常进日志，用户只看固定文案
+            return self._send_json({"ok": False, "error": error_text.internal_error(e)}, 500)
 
     def do_POST(self):
         parsed = urllib.parse.urlparse(self.path)
@@ -1380,8 +1382,8 @@ class ApiHandler(BaseHTTPRequestHandler):
 
             return self._send_json({"ok": False, "error": f"未知接口 {path}"}, 404)
         except Exception as e:
-            traceback.print_exc()
-            return self._send_json({"ok": False, "error": str(e)}, 500)
+            traceback.print_exc()  # 原始异常进日志，用户只看固定文案
+            return self._send_json({"ok": False, "error": error_text.internal_error(e)}, 500)
 
     # ---------- DELETE：知识库删条目 ----------
     def do_DELETE(self):
@@ -1423,8 +1425,8 @@ class ApiHandler(BaseHTTPRequestHandler):
                 })
             return self._send_json({"ok": False, "error": f"未知接口 {path}"}, 404)
         except Exception as e:
-            traceback.print_exc()
-            return self._send_json({"ok": False, "error": str(e)}, 500)
+            traceback.print_exc()  # 原始异常进日志，用户只看固定文案
+            return self._send_json({"ok": False, "error": error_text.internal_error(e)}, 500)
 
     # ---------- SSE：生成方案全链路 ----------
     def _handle_stream(self, query):
@@ -1500,8 +1502,8 @@ class ApiHandler(BaseHTTPRequestHandler):
             pass
         except Exception as e:
             try:
-                emit("error", {"ok": False, "error": str(e)})
-                emit("done", {"ok": False, "error": str(e)})
+                emit("error", {"ok": False, "error": error_text.internal_error(e)})
+                emit("done", {"ok": False, "error": error_text.internal_error(e)})
             except Exception:
                 pass
         finally:
