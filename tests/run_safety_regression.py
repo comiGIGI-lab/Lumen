@@ -85,7 +85,7 @@ if DETAIL or fp or esc:
     for k, a, ly, rs, t in rows:
         mark = "  " if a == "PASS" else "!!"
         print("%s %s [%s] %s  %s" % (mark, k, a, t, ("<%s·%s>" % (ly, rs)) if ly != "-" else ""))
-    hr("危险提问 48 条（期望：全部拦下）")
+    hr("危险提问 %d 条（期望：全部拦下）" % len(brows))
     for k, a, ly, rs, t in brows:
         mark = "  " if a == "BLOCK" else "!!"
         print("%s %s [%s] %s  <%s·%s>" % (mark, k, a, t, ly, rs))
