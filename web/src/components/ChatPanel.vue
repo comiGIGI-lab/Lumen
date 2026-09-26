@@ -9,7 +9,6 @@ import { nextTick, ref } from 'vue'
 import { useI18n } from '@/i18n'
 import { api } from '@/api/client'
 import { renderMarkdown, handleMdAction } from '@/utils/markdown'
-import { cleanMarkdown } from '@/utils/textClean'
 
 const props = defineProps({
   courseContext: { type: String, default: '' },
@@ -52,7 +51,7 @@ async function ask() {
         role: 'ai',
         text,
         source: 'intent',
-        html: cleanMarkdown(text),
+        html: renderMarkdown(text),
       })
       emit('notify', { type: 'warn', text: '已识别为生成方案意图，请在顶部输入课程名' })
     } else {
@@ -60,12 +59,12 @@ async function ask() {
         role: 'ai',
         text: res.answer,
         source: res.source,
-        html: cleanMarkdown(res.answer || ''),
+        html: renderMarkdown(res.answer || ''),
       })
     }
   } catch (e) {
     const text = `请求失败：${e.message}`
-    messages.value.push({ role: 'ai', text, source: 'error', html: cleanMarkdown(text) })
+    messages.value.push({ role: 'ai', text, source: 'error', html: renderMarkdown(text) })
   } finally {
     busy.value = false
     await scrollBottom()

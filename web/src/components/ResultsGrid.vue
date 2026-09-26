@@ -277,7 +277,10 @@ const dayNo = (item, i) => item?.day ?? i + 1
 }
 
 .outline-scroll-col :deep(.panel) {
+  flex: none;
+  height: auto;
   min-height: 0;
+  overflow: visible;
 }
 .outline-scroll-col :deep(.panel-body) {
   max-height: none;
@@ -307,7 +310,10 @@ const dayNo = (item, i) => item?.day ?? i + 1
 }
 
 .content-scroll-col :deep(.panel) {
+  flex: none;
+  height: auto;
   min-height: 0;
+  overflow: visible;
 }
 .content-scroll-col :deep(.panel-body) {
   max-height: none;
@@ -653,4 +659,8 @@ const dayNo = (item, i) => item?.day ?? i + 1
     max-height: 55vh;
   }
 }
+
+/* scroll-fix: panels keep natural height so columns can scroll */
+.outline-scroll-col :deep(.panel) { flex: none; height: auto; min-height: 0; overflow: visible; }
+.content-scroll-col :deep(.panel) { flex: none; height: auto; min-height: 0; overflow: visible; }
 </style>
