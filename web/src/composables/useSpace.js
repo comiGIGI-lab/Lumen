@@ -11,7 +11,7 @@ export const SPACE_KEY = 'zjxt.space'
 export const TODOS_KEY = 'zjxt.todos'
 export const DATES_KEY = 'zjxt.dates'
 export const COUNTDOWNS_KEY = 'zjxt.countdowns'
-export const SPACE_VER = 7
+export const SPACE_VER = 8
 export const LAYOUTS = ['welcome', 'app', 'study']
 
 export const WIN_IDS = ['study', 'todo', 'date']
@@ -130,8 +130,10 @@ function defaultWin(id, vw, layout) {
   const cascade = { study: 0, todo: 1, date: 2 }
   const i = cascade[id] || 0
   // 默认一律收成边签（贴边成窄条），需要时再展开 —— 免得三块窗盖住正文。
-  const collapsed = compact
-  const size = 1
+  // 注意：这里是 app / welcome 布局的默认值，也是用户实际进入时走的那条，
+  // 之前只改了 study 分支（另一条），所以改了看起来没效果。
+  const collapsed = true
+  const size = 2
   const w = barWidth(collapsed, size, compact, layout, id)
   const gap = compact ? 6 : 12
   const y0 = layout === 'app' ? (compact ? HEADER_H + 88 : HEADER_H + 6) : compact ? HEADER_H + 88 : 12
