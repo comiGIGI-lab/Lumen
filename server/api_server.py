@@ -54,6 +54,15 @@ from safety_gate import (                                           # noqa: E402
 # B30 危机干预复用规则层现成的语境豁免，避免和安全层写成两套判断
 from safety_rules import is_exempted                                 # noqa: E402
 
+# 危机响应层（2026-09-26 新增）：判定 + 号码清洗都在那边，本文件只挂接口
+from crisis import (                                                 # noqa: E402
+    HOTLINES,
+    crisis_verdict,
+    crisis_result_payload,
+    crisis_chat_response,
+    strip_non_whitelist_numbers,
+)
+
 
 def _looks_like_source(path: str) -> bool:
     """判断目录是否是 study-liu 源码根（含 core/agent_loop.py 与 agents/planner.py）。"""
@@ -294,108 +303,69 @@ SAFETY_ERROR_MESSAGE = "该请求未通过内容安全审核"
 # 设计原则：
 # 1) 危机优先级高于内容安全 —— detect_crisis 在三处调用点的 check_detail() 之前
 #    短路，自伤求助永远拿到 200 + 热线，不会被 400 推走。
-# 2) 话术固定、不上送 LLM —— 危机时刻不赌大模型即兴发挥。
-# 3) 热线只放可核验来源 —— 12356（国家卫健委全国统一心理援助热线）+
-#    北京心理危机研究与干预中心 010-82951332。
-# 4) 危机判定默认【不】复用语境豁免 —— 自伤信号宁可误报，不可漏报。
-#    复用豁免的风险：像「我想自杀，学校有心理辅导吗」这种既含危机词、又含
-#    学术/防护词（"辅导"在 ACADEMIC_CONTEXT_TERMS 里）的输入会被豁免掉，
-#    转而落到内容安全层拿到 400 —— 对一个正在求助的人来说这是最糟的响应。
-#    不复用的代价：「文学作品里"我想死"这种表达有什么意义」这类教学提问会
-#    拿到热线话术，属于"多说了几句"，不是安全问题。
-#    若团队更看重教学语境的准确性，把下面的开关改成 True 即可，接口不变。
+# 2) 话术与号码都不经模型 —— 危机时刻不赌大模型即兴发挥。
+# 3) 热线只放可核验来源 —— 12356 + 010-82951332（都人工拨通过）。
+#    号源头收在 server/crisis.py 的 HOTLINES，改号码只需改那一处。
+# 4) ★ 判定逻辑已升级（2026-09-26）：原先这里是本文件内的一张短词表
+#    （自杀 / 我想死 / 不想活 / 割腕 …）。线上实测发现
+#    「最近觉得活着很没意思，有点不想继续了」一个词都不命中 →
+#    落到普通问答 → 模型自由发挥时**编了一个热线号码**
+#    （400-161-9995，机构名还挂错了）。给错的求救号码比不给更严重，
+#    所以判定与清洗整体搬到 server/crisis.py：
+#      · 两级触发：strong 命中 1 个即触发 / weak 需 ≥2 个
+#      · 配套两级教育豁免：扩词表后「如何识别学生轻生倾向并干预」仍能放行
+#      · strip_non_whitelist_numbers() 删掉模型编的号码，白名单号码留住
+#      · 该函数同时挂在 /api/chat 出口上：不只危机路径，**任何**模型回答
+#        里的号码都会过一遍（"哪个回答会提到电话"无法预判）
+#    回归：python tests/run_crisis_regression.py（单元级，不用重启，exit 0 = 全过）
 CRISIS_RESPECT_CONTEXT_EXEMPTION = False
+# ↑ 旧的「整段复用内容安全语境豁免」开关，默认仍是 False。
+#   新的豁免在 crisis.py 里做（两级词表，比"一刀切"细），
+#   此开关保留只为不破坏外部引用与历史语义。
 
-CRISIS_PATTERNS = [
-    # 自杀意念
-    "我想死", "我要死", "想死", "不想活", "活不下去", "活够了",
-    "我想自杀", "我要自杀", "想自杀",
-    "我想结束生命", "我要结束生命", "结束生命",
-    # 自残倾向
-    # 注意「想自残」这种不带主语的写法必须单独列 —— 手册给的词表只有
-    # 「我想自残 / 我要自残」，而手册自己的用例 3 就是「我最近很累，想自残」，
-    # 只写带主语的版本会漏掉它（本地单元检查已复现）。
-    "我想自残", "我要自残", "想自残", "割腕",
-    # 求助 / 求方法
-    "教我怎么死", "帮我自杀", "怎么自杀", "自杀方法",
-    # 网络欺凌 / 二次伤害
-    "你怎么不去死",
-]
-
-# 热线只放可核验来源。结构化一份给前端做可点击拨号，文本版本由它生成，
-# 避免「文案改了但结构化数据没改」的两处不一致。
-CRISIS_HOTLINE_ITEMS = [
-    {
-        "name": "全国统一心理援助热线",
-        "tel": "12356",
-        "note": "国家卫生健康委员会主管 · 24 小时 · 免费 · 保密",
-    },
-    {
-        "name": "北京心理危机研究与干预中心",
-        "tel": "010-82951332",
-        "note": "24 小时 · 免费 · 保密",
-    },
-]
-
-CRISIS_HOTLINES = "\n".join(
-    "【%s %s】（%s）" % (h["name"], h["tel"], h["note"]) for h in CRISIS_HOTLINE_ITEMS
-)
-
-CRISIS_BODY_TEXT = (
-    "我听到你现在很痛苦。生命很珍贵，你不需要独自面对。\n\n"
-    "请你立刻拨打下方任一热线，专业人员 24 小时在线、保密、免费：\n\n"
-    + CRISIS_HOTLINES + "\n\n"
-    "如果暂时不方便打电话，也可以告诉身边最信任的人，让他们陪你度过这一刻。"
-)
+# 下游（前端旧版本 / 历史脚本）仍在引用这个名字，保留成 crisis.HOTLINES 的别名
+CRISIS_HOTLINE_ITEMS = HOTLINES
 
 
 def detect_crisis(text: str) -> bool:
     """判断文本是否含危机信号。优先级高于内容安全校验。
 
-    默认只看危机词，不看语境（见 CRISIS_RESPECT_CONTEXT_EXEMPTION 的说明）。
-    这里不做任何改写、也不上送 LLM —— 只回答"是不是危机信号"这一个问题。
+    判定本体在 server/crisis.py::crisis_verdict（两级词表 + 两级教育豁免）。
+    这里只保留函数名 —— 三处调用点与外部脚本引用的都是这个名字。
+
+    fail-safe：判定层抛异常时按「非危机」处理，绝不拖垮主流程
+    （宁可这一次漏给卡片，也不能让整个问答 500）。
     """
-    if not text:
+    try:
+        is_crisis, _hit = crisis_verdict(text)
+        if not is_crisis:
+            return False
+        if CRISIS_RESPECT_CONTEXT_EXEMPTION and is_exempted(text):
+            return False
+        return True
+    except Exception:
+        traceback.print_exc()
         return False
-    low = str(text).lower()
-    if not any(p.lower() in low for p in CRISIS_PATTERNS):
-        return False
-    if CRISIS_RESPECT_CONTEXT_EXEMPTION and is_exempted(text):
-        return False
-    return True
 
 
 def _crisis_response_plan(course: str) -> dict:
     """plan / plan-stream 接口的危机话术 payload。
 
-    注意 outline / resources / plan 三个字段必须存在且是数组 ——
-    前端的方案视图会直接读 .length，缺字段会抛异常导致话术显示不出来。
-    frontend 靠 type=="crisis" 识别并改走热线卡片，不再渲染三栏结果。
+    结构定义在 server/crisis.py::crisis_result_payload，要点：
+    - outline / resources / plan 必须是数组 —— 前端会直接读 .length，缺字段会抛异常
+    - answer 按 "\\n" 切行渲染；以「【」开头的行由热线卡片接管，正文里滤掉
+    - duration_ms 给 StatusBar 用，短路时就是几毫秒，这本身就是"没跑 Agent"的证据
     """
-    return {
-        "ok": True,
-        "type": "crisis",
-        "course": course,
-        "outline": [],
-        "resources": [],
-        "plan": [],
-        "answer": CRISIS_BODY_TEXT,
-        "hotlines": CRISIS_HOTLINE_ITEMS,
-        "source": "crisis_intervention",
-        "ms": 0,
-    }
+    return crisis_result_payload(course)
 
 
 def _crisis_response_chat(question: str) -> dict:
-    """chat 接口的危机话术 payload。"""
-    return {
-        "ok": True,
-        "type": "crisis",
-        "question": question,
-        "answer": CRISIS_BODY_TEXT,
-        "hotlines": CRISIS_HOTLINE_ITEMS,
-        "source": "crisis_intervention",
-    }
+    """chat 接口的危机话术 payload。
+
+    聊天面板不渲染 ResultsGrid 的热线卡片，所以 crisis.py 把号码以纯文本
+    写进 answer，保证用户不看卡片也拿得到正确号码。
+    """
+    return crisis_chat_response(question)
 
 
 def log_crisis(source: str, text: str, client_id: str = "") -> None:
@@ -1250,7 +1220,10 @@ class ApiHandler(BaseHTTPRequestHandler):
                 return self._send_json({
                     "ok": True,
                     "type": "chat",
-                    "answer": res.get("answer", ""),
+                    # 号码白名单清洗：模型有时会"顺手"给出心理援助 / 咨询电话，
+                    # 而这些号码无法保证真实（2026-09-26 线上就出现过编造的 400-161-9995）。
+                    # 这一步只删非白名单号码，正常正文不受影响（有回归守）。
+                    "answer": strip_non_whitelist_numbers(res.get("answer", "")),
                     "source": res.get("source", "llm"),
                     # RAG 检索到的资料（id/title/score），供前端展示「参考资料」。
                     # source 仍沿用 knowledge / llm 两值，前端标签不会落到兜底分支。
