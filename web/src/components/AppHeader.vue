@@ -28,6 +28,7 @@ const emit = defineEmits([
   'open-study',
   'open-progress',
   'go-course',
+  'go-home',
 ])
 const { t } = useI18n()
 </script>
@@ -46,6 +47,7 @@ const { t } = useI18n()
         :current="current"
         :needs-key="needsKey"
         @go-course="emit('go-course')"
+        @go-home="emit('go-home')"
         @open-knowledge="emit('open-knowledge')"
         @open-import="emit('open-import')"
         @open-transcribe="emit('open-transcribe')"

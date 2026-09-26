@@ -15,6 +15,7 @@ const props = defineProps({
 })
 
 const emit = defineEmits([
+  'go-home',
   'go-course',
   'open-knowledge',
   'open-import',
@@ -59,6 +60,12 @@ onBeforeUnmount(() => {
 
 <template>
   <nav class="top-nav" :aria-label="t('topNav.1')">
+    <button
+      type="button"
+      class="nav-link"
+      :class="{ on: current === 'home' }"
+      @click="emit('go-home')"
+    >{{ t('nav.home') }}</button>
     <button
       type="button"
       class="nav-link"

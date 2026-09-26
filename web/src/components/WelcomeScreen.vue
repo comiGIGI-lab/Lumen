@@ -30,6 +30,7 @@ const emit = defineEmits([
   'open-settings',
   'open-history',
   'open-trace',
+  'go-home',
 ])
 const { t } = useI18n()
 const showPrivacy = ref(false)
@@ -90,6 +91,7 @@ function cardStyle(i) {
           current=""
           :needs-key="needsKey"
           @go-course="onStart"
+          @go-home="emit('go-home')"
           @open-knowledge="emit('open-knowledge')"
           @open-import="emit('open-import')"
           @open-chat="emit('open-chat')"

@@ -258,6 +258,15 @@ const BUBBLES = {
 
 const appView = ref('course')
 
+function goHome() {
+  // 「首页」= 回到初始欢迎层。
+  // 注意不能走 shouldShowWelcome()：它读 localStorage 的 zjxt.welcomed，
+  // 访问过一次就永远返回 false，点了会没反应。
+  showGuide.value = false
+  appView.value = 'course'
+  showWelcome.value = true
+}
+
 function goCourse() {
   if (showWelcome.value) onWelcomeDone()
   appView.value = 'course'
@@ -815,6 +824,7 @@ const degradedBanner = computed(() => {
       :current="appView"
       @export="onExport"
       @go-course="goCourse"
+        @go-home="goHome"
       @open-trace="openLogs"
       @open-settings="openSettings"
       @open-history="openHistory"

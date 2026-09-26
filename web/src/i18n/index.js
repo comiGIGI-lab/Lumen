@@ -20,6 +20,7 @@ const KEY = 'zjxt.lang'
 const MANUAL = {
   'zh-CN': {
     nav: {
+      home: '首页',
       course: '学习方案生成',
       knowledge: '知识库',
       import: '文档导入',
@@ -108,6 +109,7 @@ const MANUAL = {
 
   'en-US': {
     nav: {
+      home: 'Home',
       course: 'Generate Plan',
       knowledge: 'Knowledge Base',
       import: 'Import Docs',
