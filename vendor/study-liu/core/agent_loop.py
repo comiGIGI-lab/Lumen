@@ -146,12 +146,15 @@ def run_plan_pipeline(course, profile=None, use_cache=True):
         "profile": profile or {},
     }
     log_trace("reviewer_start", {"course": course})
-    ok, comments = review(result)
+    ok, comments, result = review(result)
+    # 写出已被校验过的 resources（不可达条目已被剔除）
+    resources = result.get("resources", resources)
     log_trace("reviewer_done", {"ok": ok, "comments": comments})
 
-    # 质检不过，重跑一次 Writer 和 Searcher
+    # 质检不过：只重跑一次 Writer + Searcher（含 URL 2xx 失败）。
+    # 第二次仍不过就带着当前 comments 返回，禁止再循环。
     if not ok:
-        log_trace("reviewer_retry", {"comments": comments})
+        log_trace("reviewer_retry", {"comments": comments, "max_retries": 1})
         plan = write_plan(course, outline, profile=profile)
         resources = search_resources(course, profile=profile)
         result = {
@@ -161,7 +164,8 @@ def run_plan_pipeline(course, profile=None, use_cache=True):
             "plan": plan,
             "profile": profile or {},
         }
-        ok, comments = review(result)
+        ok, comments, result = review(result)
+        resources = result.get("resources", resources)
         log_trace("reviewer_retry_done", {"ok": ok, "comments": comments})
 
     log_trace("pipeline_done", {"course": course, "ok": ok})

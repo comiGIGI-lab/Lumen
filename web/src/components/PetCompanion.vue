@@ -1,16 +1,19 @@
 <script setup>
 /**
  * 主界面右下常驻学伴（头脑的化身）。z-index 低于弹窗（120+），高于正文。
- * 不挡顶栏、不挡左下「空间」、不挡自习大窗；390 宽缩小。
+ * 不挡顶栏、不挡左下「空间」、不挡自习大窗；窄屏再小一档。
  *
- * 点击 aside 整体（HUD + 经验条 + 本体）触发 emit 'open-profile'，
+ * 指针：只有立绘 .sprite-in 接收指针，aside 与 HUD 的占位区域一律点穿，
+ * 免得手机上盖住底下的按钮。点（位移很小的抬手）才 emit 'open-profile'，
  * 由父组件 App.vue 弹 PetProfileDialog（z-index 155）。
+ * 拖动：按住立绘移动，松手落在哪儿就存哪儿（zjxt.pet_pos），刷新还在。
  * Lv5「保持 / 进化」弹层（showEvolve，z-index 118）走原逻辑，与本 emit 互不干扰。
  */
-import { ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from '@/i18n'
 import PetSprite from './PetSprite.vue'
 import { usePet } from '@/composables/usePet'
+import { usePetInteraction } from '@/composables/usePetInteraction'
 
 defineProps({
   visible: { type: Boolean, default: true },
@@ -29,9 +32,267 @@ const {
   levelStamp,
   keepForm,
   evolve,
+  grantExp,
+  logExp,
 } = usePet()
 
 const pct = (n) => Math.round((n || 0) * 100)
+
+// ---------- 位置、拖动、贴边探头 ----------
+// 默认右下（交给 CSS 的 right/bottom）；拖过一次就记成 left/top 像素，刷新还在。
+const POS_KEY = 'zjxt.pet_pos'
+/** 抬手时位移超过这个像素数算「拖」，否则算「点」 */
+const DRAG_SLOP = 6
+/** 松手时离边缘这么近，就吸成一条探头 */
+const DOCK_ZONE = 24
+/** 探头状态下要拖出这么多像素才脱离贴边（免得手抖把探头拽出来） */
+const UNDOCK_SLOP = 30
+/** 贴边时至少离顶栏这么远，别压住「首页 / 更多」 */
+const TOP_SAFE_DESKTOP = 56
+const TOP_SAFE_MOBILE = 0
+const TOP_SAFE = computed(() => (isNarrow.value ? TOP_SAFE_MOBILE : TOP_SAFE_DESKTOP))
+
+const buddyEl = ref(null)
+const pos = ref(null) // { x, y }；null = 还没拖过，用默认右下
+const dock = ref(null) // 'left' | 'right' | null：贴边收成一条探头
+const dockY = ref(0) // 探头贴在哪个高度
+const dragging = ref(false)
+
+// 窄屏再小一档：改尺寸而不是 transform: scale ——
+// scale 会让 getBoundingClientRect 与布局值不一致，第一次拖动就会跳一下。
+const isNarrow = ref(false)
+const spriteSize = computed(() => (isNarrow.value ? 52 : 72))
+
+function loadPos() {
+  try {
+    const raw = localStorage.getItem(POS_KEY)
+    if (!raw) return
+    const d = JSON.parse(raw)
+    if (d && Number.isFinite(d.x) && Number.isFinite(d.y)) pos.value = { x: d.x, y: d.y }
+    if (d && (d.dock === 'left' || d.dock === 'right')) {
+      dock.value = d.dock
+      dockY.value = Number.isFinite(d.dy) ? d.dy : pos.value ? pos.value.y : 0
+    }
+  } catch (_) {
+    /* 读不到就用默认位置 */
+  }
+}
+
+function savePos() {
+  try {
+    if (!pos.value && !dock.value) return
+    localStorage.setItem(
+      POS_KEY,
+      JSON.stringify({
+        x: pos.value ? pos.value.x : 0,
+        y: pos.value ? pos.value.y : 0,
+        dock: dock.value,
+        dy: dockY.value,
+      }),
+    )
+  } catch (_) {
+    /* 存不上就这次有效，刷新回默认 */
+  }
+}
+
+function clamp(x, y) {
+  const el = buddyEl.value
+  const w = el ? el.offsetWidth : spriteSize.value
+  const h = el ? el.offsetHeight : spriteSize.value
+  return {
+    x: Math.min(Math.max(0, x), Math.max(0, window.innerWidth - w)),
+    y: Math.min(Math.max(0, y), Math.max(0, window.innerHeight - h)),
+  }
+}
+
+/** 贴边时的纵向范围：上不压顶栏，下不出屏幕 */
+function clampDockY(y) {
+  const el = buddyEl.value
+  const h = el ? el.offsetHeight : spriteSize.value
+  const safe = TOP_SAFE.value
+  const max = Math.max(safe, window.innerHeight - h - 8)
+  return Math.min(Math.max(safe, y), max)
+}
+
+/** 拖过之后改用 left/top 定位；贴边时贴到那一侧；都没发生就返回 null，继续走 CSS 的 right/bottom */
+const buddyStyle = computed(() => {
+  if (dock.value) {
+    return {
+      left: dock.value === 'left' ? '0px' : 'auto',
+      right: dock.value === 'right' ? '0px' : 'auto',
+      top: `${dockY.value}px`,
+      bottom: 'auto',
+    }
+  }
+  if (!pos.value) return null
+  return { left: `${pos.value.x}px`, top: `${pos.value.y}px`, right: 'auto', bottom: 'auto' }
+})
+
+let startX = 0
+let startY = 0
+let startLeft = 0
+let startTop = 0
+let moved = 0
+/** 本次拖动是不是「从边缝往外拉」：出界先不夹，松手再收回视口 */
+let pullOut = false
+
+function onPointerDown(e) {
+  if (e.button != null && e.button !== 0) return
+  const el = buddyEl.value
+  if (!el) return
+  const rect = el.getBoundingClientRect()
+  // 贴边时 pos 是旧的自由位置，得用实际视觉位置（带负偏移）当起点，
+  // 这样往外拖就是「从边缝里拉出来」；没拖过同理用 rect，第一次拖不跳。
+  const fromRect = dock.value || !pos.value
+  startLeft = fromRect ? rect.left : pos.value.x
+  startTop = fromRect ? rect.top : pos.value.y
+  startX = e.clientX
+  startY = e.clientY
+  moved = 0
+  pullOut = false
+  dragging.value = true
+  // 启动长按计时（如果最终触发长按，onPointerUp 会 cancel 这次单击）
+  interaction.pressStart()
+  try {
+    e.currentTarget.setPointerCapture(e.pointerId)
+  } catch (_) {
+    /* 不支持指针捕获就退化，拖动可能不跟手 */
+  }
+}
+
+function onPointerMove(e) {
+  if (!dragging.value) return
+  const dx = e.clientX - startX
+  const dy = e.clientY - startY
+  moved = Math.max(moved, Math.abs(dx), Math.abs(dy))
+  if (moved > DRAG_SLOP) interaction.pressCancel() // 拖动算移动，取消长按
+  if (dock.value) {
+    if (moved <= UNDOCK_SLOP) return // 探头状态：要拖够 30px 才脱离贴边
+    dock.value = null
+    pullOut = true
+  }
+  if (moved <= DRAG_SLOP) return // 还在「点」的容忍范围内，先不挪
+  const nx = startLeft + dx
+  const ny = startTop + dy
+  pos.value = pullOut ? { x: nx, y: ny } : clamp(nx, ny)
+}
+
+function onPointerUp(e) {
+  if (!dragging.value) return
+  dragging.value = false
+  interaction.pressCancel() // 没长按触发就取消
+  try {
+    e.currentTarget.releasePointerCapture(e.pointerId)
+  } catch (_) {
+    /* 没捕获过就不用放 */
+  }
+  if (moved > DRAG_SLOP) {
+    if (pos.value) pos.value = clamp(pos.value.x, pos.value.y) // 从边缝拉出来的，松手收回视口
+    maybeDockOnRelease()
+    savePos() // 拖过了：落在新位置，不算点击
+    return
+  }
+  if (dock.value) {
+    undock() // 点探头 = 滑回完整立绘，不开档案
+    return
+  }
+  if (interaction.wasLongPressed()) {
+    // 触发长按撒娇模式，抬手不产生点击或双击
+    return
+  }
+  // 位移很小才算点；做双击识别
+  const isDouble = interaction.detectDoubleTap(Date.now(), e.clientX, e.clientY)
+  if (isDouble) {
+    if (tapTimer) {
+      clearTimeout(tapTimer)
+      tapTimer = null
+    }
+    showActionMenu.value = !showActionMenu.value
+    return
+  }
+  // 单击延迟防抖：240ms 内若无第二次点击则打开档案
+  if (tapTimer) clearTimeout(tapTimer)
+  tapTimer = setTimeout(() => {
+    openProfile()
+    tapTimer = null
+  }, 240)
+}
+
+/** 松手时贴到左右边缘，就吸成一条探头 */
+function maybeDockOnRelease() {
+  if (!pos.value) return
+  const el = buddyEl.value
+  const w = el ? el.offsetWidth : spriteSize.value
+  const right = pos.value.x + w
+  if (pos.value.x <= DOCK_ZONE) {
+    dock.value = 'left'
+    dockY.value = clampDockY(pos.value.y)
+  } else if (right >= window.innerWidth - DOCK_ZONE) {
+    dock.value = 'right'
+    dockY.value = clampDockY(pos.value.y)
+  }
+}
+
+/** 点探头：滑回完整立绘，停在它贴的那一侧 */
+function undock() {
+  const side = dock.value
+  if (!side) return
+  const el = buddyEl.value
+  const w = el ? el.offsetWidth : spriteSize.value
+  const x = side === 'left' ? 0 : Math.max(0, window.innerWidth - w)
+  dock.value = null
+  pos.value = clamp(x, dockY.value)
+  savePos()
+}
+
+function onPointerCancel() {
+  dragging.value = false
+}
+
+function syncNarrow() {
+  isNarrow.value = window.innerWidth <= 430
+}
+
+function onResize() {
+  syncNarrow()
+  if (dock.value) {
+    dockY.value = clampDockY(dockY.value) // 窗口变矮别把探头顶出屏幕、也别顶到顶栏上
+    savePos()
+    return
+  }
+  if (!pos.value) return
+  pos.value = clamp(pos.value.x, pos.value.y) // 窗口变小别把学伴顶出屏幕
+  savePos()
+}
+
+let tapTimer = null
+const showActionMenu = ref(false)
+const centerBubbleText = ref('')
+let centerBubbleTimer = null
+
+function showCenterToast(text, duration = 3000) {
+  centerBubbleText.value = text
+  clearTimeout(centerBubbleTimer)
+  centerBubbleTimer = setTimeout(() => {
+    centerBubbleText.value = ''
+    centerBubbleTimer = null
+  }, duration)
+}
+
+onMounted(() => {
+  syncNarrow()
+  loadPos()
+  window.addEventListener('resize', onResize)
+  interaction.startIdleWatcher()
+})
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', onResize)
+  interaction.stopIdleWatcher()
+  clearTimeout(bubbleTimer)
+  if (hudTimer) clearTimeout(hudTimer)
+  if (tapTimer) clearTimeout(tapTimer)
+  if (centerBubbleTimer) clearTimeout(centerBubbleTimer)
+})
 
 function openProfile() {
   emit('open-profile')
@@ -44,6 +305,27 @@ function onKey(e) {
   }
 }
 
+// HUD 默认收起：鼠标进入立绘 .sprite-in 时显形，离开后延迟 150ms 淡出消失。
+// 升级 pulse 走独立动画，不强制拉起 HUD。
+const hudVisible = ref(false)
+let hudTimer = null
+
+function showHud() {
+  if (hudTimer) {
+    clearTimeout(hudTimer)
+    hudTimer = null
+  }
+  hudVisible.value = true
+}
+
+function hideHud() {
+  if (hudTimer) clearTimeout(hudTimer)
+  hudTimer = setTimeout(() => {
+    hudVisible.value = false
+    hudTimer = null
+  }, 150)
+}
+
 // 升级反馈：经验条发光 + 等级数字变红一瞬 + 本体闪一下（纯 CSS，见 .buddy.pulse）
 const pulsing = ref(false)
 let pulseTimer = 0
@@ -54,26 +336,67 @@ watch(levelStamp, () => {
     pulsing.value = false
   }, 1800)
 })
+
+/** 贴边成探头时不浮 HUD；升级 pulse 走独立动画，不拉起 HUD */
+const hudOn = computed(() => !dock.value && hudVisible.value)
+
+// ---------- 互动层（双击 / 长按 / 闲置） ----------
+const bubbleText = ref('')
+const bubbleKind = ref('') // 'action' | 'cozy' | 'idle' | 'cooldown'
+let bubbleTimer = 0
+function showBubble(text, kind = 'action', ttl = 1800) {
+  bubbleText.value = text
+  bubbleKind.value = kind
+  clearTimeout(bubbleTimer)
+  bubbleTimer = setTimeout(() => {
+    bubbleText.value = ''
+    bubbleKind.value = ''
+  }, ttl)
+}
+
+const interaction = usePetInteraction({
+  getPetName: () => displayName.value,
+  onAction(action, exp) {
+    if (typeof logExp === 'function') {
+      logExp(`学伴互动·${action.name}`, exp)
+    } else {
+      grantExp(exp)
+    }
+    showBubble(action.bubble, 'action')
+  },
+  onCozyBubble(name) {
+    showCenterToast(`${name} 蹭了蹭你的手指`, 3000)
+  },
+  onIdleBubble() {
+    showCenterToast('要不要去自习一会儿？我陪你。', 4000)
+  },
+})
+
+function handleMenuAction(action) {
+  const res = interaction.runAction(action)
+  if (!res.success) {
+    showBubble(`「${action.name}」冷却中，${res.remaining}s 后再试`, 'cooldown', 1500)
+  }
+}
 </script>
 
 <template>
   <Teleport to="body">
     <aside
       v-if="visible && hasPet"
+      ref="buddyEl"
       class="buddy"
-      :class="{ pulse: pulsing }"
-      :aria-label="t('petCompanion.1')"
+      :class="{ pulse: pulsing, dragging, 'dock-left': dock === 'left', 'dock-right': dock === 'right' }"
+      :style="buddyStyle"
+      :aria-label="dock ? t('petCompanion.1') : t('petCompanion.1')"
       role="button"
       tabindex="0"
-      @click="openProfile"
       @keydown="onKey"
     >
-      <div class="hud">
+      <div class="hud" :class="{ 'hud-on': hudOn }">
         <div class="row">
-          <b>{{ t('petCompanion.3') }}</b>
           <span>Lv {{ pet.level }}</span>
         </div>
-        <p class="exp-cap">{{ t('petCompanion.4') }}</p>
         <div
           class="bar"
           role="progressbar"
@@ -85,10 +408,69 @@ watch(levelStamp, () => {
           <i :style="{ width: pct(ratio) + '%' }" />
         </div>
       </div>
-      <div class="sprite-in" :key="pet.form">
-        <PetSprite :pet-id="pet.id" :form="pet.form" :size="72" />
+      <div
+        class="sprite-in"
+        :key="pet.form"
+        @pointerdown="onPointerDown"
+        @pointermove="onPointerMove"
+        @pointerup="onPointerUp"
+        @pointercancel="onPointerCancel"
+        @mouseenter="showHud"
+        @mouseleave="hideHud"
+      >
+        <PetSprite :pet-id="pet.id" :form="pet.form" :size="spriteSize" />
       </div>
+      <!-- 双击互动菜单：摸摸 / 喂食 / 玩耍 -->
+      <div
+        v-if="!dock && showActionMenu"
+        class="interaction-menu"
+        role="menu"
+        aria-label="学伴互动"
+      >
+        <div class="menu-head">
+          <span class="menu-title">互动 · {{ displayName }}</span>
+          <button type="button" class="menu-x" @click.stop="showActionMenu = false">×</button>
+        </div>
+        <div class="menu-list">
+          <button
+            v-for="act in interaction.actions"
+            :key="act.id"
+            type="button"
+            class="menu-item"
+            :class="{ disabled: !interaction.canRun(act.id) }"
+            @click.stop="handleMenuAction(act)"
+          >
+            <span class="item-name">{{ act.name }}</span>
+            <span class="item-exp">+{{ act.exp }} exp</span>
+            <span v-if="!interaction.canRun(act.id)" class="item-cd">
+              {{ interaction.getRemainingCooldown(act.id) }}s
+            </span>
+          </button>
+        </div>
+      </div>
+      <!-- 互动气泡：双击/长按/闲置反馈。贴边探头时不显示（缝里塞不下）。
+           数据：usePetInteraction 的 bubble 状态。-->
+      <div
+        v-if="!dock && bubbleText"
+        class="bubble"
+        :class="'bubble-' + bubbleKind"
+        role="status"
+        aria-live="polite"
+      >{{ bubbleText }}</div>
     </aside>
+
+    <!-- 屏幕中央气泡：长按撒娇模式 / 5分钟空闲提醒自习 -->
+    <div
+      v-if="centerBubbleText"
+      class="center-bubble-toast"
+      role="status"
+      aria-live="polite"
+    >
+      <div class="center-bubble-content">
+        <span class="center-bubble-icon">✨</span>
+        <span class="center-bubble-msg">{{ centerBubbleText }}</span>
+      </div>
+    </div>
 
     <div
       v-if="visible && hasPet && showEvolve"
@@ -118,7 +500,36 @@ watch(levelStamp, () => {
   flex-direction: column;
   align-items: flex-end;
   gap: 6px;
-  cursor: pointer;
+  /* 整块不接指针：HUD 收起时那块占位要能点穿到底下的按钮 */
+  pointer-events: none;
+  --peek: 36px; /* 贴边成探头时露出的宽度 */
+  --peek-hover: 56px; /* 桌面悬停探头时多露一点 */
+  /* 只过渡 transform：点探头滑出 / 滑回才有动画，拖动改的是 left/top，跟手不拖影 */
+  transition: transform 0.22s ease;
+}
+
+/* 贴边探头：整块推出屏幕，只留 --peek 宽的一条，像从边缝往外看。
+   露出来的那一块之外都被推出视口，屏幕上只有那一小条能接指针。 */
+.buddy.dock-left {
+  --peek-dir: 1; /* 贴左边：往右探头 */
+  transform: translateX(calc(-100% + var(--peek)));
+}
+
+.buddy.dock-right {
+  --peek-dir: -1; /* 贴右边：往左探头 */
+  transform: translateX(calc(100% - var(--peek)));
+}
+
+/* 桌面悬停探头时再多露一点，看清是谁在往外看。
+   触控设备没有 hover，走点按展开那条路。 */
+@media (hover: hover) and (pointer: fine) {
+  .buddy.dock-left:hover {
+    transform: translateX(calc(-100% + var(--peek-hover)));
+  }
+
+  .buddy.dock-right:hover {
+    transform: translateX(calc(100% - var(--peek-hover)));
+  }
 }
 
 .buddy:focus-visible {
@@ -133,7 +544,21 @@ watch(levelStamp, () => {
   background: rgba(var(--bg-app-rgb), 0.92);
   border: 1px solid var(--border);
   border-radius: 4px;
-  pointer-events: auto;
+  /* HUD 是只读信息，且收起时那块占位必须点穿 */
+  pointer-events: none;
+  /* 默认收起：位置照旧占着（显形时不跳版），只是看不见、也不进无障碍树 */
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(4px);
+  transition: opacity 0.16s ease, transform 0.16s ease, visibility 0s linear 0.16s;
+}
+
+/* 鼠标移到宠物本体上 / 键盘焦点落在这块 / 升级 pulse 那一下，才显形 */
+.hud.hud-on {
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+  transition: opacity 0.16s ease, transform 0.16s ease, visibility 0s;
 }
 
 .row {
@@ -145,17 +570,12 @@ watch(levelStamp, () => {
   color: var(--text-secondary);
 }
 
-.row b {
+/* 行里只剩 Lv 数字了，给它衬线 + 深色，让它自己站得住 */
+.row span {
   font-family: Georgia, "Times New Roman", "Songti SC", "Noto Serif CJK SC", serif;
   font-weight: 400;
   color: var(--text-primary);
-}
-
-.exp-cap {
-  margin: 4px 0 0;
-  font-size: 10px;
-  color: #8c857c;
-  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
 }
 
 .bar {
@@ -172,6 +592,64 @@ watch(levelStamp, () => {
   transition: width 0.4s ease;
 }
 
+/* ---------- 互动气泡（双击/长按/闲置） ----------
+   放在宠物本体上方，米底卡片、深色文字、左侧 2px 红色条与品牌色一致；
+   出现时由下往上轻微浮入（不用 transform: scale 那种大动作，免得遮 HUD）。 */
+.bubble {
+  pointer-events: none;
+  align-self: flex-end;
+  max-width: 200px;
+  margin-bottom: 4px;
+  padding: 6px 10px;
+  background: rgba(var(--bg-app-rgb), 0.96);
+  border: 1px solid var(--border);
+  border-left: 2px solid #e51520;
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: normal;
+  word-break: break-all;
+  box-shadow: 0 2px 6px rgba(25, 25, 25, 0.08);
+  animation: bubble-in 0.18s ease-out;
+}
+.bubble-cozy {
+  border-left-color: #d36b7a; /* 撒娇用粉，避免每次都是红 */
+}
+.bubble-idle {
+  border-left-color: #4f9a5c; /* 闲置提醒用草绿 */
+}
+.bubble-cooldown {
+  border-left-color: #8a8a8a; /* 冷却中灰 */
+}
+@keyframes bubble-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 探头里不上下飞：改成轻轻探出探进，方向跟着贴的那一侧（--peek-dir）。
+   放在 .buddy.pulse 之前，升级那 1.8 秒照旧让闪光接管。 */
+.buddy.dock-left .sprite-in,
+.buddy.dock-right .sprite-in {
+  animation: sprite-in 0.5s ease, buddy-peek 3.2s ease-in-out infinite;
+}
+
+@keyframes buddy-peek {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  50% {
+    transform: translateX(calc(var(--peek-dir, 1) * 5px));
+  }
+}
+
 /* ---------- 升级反馈（.buddy.pulse，纯 CSS） ---------- */
 @keyframes bar-glow {
   0%,
@@ -185,7 +663,7 @@ watch(levelStamp, () => {
 
 @keyframes lv-pop {
   0% {
-    color: var(--text-primary);
+    color: #191919;
     transform: none;
   }
   20% {
@@ -197,7 +675,7 @@ watch(levelStamp, () => {
     transform: none;
   }
   100% {
-    color: var(--text-primary);
+    color: #191919;
   }
 }
 
@@ -220,12 +698,32 @@ watch(levelStamp, () => {
 }
 
 .buddy.pulse .sprite-in {
-  animation: body-flash 0.55s ease 2;
+  animation: body-flash 0.55s ease 2, buddy-idle 2.4s ease-in-out infinite;
 }
 
-/* ---------- 进化形象切换淡入 ---------- */
+/* ---------- 立绘：整块里唯一接指针的地方 ---------- */
 .sprite-in {
-  animation: sprite-in 0.5s ease;
+  pointer-events: auto;
+  cursor: pointer;
+  touch-action: none; /* 触屏按住拖动时不要带着页面一起滚 */
+  animation: sprite-in 0.5s ease, buddy-idle 2.4s ease-in-out infinite;
+}
+
+/* 很轻的呼吸式跳动，表示还活着：幅度 3px，不上下飞也不挡字 */
+@keyframes buddy-idle {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-3px);
+  }
+}
+
+/* 拖动时不抖、光标变抓握（写在 pulse 之后：两条同时命中时以拖动为准） */
+.buddy.dragging .sprite-in {
+  cursor: grabbing;
+  animation: none;
 }
 
 @keyframes sprite-in {
@@ -300,12 +798,144 @@ p {
   outline-offset: 3px;
 }
 
-@media (max-width: 390px) {
+/* ---------- 屏幕中央弹出气泡（长按撒娇 / 闲置提醒自习） ---------- */
+.center-bubble-toast {
+  position: fixed;
+  top: 45%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 160;
+  pointer-events: none;
+  animation: center-bubble-fade 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.center-bubble-content {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 24px;
+  background: rgba(25, 23, 22, 0.88);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  color: #fff;
+  border-radius: 999px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  font-size: 14px;
+  line-height: 1.4;
+}
+.center-bubble-icon {
+  font-size: 16px;
+}
+.center-bubble-msg {
+  font-weight: 500;
+  letter-spacing: 0.2px;
+}
+@keyframes center-bubble-fade {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -40%) scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+/* ---------- 双击互动菜单 ---------- */
+.interaction-menu {
+  pointer-events: auto;
+  align-self: flex-end;
+  min-width: 148px;
+  background: rgba(var(--bg-app-rgb), 0.98);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(25, 25, 25, 0.12);
+  padding: 8px 10px 10px;
+  margin-bottom: 4px;
+  animation: bubble-in 0.18s ease-out;
+}
+.menu-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #ece7df;
+  margin-bottom: 6px;
+}
+.menu-title {
+  font-size: 11px;
+  color: #7a7369;
+  font-weight: 500;
+}
+.menu-x {
+  background: none;
+  border: none;
+  font-size: 15px;
+  line-height: 1;
+  color: #999;
+  cursor: pointer;
+  padding: 0 2px;
+}
+.menu-x:hover {
+  color: var(--text-primary);
+}
+.menu-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 9px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-primary);
+  transition: all 0.15s ease;
+}
+.menu-item:hover:not(.disabled) {
+  border-color: #e51520;
+  background: #fdf5f5;
+}
+.menu-item.disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  background: #f5f3f0;
+}
+.item-name {
+  font-weight: 500;
+}
+.item-exp {
+  font-size: 10px;
+  color: #e51520;
+  font-weight: 600;
+  margin-left: 6px;
+}
+.item-cd {
+  font-size: 10px;
+  color: #888;
+  margin-left: auto;
+  padding-left: 6px;
+}
+
+/* 窄屏（393 这类常见手机宽度也算）：立绘再小一档（尺寸走 spriteSize，不用 scale），
+   位置抬一点别压在底栏上。拖过之后以 left/top 为准，这条不再生效。 */
+@media (max-width: 430px) {
   .buddy {
-    right: 8px;
-    bottom: 92px;
-    transform: scale(0.82);
-    transform-origin: bottom right;
+    right: 6px;
+    bottom: 84px;
+    gap: 4px;
+    --peek: 30px; /* 手机上立绘更小，探头也相应窄一点，但要够手指点 */
+    --peek-hover: 46px;
+  }
+
+  .hud {
+    min-width: 92px;
+    padding: 5px 7px 6px;
   }
 }
 
@@ -314,9 +944,21 @@ p {
     transition: none;
   }
 
+  .hud,
+  .hud.hud-on {
+    transition: none;
+  }
+
+  /* 系统开了减少动效：不跳，探头也不要滑出动画 */
+  .buddy {
+    transition: none;
+  }
+
   .buddy.pulse .bar,
   .buddy.pulse .row span,
   .buddy.pulse .sprite-in,
+  .buddy.dock-left .sprite-in,
+  .buddy.dock-right .sprite-in,
   .sprite-in {
     animation: none;
   }

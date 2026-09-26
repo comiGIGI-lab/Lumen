@@ -10,7 +10,7 @@
  *   5. 测试连接：真发一次最小请求验 Key（与桌面版判定一致）
  *   6. 使用说明：可展开的帮助面板
  */
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from '@/i18n'
 import ModalDialog from './ModalDialog.vue'
 import { api } from '@/api/client'
@@ -18,6 +18,7 @@ import { api } from '@/api/client'
 const props = defineProps({
   open: { type: Boolean, default: false },
   mode: { type: Object, default: () => ({}) },
+  onboarding: { type: Boolean, default: false },
 })
 const { t } = useI18n()
 
@@ -66,12 +67,36 @@ const ui = reactive({
   testMsg: '',
   testTone: '',
   wantClearKey: false,
+  missingFields: [],
+  foldOpen: { base: true, key: false, model: false },
 })
 
 const hasSavedKey = ref(false)
 const savedKeyMasked = ref('')
-
+const isNarrow = ref(false)
+let _mq = null
+function syncNarrow() {
+  isNarrow.value = !!(typeof window !== 'undefined' && window.matchMedia('(max-width: 430px)').matches)
+}
 const isLLM = computed(() => form.provider === 'llm')
+const openBase = computed(() => !isNarrow.value || ui.foldOpen.base)
+const openKey = computed(() => !isNarrow.value || ui.foldOpen.key)
+const openModel = computed(() => !isNarrow.value || ui.foldOpen.model)
+
+onMounted(() => {
+  syncNarrow()
+  if (typeof window === 'undefined') return
+  _mq = window.matchMedia('(max-width: 430px)')
+  const onChange = () => syncNarrow()
+  if (_mq.addEventListener) _mq.addEventListener('change', onChange)
+  else _mq.addListener(onChange)
+  _mq._onChange = onChange
+})
+onBeforeUnmount(() => {
+  if (!_mq || !_mq._onChange) return
+  if (_mq.removeEventListener) _mq.removeEventListener('change', _mq._onChange)
+  else _mq.removeListener(_mq._onChange)
+})
 
 /** 打开时把当前配置灌进来（Key 永不回填，只提示「已保存」） */
 watch(
@@ -102,6 +127,8 @@ watch(
     ui.testTone = ''
     ui.testing = false
     ui.wantClearKey = false
+    ui.missingFields = []
+    ui.foldOpen = { base: true, key: false, model: false }
   },
   { immediate: true },
 )
@@ -159,12 +186,29 @@ async function testConnection() {
   }
 }
 
-async function save() {
-  // 保存后到底有没有 Key：本次填了 / 磁盘上已有且没标记清空
+function isMissing(name) {
+  return ui.missingFields.includes(name)
+}
+function dropMissing(name) {
+  ui.missingFields = ui.missingFields.filter((x) => x !== name)
+}
+function validateLLM() {
+  const missing = []
   const willHaveKey = !ui.wantClearKey && (!!form.api_key.trim() || hasSavedKey.value)
-  if (isLLM.value && !willHaveKey) {
+  if (!willHaveKey) missing.push('api_key')
+  if (!form.base_url.trim()) missing.push('base_url')
+  if (!form.model.trim()) missing.push('model')
+  ui.missingFields = missing
+  if (missing.includes('base_url')) ui.foldOpen.base = true
+  if (missing.includes('api_key')) ui.foldOpen.key = true
+  if (missing.includes('model')) ui.foldOpen.model = true
+  return missing.length === 0
+}
+
+async function save() {
+  if (isLLM.value && !validateLLM()) {
     ui.tone = 'err'
-    ui.msg = 'LLM 模式必须填 API Key（或先切回 Mock 模式）'
+    ui.msg = `LLM 模式下 ${ui.missingFields.join(' / ')} 必填，已自动展开高亮`
     return
   }
   ui.busy = true
@@ -208,7 +252,7 @@ async function clearCache() {
 </script>
 
 <template>
-  <ModalDialog :open="open" :title="t('settingsDialog.1')" icon="🪄" width="640px" @close="emit('close')">
+  <ModalDialog :open="open" :title="t('settingsDialog.1')" icon="🪄" width="640px" fullscreen-on-mobile @close="emit('close')">
     <!-- ============ 运行模式：两段等宽 ============ -->
     <section class="block">
       <div class="block-head">
@@ -247,48 +291,79 @@ async function clearCache() {
         </div>
       </div>
 
-      <div class="field">
-        <label class="lbl">API Key</label>
-        <div class="ctl key-row">
-          <input
-            v-model="form.api_key"
-            class="input"
-            :type="ui.showKey ? 'text' : 'password'"
-            :placeholder="ui.wantClearKey ? t('settingsDialogX.1') : keyPlaceholder"
-            autocomplete="off"
-            @input="ui.wantClearKey = false"
-          />
-          <button class="btn btn-ghost tiny" type="button" @click="ui.showKey = !ui.showKey">
-            {{ ui.showKey ? t('settingsDialogX.2') : t('settingsDialogX.3') }}
-          </button>
-          <button
-            v-if="hasSavedKey && !ui.wantClearKey"
-            class="btn btn-ghost tiny"
-            type="button"
-            :title="t('settingsDialog.2')"
-            @click="markClearKey"
-          >{{ t('settingsDialog.10') }}</button>
+      <details class="llm-fold" :class="{ 'llm-fold-missing': isMissing('base_url') }" :open="openBase">
+        <summary @click.prevent="ui.foldOpen.base = !ui.foldOpen.base">
+          API Base URL
+          <span class="fold-meta">{{ form.base_url || '未填' }}</span>
+        </summary>
+        <div class="field fold-inner">
+          <label class="lbl">API Base URL</label>
+          <div class="ctl">
+            <input
+              v-model="form.base_url"
+              class="input"
+              :class="{ 'input-missing': isMissing('base_url') }"
+              placeholder="https://api.deepseek.com"
+              @input="dropMissing('base_url')"
+            />
+          </div>
         </div>
-      </div>
-      <p class="req" :class="{ dim: !isLLM }">{{ t('settingsDialog.11') }}<span v-if="hasSavedKey && !ui.wantClearKey" class="req-note">
-          · 留空则保持已保存的 {{ savedKeyMasked }}
-        </span>
-        <span v-if="ui.wantClearKey" class="req-warn">{{ t('settingsDialog.12') }}</span>
-      </p>
+      </details>
 
-      <div class="field">
-        <label class="lbl">API Base URL</label>
-        <div class="ctl">
-          <input v-model="form.base_url" class="input" placeholder="https://api.deepseek.com" />
+      <details class="llm-fold" :class="{ 'llm-fold-missing': isMissing('api_key') }" :open="openKey">
+        <summary @click.prevent="ui.foldOpen.key = !ui.foldOpen.key">
+          API Key
+          <span class="fold-meta">{{ hasSavedKey && !ui.wantClearKey ? '已保存密钥' : (form.api_key ? '已填' : '未填') }}</span>
+        </summary>
+        <div class="field fold-inner key-field">
+          <label class="lbl">API Key</label>
+          <div class="ctl key-row">
+            <input
+              v-model="form.api_key"
+              class="input"
+              :class="{ 'input-missing': isMissing('api_key') }"
+              :type="ui.showKey ? 'text' : 'password'"
+              :placeholder="ui.wantClearKey ? t('settingsDialogX.1') : keyPlaceholder"
+              autocomplete="off"
+              @input="ui.wantClearKey = false; dropMissing('api_key')"
+            />
+            <button class="btn btn-ghost tiny" type="button" @click="ui.showKey = !ui.showKey">
+              {{ ui.showKey ? t('settingsDialogX.2') : t('settingsDialogX.3') }}
+            </button>
+            <button
+              v-if="hasSavedKey && !ui.wantClearKey"
+              class="btn btn-ghost tiny"
+              type="button"
+              :title="t('settingsDialog.2')"
+              @click="markClearKey"
+            >{{ t('settingsDialog.10') }}</button>
+          </div>
         </div>
-      </div>
+        <p class="req" :class="{ dim: !isLLM }">{{ t('settingsDialog.11') }}<span v-if="hasSavedKey && !ui.wantClearKey" class="req-note">
+            · 留空则保持已保存的 {{ savedKeyMasked }}
+          </span>
+          <span v-if="ui.wantClearKey" class="req-warn">{{ t('settingsDialog.12') }}</span>
+        </p>
+      </details>
 
-      <div class="field">
-        <label class="lbl">{{ t('settingsDialog.13') }}</label>
-        <div class="ctl">
-          <input v-model="form.model" class="input" placeholder="deepseek-chat" />
+      <details class="llm-fold" :class="{ 'llm-fold-missing': isMissing('model') }" :open="openModel">
+        <summary @click.prevent="ui.foldOpen.model = !ui.foldOpen.model">
+          {{ t('settingsDialog.13') }}
+          <span class="fold-meta">{{ form.model || '未填' }}</span>
+        </summary>
+        <div class="field fold-inner">
+          <label class="lbl">{{ t('settingsDialog.13') }}</label>
+          <div class="ctl">
+            <input
+              v-model="form.model"
+              class="input"
+              :class="{ 'input-missing': isMissing('model') }"
+              placeholder="deepseek-chat"
+              @input="dropMissing('model')"
+            />
+          </div>
         </div>
-      </div>
+      </details>
 
       <div class="field">
         <label class="lbl"></label>
@@ -341,7 +416,8 @@ async function clearCache() {
       </button>
       <button class="btn btn-ghost" type="button" @click="emit('show-tour')">{{ t('settingsDialog.35') }}</button>
       <button class="btn btn-ghost" type="button" :disabled="ui.busy" @click="clearCache">{{ t('settingsDialog.36') }}</button>
-      <button class="btn btn-ghost" type="button" @click="emit('close')">{{ t('settingsDialog.37') }}</button>
+      <button v-if="onboarding" class="btn btn-ghost" type="button" @click="emit('close')">先体验</button>
+      <button v-else class="btn btn-ghost" type="button" @click="emit('close')">{{ t('settingsDialog.37') }}</button>
       <button class="btn btn-primary" type="button" :disabled="ui.busy" @click="save">
         {{ ui.busy ? t('settingsDialogX.8') : t('settingsDialogX.9') }}
       </button>
@@ -482,6 +558,88 @@ select.input {
 .req-warn {
   color: #b45309;
   font-weight: 700;
+}
+
+/* 桌面端：details 只是结构，字段行保持原样（标签定宽 + 输入吃满）。 */
+.llm-fold {
+  border: none;
+  padding: 0;
+}
+.llm-fold > summary {
+  display: none;
+}
+.fold-inner {
+  margin-top: 0;
+}
+.fold-inner .lbl {
+  display: block;
+}
+
+.llm-fold-missing > summary,
+.llm-fold-missing .input {
+  border-color: #e51520;
+}
+
+.input-missing {
+  border-color: #e51520 !important;
+  box-shadow: 0 0 0 2px rgba(229, 21, 32, 0.12);
+}
+
+@media (max-width: 430px) {
+  .llm-fold {
+    border: 1px solid transparent;
+    border-top: 1px dashed var(--border, #e4ded5);
+    padding: 6px 8px 4px;
+    border-radius: 8px;
+    margin: 0 -4px 4px;
+  }
+  .llm-fold > summary {
+    display: flex;
+    list-style: none;
+    cursor: pointer;
+    font-size: 12.5px;
+    color: var(--text-secondary, #4a4540);
+    align-items: center;
+    gap: 6px;
+    padding: 4px 0;
+  }
+  .llm-fold > summary::-webkit-details-marker {
+    display: none;
+  }
+  .llm-fold > summary::before {
+    content: "▸";
+    color: var(--text-muted, #808080);
+    font-size: 10px;
+    display: inline-block;
+    width: 10px;
+  }
+  .llm-fold[open] > summary::before {
+    content: "▾";
+  }
+  .fold-meta {
+    margin-left: auto;
+    font-size: 11.5px;
+    color: var(--text-muted, #808080);
+    font-family: var(--font-mono);
+    max-width: 60%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .fold-inner {
+    margin-top: 4px;
+    flex-wrap: wrap;
+  }
+  .fold-inner .lbl {
+    display: none;
+  }
+  .req {
+    margin-left: 0;
+  }
+  .llm-fold-missing {
+    border: 1px solid #e51520;
+    box-shadow: 0 0 0 2px rgba(229, 21, 32, 0.12);
+  }
 }
 
 .test-row {

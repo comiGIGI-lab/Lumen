@@ -45,13 +45,16 @@ class TestResourceSearchFuzzy:
 
 
 class TestResourceSearchFallback:
-    """通用兜底：未知课程返回真实平台，不再用 XXX入门教程。"""
+    """未知课留给 searcher 按类型编码拼接；这里只出标题/类型，url 留空。"""
 
-    def test_unknown_course_returns_real_platforms(self):
-        """未命中课程应返回 7 个真实平台。"""
+    def test_unknown_course_returns_typed_placeholders(self):
+        """未命中课程返回视频/书籍/教程各一条，url 为空。"""
         result = search_resources("这个学科真的不存在-4086")
         assert isinstance(result, list)
-        assert len(result) == 7
+        assert len(result) == 3
+        types = {r["type"] for r in result}
+        assert types == {"视频", "书籍", "教程"}
+        assert all((r.get("url") or "") == "" for r in result)
 
     def test_no_placeholder_title(self):
         """不再出现“XXX入门教程”这种占位符。"""
@@ -61,21 +64,17 @@ class TestResourceSearchFallback:
             assert "推荐视频课程" not in item["title"]
             assert "经典教材" not in item["title"]
 
-    def test_fallback_has_zhihu_bilibili_mooc(self):
-        """兜底应包含知乎、B站、MOOC。"""
+    def test_fallback_title_is_course_name(self):
+        """占位标题用课程名，编码拼接由 searcher 负责。"""
         result = search_resources("超光速引擎学")
-        urls = [r["url"] for r in result]
-        assert any("zhihu.com" in u for u in urls)
-        assert any("bilibili.com" in u for u in urls)
-        assert any("icourse163" in u for u in urls)
+        assert all(r["title"] == "超光速引擎学" for r in result)
+        assert all((r.get("url") or "") == "" for r in result)
 
-    def test_fallback_url_contains_course_name(self):
-        """兜底 URL 应携带课程名以便查询。"""
+    def test_fallback_url_left_empty_for_searcher(self):
+        """这里不自己拼未编码中文查询串。"""
         result = search_resources("量子计算")
         for item in result:
-            # 至少要有一个 URL 包含课程名
-            if "juejin" not in item["url"] and "douban" not in item["url"] and "runoob" not in item["url"]:
-                assert "量子计算" in item["url"] or "course" in item["url"].lower()
+            assert item.get("url") == ""
 
 
 class TestResourceSearchEdge:

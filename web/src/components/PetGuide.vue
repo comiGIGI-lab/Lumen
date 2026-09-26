@@ -47,6 +47,52 @@ function confirm() {
               <PetSprite :pet-id="p.id" form="base" :size="88" />
               <b>{{ p.name }}</b>
               <span>{{ p.personality }}：{{ p.tagline }}</span>
+              <details class="evo" @click.stop @dblclick.stop @pointerdown.stop>
+                <summary>升级路径</summary>
+                <p class="evo-sec">Lv1 到 Lv5</p>
+                <ol class="evo-path evo-lv15">
+                  <li class="evo-stage">
+                    <PetSprite :pet-id="p.id" form="base" :size="28" />
+                    <em>Lv1</em>
+                    <em>{{ p.name }}</em>
+                  </li>
+                  <li class="evo-stage">
+                    <PetSprite :pet-id="p.id" form="base" :size="32" />
+                    <em>Lv2</em>
+                    <em>成长</em>
+                  </li>
+                  <li class="evo-stage">
+                    <PetSprite :pet-id="p.id" form="base" :size="36" />
+                    <em>Lv3</em>
+                    <em>成长</em>
+                  </li>
+                  <li class="evo-stage">
+                    <PetSprite :pet-id="p.id" form="base" :size="40" />
+                    <em>Lv4</em>
+                    <em>成长</em>
+                  </li>
+                  <li class="evo-stage">
+                    <PetSprite :pet-id="p.id" form="evolved" :size="44" />
+                    <em>Lv5</em>
+                    <em>{{ p.evolvedName || p.name }}</em>
+                  </li>
+                </ol>
+                <p class="evo-sec">Lv30 二段进化</p>
+                <div class="evo-path evo-lv30">
+                  <span class="evo-stage">
+                    <PetSprite :pet-id="p.id" form="evolved" :size="48" />
+                    <em>Lv30</em>
+                    <em>{{ p.evolvedName || p.name }} · 究极</em>
+                  </span>
+                </div>
+                <p class="evo-sec">经验获取</p>
+                <ul class="evo-xp">
+                  <li>自习每分钟 1 点</li>
+                  <li>当天首次自习加 10 点</li>
+                  <li>方案生成前两次每日加 40 点上限</li>
+                  <li>互动动作：摸摸加 2、喂食加 5、玩耍加 8，各 30 秒冷却</li>
+                </ul>
+              </details>
             </button>
           </div>
         </div>
@@ -185,6 +231,80 @@ function confirm() {
 .go:focus-visible {
   outline: 2px solid #e51520;
   outline-offset: 3px;
+}
+
+.evo {
+  width: 100%;
+  margin-top: 4px;
+  border-top: 1px dashed var(--border, #e4ded5);
+  padding-top: 8px;
+  text-align: left;
+  pointer-events: auto;
+}
+.evo > summary {
+  list-style: none;
+  cursor: pointer;
+  font-size: 11.5px;
+  color: var(--text-muted, #808080);
+  letter-spacing: 0.04em;
+  padding: 2px 0;
+  user-select: none;
+}
+.evo > summary::-webkit-details-marker {
+  display: none;
+}
+.evo > summary::before {
+  content: "▸ ";
+  display: inline-block;
+}
+.evo[open] > summary::before {
+  content: "▾ ";
+}
+.evo-sec {
+  margin: 10px 0 4px;
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  color: var(--text-muted, #808080);
+}
+.evo-path {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  flex-wrap: wrap;
+}
+.evo-lv15 .evo-stage {
+  flex: 1 1 0;
+  min-width: 0;
+}
+.evo-lv30 {
+  justify-content: center;
+}
+.evo-stage {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+.evo-stage em {
+  font-style: normal;
+  font-size: 10px;
+  line-height: 1.2;
+  color: var(--text-secondary, #4a4540);
+  text-align: center;
+}
+.evo-xp {
+  margin: 0 0 2px;
+  padding: 0 0 0 1.1em;
+  font-size: 10.5px;
+  line-height: 1.55;
+  color: var(--text-muted, #808080);
+}
+.evo-xp li {
+  margin: 0;
 }
 
 @keyframes guide-in {

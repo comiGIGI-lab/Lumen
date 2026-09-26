@@ -128,13 +128,10 @@ def search_resources(course):
         if course in key or key in course:
             return resources
 
-    # 没匹配到，返回通用学习平台（不再用 XXX入门教程 占位符）
+    # 没匹配到：通用平台占位（URL 留给 searcher._fill_missing_urls 按类型拼接并编码）。
+    # 这里不自己拼查询串，避免中文课程名未 quote 导致 404。
     return [
-        {"title": "知乎 - 搜索学科相关问答", "type": "社区", "url": "https://www.zhihu.com/search?type=content&q=" + course},
-        {"title": "B站 - 搜索课程视频", "type": "视频", "url": "https://search.bilibili.com/all?keyword=" + course},
-        {"title": "中国大学MOOC - 搜索课程", "type": "平台", "url": "https://www.icourse163.org/search.htm?search=" + course},
-        {"title": "Coursera - 搜索国际课程", "type": "平台", "url": "https://www.coursera.org/search?query=" + course},
-        {"title": "菜鸟教程 - 编程与技术", "type": "教程", "url": "https://www.runoob.com/"},
-        {"title": "掘金 - 技术文章", "type": "社区", "url": "https://juejin.cn/search?query=" + course},
-        {"title": "豆瓣读书 - 搜索教材", "type": "书籍", "url": "https://book.douban.com/subject_search?search_text=" + course},
+        {"title": course, "type": "视频", "url": ""},
+        {"title": course, "type": "书籍", "url": ""},
+        {"title": course, "type": "教程", "url": ""},
     ]

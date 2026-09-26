@@ -37,6 +37,7 @@ import { usePlanStream } from './composables/usePlanStream'
 import { useSpace } from './composables/useSpace'
 import { useStudyTimer } from './composables/useStudyTimer'
 import { usePet } from './composables/usePet'
+import { usePlanHistory } from './composables/usePlanHistory'
 import { api } from './api/client'
 import PetGuide from './components/PetGuide.vue'
 import PetCompanion from './components/PetCompanion.vue'
@@ -86,10 +87,41 @@ function shouldShowWelcome() {
 const showGuide = ref(shouldShowGuide())
 const showWelcome = ref(shouldShowWelcome() && !showGuide.value)
 
-function onGuideDone() {
-  showGuide.value = false
+const SETTINGS_ONBOARD_KEY = 'zjxt.settings_onboard'
+/** 本轮是否正处在初始化这环（决定关窗后要不要接欢迎层） */
+const settingsOnboarding = ref(false)
+
+function settingsOnboardDone() {
+  try {
+    return localStorage.getItem(SETTINGS_ONBOARD_KEY) === 'true'
+  } catch (_) {
+    return false
+  }
+}
+
+/** 深链不打扰：演示链接（auto=1）与 ?settings=0 都跳过这一环 */
+function skipOnboardSettings() {
+  try {
+    const qs = new URLSearchParams(window.location.search)
+    return qs.get('auto') === '1' || qs.get('settings') === '0'
+  } catch (_) {
+    return false
+  }
+}
+
+function enterWelcome() {
   showWelcome.value = shouldShowWelcome()
   if (showWelcome.value) notify({ type: 'success', text: '这是你的学伴宠物' })
+}
+
+function onGuideDone() {
+  showGuide.value = false
+  if (!settingsOnboardDone() && !skipOnboardSettings()) {
+    settingsOnboarding.value = true
+    showSettings.value = true
+    return
+  }
+  enterWelcome()
 }
 
 function onWelcomeDone() {
@@ -145,6 +177,7 @@ function onProfileChangePet() {
 }
 
 const { displayName, logExp, grantStudyExp, grantPlanExp } = usePet()
+const { record: recordPlan } = usePlanHistory()
 
 const { applyLayout, layoutMode, panelOpen: spacePanelOpen } = useSpace()
 const { scene: activeScene, onSessionComplete: registerSessionComplete } = useStudyTimer()
@@ -309,11 +342,25 @@ const traceFile = ref('')
 const sourceDir = ref('')
 
 const course = ref('')
-const profile = ref({ level: '入门', daily_hours: '2h', goal: '兴趣', deadline: '' })
+const profile = ref({ level: '入门', daily_minutes: 60, daily_hours: '1h', goal: '兴趣', goal_other: '', deadline: '' })
 const useCache = ref(true)
 
 // ---------- 弹窗 / 抽屉 ----------
 const showSettings = ref(false)
+
+/** 收尾：写已做标记 + 关窗；若这轮是初始化就接上欢迎层 */
+function finishSettingsOnboard() {
+  try {
+    localStorage.setItem(SETTINGS_ONBOARD_KEY, 'true')
+  } catch (_) {
+    /* 存不上也不阻塞 */
+  }
+  showSettings.value = false
+  if (!settingsOnboarding.value) return
+  settingsOnboarding.value = false
+  enterWelcome()
+}
+
 /** 处于 LLM 模式但没配 Key —— 需要主动提示用户去填 */
 const needsKey = ref(false)
 const showHistory = ref(false)
@@ -342,6 +389,7 @@ watch(appView, (v) => {
 watch(showSettings, (v) => {
   if (!v) return
   if (showGuide.value || showWelcome.value) return
+  if (settingsOnboarding.value) return
   maybeShowBubble(
     'settings',
     BUBBLES.settings.title,
@@ -400,7 +448,7 @@ const {
 const busy = computed(() => status.value === 'running')
 
 // 把链路状态同步到状态栏；方案生成 done 时调 grantPlanExp（内部走 logExp('方案生成', 40)）
-watch(status, (v) => {
+watch(status, (v, prev) => {
   if (v === 'running') {
     statusTone.value = 'warn'
   } else if (v === 'error') {
@@ -408,6 +456,10 @@ watch(status, (v) => {
   } else if (v === 'done') {
     statusTone.value = 'success'
     grantPlanExp()
+    const r = result.value
+    if (prev === 'running' && r && r.course && r.type !== 'crisis') {
+      recordPlan(r.course, profile.value)
+    }
   } else {
     statusTone.value = 'normal'
   }
@@ -464,8 +516,10 @@ onMounted(async () => {
   const qs = new URLSearchParams(window.location.search)
   const qCourse = (qs.get('course') || '').trim()
   if (qs.get('level')) profile.value.level = qs.get('level')
+  if (qs.get('daily_minutes')) profile.value.daily_minutes = Number(qs.get('daily_minutes'))
   if (qs.get('daily_hours')) profile.value.daily_hours = qs.get('daily_hours')
   if (qs.get('goal')) profile.value.goal = qs.get('goal')
+  if (qs.get('goal_other')) profile.value.goal_other = qs.get('goal_other')
   if (qs.get('deadline') !== null) profile.value.deadline = qs.get('deadline') || ''
   if (qs.get('cache') === '0') useCache.value = false
 
@@ -490,7 +544,7 @@ onMounted(async () => {
 })
 
 // ---------- 交互 ----------
-function onGenerate(name) {
+function onGenerate(name, cacheOverride) {
   if (!name) {
     statusTone.value = 'warn'
     statusText.value = '⚠ 请先输入课程名'
@@ -498,9 +552,16 @@ function onGenerate(name) {
     return
   }
   course.value = name
+  const allowCache = cacheOverride === undefined ? useCache.value : !!cacheOverride
   statusText.value = `⏳ 正在为「${name}」生成方案，链路执行中…`
   showTrace.value = false
-  stream.generate(name, { ...profile.value }, useCache.value)
+  stream.generate(name, { ...profile.value }, allowCache)
+}
+
+function onReplayHistory(entry) {
+  const name = String(entry?.name || '').trim()
+  if (!name) return
+  onGenerate(name, true)
 }
 
 async function onProfileChange(p) {
@@ -680,6 +741,11 @@ function onSettingsSaved(newMode) {
     needsKey.value = newMode.mode !== 'mock' && !newMode.has_key
   }
   notify({ type: 'success', text: '运行模式已更新' })
+  finishSettingsOnboard()
+}
+
+function onSettingsClose() {
+  finishSettingsOnboard()
 }
 
 const isMockMode = computed(() => mode.value?.mode === 'mock')
@@ -817,6 +883,7 @@ const degradedBanner = computed(() => {
         :suggested-days="suggestedDays"
         @generate="onGenerate"
         @profile-change="onProfileChange"
+        @replay="onReplayHistory"
       />
 
       <!-- 生成选项 -->
@@ -863,15 +930,8 @@ const degradedBanner = computed(() => {
         @copy-outline="onCopyOutline"
         @copy-plan="onCopyPlan"
         @toggle-progress="onToggleProgress"
+        @export="openExport"
       />
-
-      <div v-if="canExportPlan()" class="export-bar">
-        <div>
-          <p class="export-title">{{ t('app.4') }}</p>
-          <p class="export-desc">{{ t('app.5') }}</p>
-        </div>
-        <button type="button" class="btn btn-primary" @click="openExport">{{ t('app.6') }}</button>
-      </div>
 
       <!-- ④ 课程问答 -->
       <ChatPanel
@@ -895,7 +955,8 @@ const degradedBanner = computed(() => {
     <SettingsDialog
       :open="showSettings"
       :mode="mode"
-      @close="showSettings = false"
+      :onboarding="settingsOnboarding"
+      @close="onSettingsClose"
       @saved="onSettingsSaved"
       @show-tour="openTour"
     />
@@ -1068,30 +1129,6 @@ const degradedBanner = computed(() => {
   background: var(--error-soft);
   border: 1px solid #fecaca;
   color: #991b1b;
-}
-
-.export-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  flex-wrap: wrap;
-  padding: 16px 18px;
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-}
-
-.export-title {
-  font-family: var(--font-serif);
-  font-size: 16px;
-  letter-spacing: 0.06em;
-}
-
-.export-desc {
-  margin-top: 4px;
-  font-size: 12.5px;
-  color: var(--text-muted);
 }
 
 .b-ico {

@@ -7,6 +7,8 @@ defineProps({
   title: { type: String, default: '' },
   icon: { type: String, default: '' },
   width: { type: String, default: '560px' },
+  /** 移动端（≤430px）是否全屏化。桌面端仍用 width；媒体查询里才覆盖宽高/圆角。 */
+  fullscreenOnMobile: { type: Boolean, default: false },
 })
 
 const emit = defineEmits(['close'])
@@ -14,9 +16,9 @@ const emit = defineEmits(['close'])
 
 <template>
   <transition name="modal">
-    <div v-if="open" class="mask" @click.self="emit('close')">
-      <div class="dialog card" :style="{ width }">
-        <div class="dlg-head">
+    <div v-if="open" class="mask" :class="{ 'mask-fullscreen': fullscreenOnMobile }" @click.self="emit('close')">
+      <div class="dialog card" :class="{ 'dialog-fullscreen': fullscreenOnMobile }" :style="{ width }">
+        <div class="dlg-head" :class="{ 'dlg-head-sticky': fullscreenOnMobile }">
           <div class="dlg-title">
             <span v-if="icon">{{ icon }}</span>
             {{ title }}
@@ -24,11 +26,11 @@ const emit = defineEmits(['close'])
           <button class="close" @click="emit('close')">✕</button>
         </div>
 
-        <div class="dlg-body">
+        <div class="dlg-body" :class="{ 'dlg-body-scroll': fullscreenOnMobile }">
           <slot />
         </div>
 
-        <div v-if="$slots.footer" class="dlg-foot">
+        <div v-if="$slots.footer" class="dlg-foot" :class="{ 'dlg-foot-sticky': fullscreenOnMobile }">
           <slot name="footer" />
         </div>
       </div>
@@ -66,7 +68,7 @@ const emit = defineEmits(['close'])
   gap: 12px;
   padding: 14px 18px;
   border-bottom: 1px solid var(--border);
-  background: linear-gradient(180deg, var(--bg-soft), var(--bg-card));
+  background: linear-gradient(180deg, #fbf9f6, #fff);
 }
 
 .dlg-title {
@@ -93,6 +95,7 @@ const emit = defineEmits(['close'])
 }
 
 .dlg-body {
+  min-height: 0;
   padding: 16px 18px;
   overflow-y: auto;
 }
@@ -114,5 +117,52 @@ const emit = defineEmits(['close'])
 .modal-enter-from,
 .modal-leave-to {
   opacity: 0;
+}
+
+/* ---------- 移动端全屏（≤430px） ---------- */
+/* 桌面照旧：样式只在 max-width:430px 生效；调用方没开 fullscreenOnMobile 就不命中。 */
+@media (max-width: 430px) {
+  .mask-fullscreen {
+    padding: 0;
+    align-items: stretch;
+    justify-content: stretch;
+  }
+  .dialog-fullscreen {
+    width: 100vw !important;
+    max-width: 100vw !important;
+    height: 100vh;
+    height: 100dvh;
+    max-height: 100vh;
+    max-height: 100dvh;
+    border-radius: 0;
+    overflow: hidden;
+  }
+  .dlg-head-sticky {
+    flex: none;
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    padding-top: calc(14px + env(safe-area-inset-top, 0px));
+  }
+  /* 表单区吃满剩余高度并滚动；max-height 兜底，避免旧 WebKit 不收缩 flex。 */
+  .dlg-body-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: calc(100dvh - 148px);
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+  .dlg-foot-sticky {
+    flex: none;
+    position: sticky;
+    bottom: 0;
+    z-index: 2;
+    flex-wrap: wrap;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    background: rgba(251, 249, 246, 0.86);
+    padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  }
 }
 </style>

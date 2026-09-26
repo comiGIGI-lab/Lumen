@@ -15,11 +15,14 @@ const props = defineProps({
 })
 const { t } = useI18n()
 
-const emit = defineEmits(['copy-outline', 'copy-plan', 'toggle-progress'])
+const emit = defineEmits(['copy-outline', 'copy-plan', 'toggle-progress', 'export'])
 
 const outline = computed(() => props.result?.outline || [])
 const resources = computed(() => props.result?.resources || [])
 const planItems = computed(() => props.result?.plan_items || [])
+const canExport = computed(
+  () => !props.loading && !!(outline.value.length || planItems.value.length || props.result?.plan?.length),
+)
 
 /**
  * 大纲归一化：每章 → {title, points}。
@@ -116,7 +119,8 @@ const dayNo = (item, i) => item?.day ?? i + 1
     </div>
   </section>
 
-  <section v-else class="grid">
+  <section v-else class="results-layout">
+    <div class="outline-scroll-col">
     <!-- ① 课程大纲 -->
     <ResultPanel
       :title="t('resultsGrid.1')"
@@ -153,7 +157,9 @@ const dayNo = (item, i) => item?.day ?? i + 1
         <button class="btn-link" @click="emit('copy-outline')">{{ t('resultsGrid.8') }}</button>
       </template>
     </ResultPanel>
+    </div>
 
+    <div class="content-scroll-col">
     <!-- ② 推荐资源 -->
     <ResultPanel
       :title="t('resultsGrid.3')"
@@ -222,14 +228,126 @@ const dayNo = (item, i) => item?.day ?? i + 1
         <button class="btn-link" @click="emit('copy-plan')">{{ t('resultsGrid.11') }}</button>
       </template>
     </ResultPanel>
+
+      <div v-if="canExport" class="export-action-card card">
+        <div class="eac-left">
+          <div class="eac-icon">📑</div>
+          <div>
+            <h4 class="eac-title">{{ t('app.4') }}</h4>
+            <p class="eac-desc">{{ t('app.5') }}</p>
+          </div>
+        </div>
+        <button type="button" class="btn btn-primary eac-btn" @click="emit('export')">
+          {{ t('app.6') }}
+        </button>
+      </div>
+    </div>
   </section>
 </template>
 
 <style scoped>
-.grid {
+.results-layout {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: minmax(300px, 1fr) minmax(0, 2fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.outline-scroll-col {
+  max-height: 60vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding-right: 4px;
+}
+
+.outline-scroll-col::-webkit-scrollbar {
+  width: 6px;
+}
+.outline-scroll-col::-webkit-scrollbar-thumb {
+  background: var(--border, #e4ded5);
+  border-radius: 3px;
+}
+.outline-scroll-col::-webkit-scrollbar-thumb:hover {
+  background: var(--border-strong, #c8c0b5);
+}
+
+.outline-scroll-col :deep(.panel) {
+  min-height: 0;
+}
+.outline-scroll-col :deep(.panel-body) {
+  max-height: none;
+  overflow-y: visible;
+}
+
+.content-scroll-col {
+  max-height: 60vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  display: flex;
+  flex-direction: column;
   gap: 14px;
+  padding-right: 4px;
+}
+
+.content-scroll-col::-webkit-scrollbar {
+  width: 6px;
+}
+.content-scroll-col::-webkit-scrollbar-thumb {
+  background: var(--border, #e4ded5);
+  border-radius: 3px;
+}
+.content-scroll-col::-webkit-scrollbar-thumb:hover {
+  background: var(--border-strong, #c8c0b5);
+}
+
+.content-scroll-col :deep(.panel) {
+  min-height: 0;
+}
+.content-scroll-col :deep(.panel-body) {
+  max-height: none;
+  overflow-y: visible;
+}
+
+.export-action-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 14px 18px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-top: 3px solid var(--primary);
+  border-radius: var(--radius-md, 8px);
+}
+
+.eac-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.eac-icon {
+  font-size: 20px;
+}
+
+.eac-title {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.eac-desc {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.eac-btn {
+  flex: none;
 }
 
 /* ---------- 勾选框（学习进度） ---------- */
@@ -519,8 +637,15 @@ const dayNo = (item, i) => item?.day ?? i + 1
 }
 
 @media (max-width: 1080px) {
-  .grid {
+  .results-layout {
     grid-template-columns: 1fr;
+    gap: 14px;
+  }
+  .outline-scroll-col {
+    max-height: 50vh;
+  }
+  .content-scroll-col {
+    max-height: 55vh;
   }
 }
 </style>

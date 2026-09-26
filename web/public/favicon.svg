@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32" role="img" aria-label="智识有方">
+  <!-- 智识有方 ·「方印生光 · 负空间时光印」正式 Favicon -->
+  <!-- 颜色规范 (严格 4 色)：奶油底 #FAF6EE / 朱砂 #D32F2F / 金光 #FFA928 / 墨黑 #201C1A -->
+  <!-- 1. 温润奶油底卡 -->
+  <rect x="1" y="1" width="30" height="30" rx="6.5" fill="#FAF6EE"/>
+
+  <!-- 2. 朱砂红方印外圈 (稳重、正统、东方美感，厚度 2.2px) -->
+  <rect x="2.5" y="2.5" width="27" height="27" rx="5" fill="none" stroke="#D32F2F" stroke-width="2.2"/>
+
+  <!-- 3. 「方」字主体黑墨架构 (清晰刚劲的几何骨架) -->
+  <!-- 顶横 -->
+  <rect x="6.5" y="7" width="19" height="3" rx="1.2" fill="#201C1A"/>
+  <!-- 左竖 -->
+  <rect x="6.5" y="7" width="3" height="18" rx="1.2" fill="#201C1A"/>
+  <!-- 底横承托 -->
+  <rect x="6.5" y="22" width="19" height="3" rx="1.2" fill="#201C1A"/>
+  <!-- 右侧竖折钩 -->
+  <rect x="22.5" y="7" width="3" height="12" rx="1.2" fill="#201C1A"/>
+
+  <!-- 4. 天顶直贯的 LUMEN 智慧光矢 (金光垂直劈入顶横) -->
+  <rect x="15" y="2" width="2" height="6.5" rx="1" fill="#FFA928"/>
+
+  <!-- 5. 中宫负空间意象：展开书卷 + 悬浮时光沙漏 -->
+  <!-- 书卷外封 (朱砂红底托) -->
+  <path d="M10 20 L16 18.5 L22 20 L22 21.3 L16 19.8 L10 21.3 Z" fill="#D32F2F"/>
+  <!-- 书卷内页 (负空间展开书页，严格采用奶油底色 #FAF6EE) -->
+  <path d="M10.2 19.3 L16 18 L21.8 19.3 L21.8 20.4 L16 19.1 L10.2 20.4 Z" fill="#FAF6EE"/>
+
+  <!-- 居中时光沙漏 (几何高辨识度) -->
+  <!-- 沙漏顶板 -->
+  <rect x="12" y="9.5" width="8" height="1.4" rx="0.5" fill="#201C1A"/>
+  <!-- 对顶三角玻璃框 (墨黑线条) -->
+  <polygon points="12.5,10.9 19.5,10.9 16,14.2" fill="none" stroke="#201C1A" stroke-width="1.2" stroke-linejoin="round"/>
+  <polygon points="12.5,17.5 19.5,17.5 16,14.2" fill="none" stroke="#201C1A" stroke-width="1.2" stroke-linejoin="round"/>
+  <!-- 上部聚满朱红细沙 -->
+  <polygon points="13.5,11.5 18.5,11.5 16,13.8" fill="#D32F2F"/>
+  <!-- 中央流注而下的金线 (金光流动) -->
+  <line x1="16" y1="13.8" x2="16" y2="15.8" stroke="#FFA928" stroke-width="1" stroke-linecap="round"/>
+  <!-- 下部沉淀的朱红细沙 -->
+  <polygon points="14,16.8 18,16.8 16,15.2" fill="#D32F2F"/>
+</svg>

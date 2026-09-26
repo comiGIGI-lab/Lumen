@@ -237,6 +237,7 @@ onBeforeUnmount(() => {
 
         <section class="ep-block">
           <h2>{{ t('exportPreview.15') }}</h2>
+          <div class="ep-scrollable-container">
           <ol v-if="chapters.length" class="ep-chapters">
             <li v-for="ch in chapters" :key="ch.no">
               <div class="ch-head">
@@ -251,6 +252,7 @@ onBeforeUnmount(() => {
             </li>
           </ol>
           <p v-else class="ep-empty">{{ t('exportPreview.17') }}</p>
+          </div>
         </section>
 
         <section class="ep-block">
@@ -460,6 +462,27 @@ onBeforeUnmount(() => {
   letter-spacing: 0.08em;
   padding-bottom: 8px;
   border-bottom: 1px solid #e4ded5;
+}
+
+.ep-scrollable-container {
+  max-height: 60vh;
+  overflow-y: auto;
+  overscroll-behavior: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-right: 6px;
+}
+
+.ep-scrollable-container::-webkit-scrollbar {
+  width: 6px;
+}
+
+.ep-scrollable-container::-webkit-scrollbar-thumb {
+  background: #e4ded5;
+  border-radius: 3px;
+}
+
+.ep-scrollable-container::-webkit-scrollbar-thumb:hover {
+  background: #c8c0b5;
 }
 
 .ep-chapters,
@@ -683,6 +706,11 @@ onBeforeUnmount(() => {
   .ep-days > li,
   .ep-table tr {
     break-inside: avoid;
+  }
+  .ep-scrollable-container {
+    max-height: none !important;
+    overflow: visible !important;
+    padding-right: 0 !important;
   }
   .ep-foot {
     break-inside: avoid;

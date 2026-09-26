@@ -101,7 +101,7 @@ function openSpace() {
 @media (max-width: 430px) {
   .space-fab {
     left: 8px;
-    bottom: 48px;
+    bottom: 16px;
   }
 }
 </style>

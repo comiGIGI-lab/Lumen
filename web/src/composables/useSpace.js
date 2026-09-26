@@ -4,7 +4,7 @@
  * SPACE_VER 加一后旧坐标不再锁死，会落到新默认。
  * welcome / app / study 三套 x/y/size/collapsed 分开存；待办正文和倒数日走别的键。
  */
-import { reactive, ref, watch } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 
 export const SPACE_KEY = 'zjxt.space'
 export const TODOS_KEY = 'zjxt.todos'
@@ -20,6 +20,18 @@ export const WIN_META = {
   study: { title: '自习坞', titleKey: 'win.study' },
   todo: { title: '待办事项', titleKey: 'win.todo' },
   date: { title: '日期', titleKey: 'win.date' },
+}
+
+export const WIDTH_FACTOR_MOBILE = 0.6
+export const WIDTH_FACTOR_DESKTOP = 1.0
+export const TOP_SAFE_DESKTOP = 8
+export const TOP_SAFE_MOBILE = 0
+
+export function getWidthFactor(compact, id) {
+  if (compact && (id === 'study' || id === 'todo')) {
+    return WIDTH_FACTOR_MOBILE
+  }
+  return WIDTH_FACTOR_DESKTOP
 }
 
 const SIZE_MAX = 3
@@ -41,19 +53,23 @@ function normalizeLayout(mode) {
 function barWidth(collapsed, size, compact, layout, id) {
   const { vw } = viewport()
   const maxW = Math.max(160, vw - 16)
+  const widthFactor = getWidthFactor(compact, id)
   if (collapsed) {
     if (id === 'todo' || id === 'date') {
-      return Math.min(compact ? 196 : 248, maxW)
+      const base = compact ? 196 : 248
+      return Math.round(Math.min(base * widthFactor, maxW))
     }
-    return Math.min(compact ? 136 : 176, maxW)
+    const base = compact ? 136 : 176
+    return Math.round(Math.min(base * widthFactor, maxW))
   }
   if (layout === 'study') {
     const padX = compact ? 8 : vw <= 860 ? 16 : 26
     const total = Math.min(980, Math.max(200, vw - padX * 2))
     const factor = size === 3 ? 1 : size === 2 ? 0.92 : 0.8
     if (vw <= 860) {
-      const minW = compact ? 200 : 280
-      return Math.round(Math.max(minW, Math.min(total, vw - padX * 2) * factor))
+      const minW = compact ? Math.round(200 * widthFactor) : 280
+      const rawW = Math.min(total, vw - padX * 2) * factor * widthFactor
+      return Math.round(Math.max(minW, Math.min(rawW, maxW)))
     }
     const leftW = Math.round(total * 1.1 / 2)
     const rightW = Math.max(280, total - leftW - 14)
@@ -62,7 +78,10 @@ function barWidth(collapsed, size, compact, layout, id) {
     return Math.round(Math.max(minW, base * factor))
   }
   const desktop = 216 + (Math.max(1, size) - 1) * 64
-  if (compact) return Math.min(Math.max(176, desktop - 24), maxW)
+  if (compact) {
+    const base = Math.max(176, desktop - 24)
+    return Math.round(Math.min(base * widthFactor, maxW))
+  }
   return Math.min(desktop, maxW)
 }
 
@@ -395,7 +414,8 @@ function clampPos(id, x, y) {
   const compact = vw <= 430
   const width = w ? barWidth(w.collapsed, w.size, compact, layoutMode.value, id) : 176
   const margin = 8
-  const minY = compact ? HEADER_H + 80 : margin
+  const topSafe = compact ? TOP_SAFE_MOBILE : TOP_SAFE_DESKTOP
+  const minY = topSafe
   const maxX = Math.max(margin, vw - Math.min(width, vw - margin * 2) - margin)
   const maxY = Math.max(minY, vh - 44)
   return {
@@ -484,11 +504,15 @@ function resetLayout() {
 }
 
 export function useSpace() {
+  const widthFactor = computed(() => (viewW.value <= 430 ? WIDTH_FACTOR_MOBILE : WIDTH_FACTOR_DESKTOP))
   return {
     WIN_IDS,
     WIN_META,
     SIZE_MAX,
     SPACE_VER,
+    WIDTH_FACTOR_MOBILE,
+    WIDTH_FACTOR_DESKTOP,
+    widthFactor,
     windows,
     zOrder,
     panelOpen,

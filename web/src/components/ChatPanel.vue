@@ -9,6 +9,7 @@ import { nextTick, ref } from 'vue'
 import { useI18n } from '@/i18n'
 import { api } from '@/api/client'
 import { renderMarkdown, handleMdAction } from '@/utils/markdown'
+import { cleanMarkdown } from '@/utils/textClean'
 
 const props = defineProps({
   courseContext: { type: String, default: '' },
@@ -46,10 +47,12 @@ async function ask() {
     const res = await api.chat(q, history.slice(0, -1), props.courseContext)
 
     if (res.type === 'generate') {
+      const text = '这句话看起来是「生成方案」请求，请在上方输入课程名后点击「生成方案」。'
       messages.value.push({
         role: 'ai',
-        text: '这句话看起来是「生成方案」请求，请在上方输入课程名后点击「生成方案」。',
+        text,
         source: 'intent',
+        html: cleanMarkdown(text),
       })
       emit('notify', { type: 'warn', text: '已识别为生成方案意图，请在顶部输入课程名' })
     } else {
@@ -57,10 +60,12 @@ async function ask() {
         role: 'ai',
         text: res.answer,
         source: res.source,
+        html: cleanMarkdown(res.answer || ''),
       })
     }
   } catch (e) {
-    messages.value.push({ role: 'ai', text: `请求失败：${e.message}`, source: 'error' })
+    const text = `请求失败：${e.message}`
+    messages.value.push({ role: 'ai', text, source: 'error', html: cleanMarkdown(text) })
   } finally {
     busy.value = false
     await scrollBottom()
@@ -114,7 +119,7 @@ function md(text) {
         <div class="avatar">{{ m.role === 'user' ? '你' : '🤖' }}</div>
         <div class="bubble">
           <p v-if="m.role === 'user'" class="text">{{ m.text }}</p>
-          <div v-else class="text md-body" v-html="md(m.text)"></div>
+          <div v-else class="text md-body" v-html="m.html || md(m.text)"></div>
           <span v-if="m.role === 'ai' && m.source" class="src">
             来源：{{
               m.source === 'knowledge'

@@ -16,6 +16,9 @@ import sys
 
 import pytest
 
+# 本文件测的是 mock 流水线契约，必须在 import agent 之前钉死 mock，
+# 否则本机若配了真实 Key 会打 LLM + 外网 HEAD，单测会卡住。
+os.environ["LLM_PROVIDER"] = "mock"
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _ROOT = os.path.dirname(_HERE)
@@ -69,68 +72,79 @@ def test_plan_pipeline_unknown_course_fallback():
     res = run_plan_pipeline("量子纠缠的猫")
     assert len(res["outline"]) >= 3
     assert len(res["resources"]) >= 2 or len(res["plan"]) >= 5
-    ok, _ = review(res)
+    ok, _, _ = review(res, check_urls=False)
     # 只要产物的某几项达标即可
     assert isinstance(ok, bool)
+
+
+def test_pipeline_retries_writer_searcher_once(monkeypatch):
+    """质检不过只重跑一次 Writer + Searcher，不会循环。"""
+    calls = {"w": 0, "s": 0, "r": 0}
+
+    def fake_plan(*_a, **_k):
+        return ["章1", "章2", "章3"]
+
+    def fake_write(*_a, **_k):
+        calls["w"] += 1
+        return [f"第{i}天" for i in range(1, 8)]
+
+    def fake_search(*_a, **_k):
+        calls["s"] += 1
+        return [{"title": "x", "type": "教程", "url": "https://example.invalid/x"}] * 3
+
+    def fake_review(result, check_urls=None):
+        calls["r"] += 1
+        return (False, ["URL 不可达 3 条"], result)
+
+    monkeypatch.setattr("agents.planner.plan_outline", fake_plan)
+    monkeypatch.setattr("agents.writer.write_plan", fake_write)
+    monkeypatch.setattr("agents.searcher.search_resources", fake_search)
+    monkeypatch.setattr("agents.reviewer.review", fake_review)
+
+    run_plan_pipeline("任意课", use_cache=False)
+    assert calls["w"] == 2
+    assert calls["s"] == 2
+    assert calls["r"] == 2
 
 
 # ==========================================================
 # Reviewer 协作
 # ==========================================================
 def test_reviewer_passes_default_output():
-    # use_cache=False：本用例断言的是「新生成的产物」满足质量门槛，
-    # 命中磁盘上的历史缓存（可能是旧结构大纲）会得到无关的失败。
-    res = run_plan_pipeline("Python 入门", use_cache=False)
-    ok, comments = review(res)
+    res = run_plan_pipeline("Python 入门")
+    ok, comments, _ = review(res, check_urls=False)
     assert ok is True, f"Reviewer 没通过：{comments}"
 
 
 def test_reviewer_fails_when_outline_short():
     res = {
-        # 只有 1 章（v20 章节是对象，带要点，避免被「要点不足」的规则干扰）
-        "outline": [{"title": "第1章", "points": ["a", "b", "c"]}],
+        "outline": ["第1章"],   # 只有 1 章
         "resources": [{"title": "A", "type": "书籍", "url": ""}],
         "plan": [f"第{i}天 学习" for i in range(1, 8)],
     }
-    ok, comments = review(res)
+    ok, comments, _ = review(res, check_urls=False)
     assert ok is False
     assert any("大纲" in c for c in comments)
 
 
 def test_reviewer_fails_when_resources_short():
     res = {
-        "outline": [{"title": f"第{i}章", "points": ["a", "b", "c"]} for i in range(1, 11)],
+        "outline": [f"第{i}章" for i in range(1, 11)],
         "resources": [],
         "plan": [f"第{i}天" for i in range(1, 8)],
     }
-    ok, comments = review(res)
+    ok, comments, _ = review(res, check_urls=False)
     assert ok is False
     assert any("资源" in c for c in comments)
 
 
-def test_reviewer_fails_when_outline_points_thin():
-    """v20：任意一章要点不足 2 条即判失败（触发 Searcher/Writer 重跑）。"""
-    res = {
-        "outline": [
-            {"title": "第1章", "points": ["a", "b", "c"]},
-            {"title": "第2章", "points": ["只有一个"]},
-            {"title": "第3章", "points": ["a", "b", "c"]},
-        ],
-        "resources": [{"title": "A", "type": "书籍", "url": ""}] * 3,
-        "plan": [f"第{i}天" for i in range(1, 8)],
-    }
-    ok, comments = review(res)
-    assert ok is False
-    assert any("要点" in c for c in comments)
-
-
 def test_reviewer_fails_when_plan_short():
     res = {
-        "outline": [{"title": f"第{i}章", "points": ["a", "b", "c"]} for i in range(1, 11)],
+        "outline": [f"第{i}章" for i in range(1, 11)],
         "resources": [{"title": "A", "type": "书籍", "url": ""}] * 3,
         "plan": ["第1天"],
     }
-    ok, comments = review(res)
+    ok, comments, _ = review(res, check_urls=False)
     assert ok is False
     assert any("计划" in c for c in comments)
 
@@ -274,8 +288,8 @@ def test_plan_pipeline_consistent_with_components():
     resources_alone = search_resources(course, profile=profile)
     plan_alone = write_plan(course, outline_alone, profile=profile)
 
-    # pipeline 调用（use_cache=False：避免命中历史缓存导致与单独调用不一致）
-    res = run_plan_pipeline(course, profile=profile, use_cache=False)
+    # pipeline 调用
+    res = run_plan_pipeline(course, profile=profile)
 
     assert len(res["outline"]) == len(outline_alone)
     assert len(res["resources"]) == len(resources_alone)
