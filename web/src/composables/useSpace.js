@@ -11,7 +11,7 @@ export const SPACE_KEY = 'zjxt.space'
 export const TODOS_KEY = 'zjxt.todos'
 export const DATES_KEY = 'zjxt.dates'
 export const COUNTDOWNS_KEY = 'zjxt.countdowns'
-export const SPACE_VER = 5
+export const SPACE_VER = 6
 export const LAYOUTS = ['welcome', 'app', 'study']
 
 export const WIN_IDS = ['study', 'todo', 'date']
@@ -111,7 +111,7 @@ function defaultWin(id, vw, layout) {
       }
       return {
         on: true,
-        collapsed: compact ? true : false,
+        collapsed: true,
         size: id === 'study' ? 3 : 2,
         x: padX,
         y: padY + (stacked[id] || 0),
@@ -120,16 +120,16 @@ function defaultWin(id, vw, layout) {
     const leftW = Math.round(total * 1.1 / 2)
     const rightX = padX + leftW + gap
     if (id === 'study') {
-      return { on: true, collapsed: false, size: 3, x: padX, y: padY }
+      return { on: true, collapsed: true, size: 3, x: padX, y: padY }
     }
     if (id === 'todo') {
-      return { on: true, collapsed: false, size: 2, x: rightX, y: padY }
+      return { on: true, collapsed: true, size: 2, x: rightX, y: padY }
     }
-    return { on: true, collapsed: false, size: 2, x: rightX, y: padY + 280 }
+    return { on: true, collapsed: true, size: 2, x: rightX, y: padY + 280 }
   }
   const cascade = { study: 0, todo: 1, date: 2 }
   const i = cascade[id] || 0
-  // 桌面默认展开，各就各位；窄屏才收成边签，免得三块窗盖住正文。
+  // 默认一律收成边签（贴边成窄条），需要时再展开 —— 免得三块窗盖住正文。
   const collapsed = compact
   const size = 1
   const w = barWidth(collapsed, size, compact, layout, id)

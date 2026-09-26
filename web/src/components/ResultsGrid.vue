@@ -187,6 +187,9 @@ const dayNo = (item, i) => item?.day ?? i + 1
       </template>
     </ResultPanel>
 
+    </div>
+
+    <div class="content-scroll-col">
     <!-- ③ 学习计划 -->
     <ResultPanel
       :title="t('resultsGrid.4')"
@@ -228,8 +231,9 @@ const dayNo = (item, i) => item?.day ?? i + 1
         <button class="btn-link" @click="emit('copy-plan')">{{ t('resultsGrid.11') }}</button>
       </template>
     </ResultPanel>
+    </div>
 
-      <div v-if="canExport" class="export-action-card card">
+    <div v-if="canExport" class="export-action-card card">
         <div class="eac-left">
           <div class="eac-icon">📑</div>
           <div>
@@ -241,14 +245,14 @@ const dayNo = (item, i) => item?.day ?? i + 1
           {{ t('app.6') }}
         </button>
       </div>
-    </div>
   </section>
 </template>
 
 <style scoped>
 .results-layout {
   display: grid;
-  grid-template-columns: minmax(300px, 1fr) minmax(0, 2fr);
+  /* 三栏并排：课程大纲 | 推荐资源 | 学习计划 */
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 16px;
   align-items: start;
 }
@@ -311,6 +315,7 @@ const dayNo = (item, i) => item?.day ?? i + 1
 }
 
 .export-action-card {
+  grid-column: 1 / -1;  /* 三栏下方横跨整行 */
   display: flex;
   align-items: center;
   justify-content: space-between;
