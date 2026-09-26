@@ -48,8 +48,7 @@ const {
   createNote,
   removeDoc,
   retryDoc,
-  setRemark,
-} = useKnowledge()
+  setRemark, docsByNote, removeNote, docEntries } = useKnowledge()
 
 ensureLoaded()
 
@@ -100,6 +99,20 @@ function saveRemark() {
   hintTimer = setTimeout(() => {
     savedHint.value = false
   }, 1400)
+}
+
+async function deleteNote(note) {
+  if (!note) return
+  const docs = docsByNote.value[note.id] || []
+  const count = docs.reduce((sum, d) => sum + (docEntries.value[d.id] || []).length, 0)
+  // 破坏性操作，且是整条笔记，文案里写清不可恢复
+  const ok = window.confirm(
+    `删除笔记「${note.title}」？\n\n将同时删除它下面的 ${docs.length} 个文档、共 ${count} 个分块，且不可恢复。`,
+  )
+  if (!ok) return
+  const n = await removeNote(note.id)
+  if (n === 0) window.alert('这条笔记下没有材料可删。')
+  else if (n < 0) window.alert('删除失败，请查看后端日志。')
 }
 
 async function deleteDoc(doc) {
@@ -248,18 +261,28 @@ onBeforeUnmount(() => {
           <button type="button" class="ghost small" @click="reload">{{ t('knowledgePage.23') }}</button>
         </div>
         <div class="note-list">
-          <button
+          <!-- 用 div 而不是 button：里面还要放删除按钮，button 不能嵌套 button -->
+          <div
             v-for="n in filtered"
             :key="n.id"
-            type="button"
             class="note"
             :class="{ on: n.id === currentId }"
+            role="button"
+            tabindex="0"
             @click="pickNote(n.id)"
+            @keydown.enter="pickNote(n.id)"
           >
             <span class="note-t">{{ n.title }}</span>
             <span class="chip">{{ TAG_LABEL[n.tag] }}</span>
             <span class="note-d">{{ n.updated }}</span>
-          </button>
+            <button
+              v-if="isAdmin"
+              type="button"
+              class="note-del"
+              :title="t('knowledgePage.38')"
+              @click.stop="deleteNote(n)"
+            >✕</button>
+          </div>
           <p v-if="!filtered.length" class="none">{{ t('knowledgePage.24') }}</p>
         </div>
         <button type="button" class="ghost new" @click="newNote">{{ t('knowledgePage.25') }}</button>
@@ -709,5 +732,33 @@ th, td {
   .meta, .empty ol { grid-template-columns: 1fr; }
   .kb-actions { width: 100%; }
   .kb-actions button { flex: 1 1 auto; }
+}
+
+/* 笔记项的删除按钮：平时淡出，hover 才明显，避免误点 */
+.note {
+  position: relative;
+}
+.note-del {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 20px;
+  height: 20px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-3, #8b8378);
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s, background 0.15s, color 0.15s;
+}
+.note:hover .note-del {
+  opacity: 1;
+}
+.note-del:hover {
+  background: rgba(229, 21, 32, 0.12);
+  color: #c4101a;
 }
 </style>

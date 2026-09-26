@@ -240,6 +240,29 @@ export function useKnowledge() {
   }
 
   /** 删除某个「文档」= 删掉它底下的全部条目 */
+  /**
+   * 删掉整条笔记 —— 即删它下面**所有文档**的所有分块条目。
+   * 后端是扁平条目，前端按来源聚合成「笔记 / 文档」，
+   * 所以「删笔记」在前端就是把它名下所有文档的条目逐个删掉。
+   * 返回删掉的条目数（0 表示这条笔记下本来就没有材料）。
+   */
+  async function removeNote(noteId) {
+    const docs = docsByNote.value[noteId] || []
+    const ids = []
+    for (const d of docs) {
+      ids.push(...(docEntries.value[d.id] || []))
+    }
+    if (!ids.length) return 0
+    try {
+      for (const id of ids) await api.knowledgeDelete(id)
+      await refresh(lastQuery.value)
+      return ids.length
+    } catch (e) {
+      error.value = e.message || String(e)
+      return -1
+    }
+  }
+
   async function removeDoc(noteId, docId) {
     const ids = docEntries.value[docId] || []
     if (!ids.length) return
@@ -275,6 +298,7 @@ export function useKnowledge() {
     notes,
     docsByNote,
     chunksByDoc,
+    docEntries,
     currentId,
     current,
     currentDocs,
@@ -288,6 +312,7 @@ export function useKnowledge() {
     pickNote,
     createNote,
     removeDoc,
+    removeNote,
     retryDoc,
     setRemark,
   }
