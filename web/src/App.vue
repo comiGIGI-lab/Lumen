@@ -1222,7 +1222,7 @@ const degradedBanner = computed(() => {
   .main,
   .main.study-main,
   .main.under-wins {
-    padding-left: 46px;
+    padding-left: 46px !important;
   }
 }
 </style>
