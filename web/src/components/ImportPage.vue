@@ -207,7 +207,7 @@ async function startParse() {
         row.progress = 100
         row.chunks = r.chunks || 0
         okCount += 1
-        details.push(`「${row.name}」入库 ${r.chunks || 0} 块`)
+        details.push(`「${row.name}」入库 ${r.chunks || 0} 块${r.engine ? '（' + r.engine + '）' : ''}`)
       } else {
         row.status = 'failed'
         row.error = r.error || '导入失败'
@@ -289,6 +289,7 @@ onBeforeUnmount(() => {
         </div>
         <p v-if="hint" class="demo-note">{{ hint }}</p>
         <p v-if="caps && caps.document && !caps.document.pdf" class="demo-note">{{ t('importPage.12') }}</p>
+        <p v-else-if="caps && caps.document && caps.document.note" class="demo-note">{{ caps.document.note }}</p>
 
         <div class="queue">
           <header>

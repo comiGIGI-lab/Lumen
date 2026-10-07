@@ -6,6 +6,8 @@
 # 复用的现成轮子（不要重写）：
 #   tools/document_importer.py  —— 读 PDF/Markdown/txt（pypdf→PyPDF2→pdfplumber 三级降级）
 #                                  以及分句 split_sentences()
+#   server/doc_parse.py         —— PDF 侧车：扫描件走 mineru-kit，数字文本仍走 pypdf
+#                                  MinerU 没装时静默回退，不让 api_server 起不来
 #   tools/vision_ocr.py         —— 图片走多模态模型识图（替代装不下的本地 OCR）
 #   tools/knowledge_store.py    —— 入库
 #   server/safety_gate.py       —— 内容安全（导入也是一条写入路径，要过审核）
@@ -59,13 +61,28 @@ def capabilities():
     except Exception:
         vision_ok = False
 
+    try:
+        import doc_parse
+        mineru = doc_parse.capabilities()
+    except Exception:
+        mineru = {"available": False, "engine": "", "tier": "", "note": "doc_parse 模块不可用"}
+
+    pdf_note = ""
+    if not pdf_mod and not mineru.get("available"):
+        pdf_note = "未安装 pypdf，PDF 暂不可解析（Markdown / txt 正常）"
+    elif mineru.get("available"):
+        pdf_note = "数字 PDF 走 pypdf；扫描件 / 复杂版式走 MinerU 侧车（tier=%s）" % (mineru.get("tier") or "basic")
+    elif pdf_mod:
+        pdf_note = "当前只有 pypdf 文本层。扫描件几乎抽不到字时需要另装 MinerU 侧车。"
+
     return {
         "document": {
             "extensions": list(DOC_EXTS),
-            "pdf": bool(pdf_mod),
-            "pdf_backend": pdf_mod or "",
+            "pdf": bool(pdf_mod) or bool(mineru.get("available")),
+            "pdf_backend": ("mineru+" + (pdf_mod or "none")) if mineru.get("available") else (pdf_mod or ""),
+            "mineru": mineru,
             # 没有 pypdf 时 PDF 仍会尝试导入，但会明确报错，这里给出提示
-            "note": "" if pdf_mod else "未安装 pypdf，PDF 暂不可解析（Markdown / txt 正常）",
+            "note": pdf_note,
         },
         "image": {
             "extensions": list(IMAGE_EXTS),
@@ -255,25 +272,49 @@ def ingest(path, filename, tags=None, store=None, data_dir=None, title=None):
         default_tags = ["#import", "#image", "#ocr"]
     elif ext in DOC_EXTS:
         out["kind"] = "document"
-        try:
-            from tools.document_importer import read_text
-        except ImportError as e:
-            out["error"] = "文档解析模块不可用：%s" % e
-            return out
-        try:
-            text = (read_text(path) or "").strip()
-        except ImportError as e:
-            # PDF 但没装 pypdf —— 把话说明白，别只说"导入失败"
-            out["error"] = (
-                "解析失败：%s。PDF 需要服务器安装 pypdf（纯 Python 库，约 1MB）；"
-                "Markdown / txt 无需任何依赖。" % e
-            )
-            return out
-        except Exception as e:
-            out["error"] = "解析失败：%s" % e
-            return out
+        parse_engine = ""
+        if ext == ".pdf":
+            try:
+                import doc_parse
+                parsed = doc_parse.extract_pdf_text(path)
+            except ImportError as e:
+                parsed = {"text": "", "engine": "", "error": "PDF 解析模块不可用：%s" % e}
+            except Exception as e:
+                parsed = {"text": "", "engine": "", "error": "解析失败：%s" % e}
+            text = (parsed.get("text") or "").strip()
+            parse_engine = parsed.get("engine") or ""
+            if not text:
+                err = (parsed.get("error") or "").strip() or "文件里没有解析到任何文字"
+                low = err.lower()
+                if "pypdf" in low or "pdfplumber" in low:
+                    out["error"] = (
+                        "解析失败：%s。PDF 需要服务器安装 pypdf（纯 Python 库，约 1MB）；"
+                        "复杂版式可另装 MinerU 侧车。Markdown / txt 无需任何依赖。" % err
+                    )
+                elif err.startswith("解析") or "失败" in err or "未安装" in err or "没有解析" in err:
+                    out["error"] = err
+                else:
+                    out["error"] = "解析失败：%s" % err
+                return out
+        else:
+            try:
+                from tools.document_importer import read_text
+            except ImportError as e:
+                out["error"] = "文档解析模块不可用：%s" % e
+                return out
+            try:
+                text = (read_text(path) or "").strip()
+            except ImportError as e:
+                out["error"] = "解析失败：%s" % e
+                return out
+            except Exception as e:
+                out["error"] = "解析失败：%s" % e
+                return out
         base_title = os.path.splitext(os.path.basename(filename))[0] or "导入的笔记"
         default_tags = ["#import", "#%s" % (ext.lstrip(".") or "file")]
+        if parse_engine:
+            default_tags.append("#%s" % parse_engine)
+        out["engine"] = parse_engine
     else:
         out["error"] = "不支持的文件类型：%s（支持 %s）" % (
             ext or "无扩展名", " / ".join(supported_extensions()))

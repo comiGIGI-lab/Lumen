@@ -393,13 +393,13 @@ onBeforeUnmount(reset)
           <h3>{{ t('trPage.engine') }}</h3>
           <p>
             <span>{{ t('trPage.engineName') }}</span>
-            <em>{{ engine.available ? engine.model : '—' }}</em>
+            <em>{{ engine.available ? [engine.engine, engine.model].filter(Boolean).join(' · ') : '—' }}</em>
           </p>
           <p>
             <span>{{ t('trPage.limit') }}</span>
             <em>{{ fmtClock(engine.max_seconds) }}</em>
           </p>
-          <small>{{ t('trPage.privacy') }}</small>
+          <small>{{ engine.engine === 'whisper.cpp' ? t('trPage.privacyWhisper') : t('trPage.privacy') }}</small>
         </div>
 
         <div class="card">

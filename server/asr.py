@@ -1,12 +1,18 @@
 # -*- coding: utf-8 -*-
-"""离线中文语音转写（Vosk）。
+"""离线中文语音转写。
+
+默认引擎是 Vosk（现网已部署，16 kHz PCM、无 ffmpeg）。
+whisper.cpp 作为**可选侧车**：二进制和 ggml 模型在仓库外，探测到才用，
+缺了静默回退 Vosk。不走 Docling ASR / openai-whisper。
+
+强制引擎：``STUDY_LIU_ASR_ENGINE=whisper|vosk``。
 
 设计要点（改动前请先读）：
 
 1. **导入期零依赖。** 整个后端目前是纯标准库，这是刻意保持的 —— 1.6G 内存的机器上
    多一个装不上的依赖就多一个起不来的可能。所以 vosk 只在**第一次真正要转写时**才 import，
    且 import 失败 / 模型缺失 / 动态库加载失败，都只让 ``available()`` 返回 False，
-   绝不让 api_server 起不来。
+   绝不让 api_server 起不来。whisper.cpp 同样只在转写时 subprocess 调用。
 
 2. **模型只加载一次。** Model 加载约 0.6s、常驻约 150MB（实测峰值 178MB）。
    必须复用同一个实例；用双检锁保护，否则并发首批请求会重复加载、内存直接翻倍。
@@ -126,8 +132,38 @@ def tidy(text: str) -> str:
     return out.strip()
 
 
+def _whisper_mod():
+    try:
+        import whisper_cpp
+        return whisper_cpp
+    except Exception:
+        return None
+
+
+def _force_engine():
+    return (os.environ.get("STUDY_LIU_ASR_ENGINE") or "").strip().lower()
+
+
+def _whisper_ready():
+    """whisper.cpp 是否可用。强制 vosk 时视为不可用。"""
+    if _force_engine() == "vosk":
+        return False, "已强制 Vosk（STUDY_LIU_ASR_ENGINE=vosk）", ""
+    w = _whisper_mod()
+    if w is None:
+        return False, "whisper_cpp 模块不可用", ""
+    return w.probe()
+
+
 def available():
     """探测可用性。返回 (ok, reason)。reason 为空串表示可用。"""
+    force = _force_engine()
+    w_ok, w_reason, _w_model = _whisper_ready()
+    if force == "whisper":
+        if w_ok:
+            return True, ""
+        return False, w_reason
+    if w_ok:
+        return True, ""
     try:
         _ensure_model()
     except RuntimeError as e:
@@ -138,12 +174,49 @@ def available():
 
 
 def status():
-    ok, reason = available()
+    force = _force_engine()
+    w_ok, w_reason, w_model = _whisper_ready()
+    vosk_ok, vosk_reason = False, ""
+    # whisper 已经能扛时不要再把 150MB Vosk 拉进 1.6G 机器。
+    if force == "vosk" or not w_ok:
+        try:
+            _ensure_model()
+            vosk_ok, vosk_reason = True, ""
+        except RuntimeError as e:
+            vosk_reason = str(e)
+        except Exception as e:
+            vosk_reason = "语音识别不可用：%s" % e
+    else:
+        vosk_reason = "未探测（当前走 whisper.cpp）"
+
+    use_whisper = w_ok and force != "vosk"
+    if force == "whisper":
+        use_whisper = w_ok
+        ok = w_ok
+        reason = "" if w_ok else w_reason
+    elif use_whisper:
+        ok, reason = True, ""
+    else:
+        ok, reason = vosk_ok, ("" if vosk_ok else vosk_reason)
+
+    if use_whisper:
+        engine, model = "whisper.cpp", w_model
+    elif vosk_ok:
+        engine, model = "vosk", os.path.basename(model_dir())
+    else:
+        engine, model = "", ""
+
     return {
         "ok": ok,
         "available": ok,
         "reason": reason,
-        "model": os.path.basename(model_dir()) if ok else "",
+        "engine": engine,
+        "model": model,
+        "backends": {
+            "whisper.cpp": {"available": w_ok, "reason": w_reason, "model": w_model},
+            "vosk": {"available": vosk_ok, "reason": vosk_reason if not vosk_ok else "",
+                     "model": os.path.basename(model_dir()) if vosk_ok else ""},
+        },
         "sample_rate": SAMPLE_RATE,
         "max_bytes": MAX_PCM_BYTES,
         "max_seconds": MAX_SECONDS,
@@ -164,6 +237,27 @@ def transcribe(pcm: bytes):
         raise RuntimeError("音频过长：%.1f 分钟，上限 %.0f 分钟"
                            % (len(pcm) / (SAMPLE_RATE * 2) / 60,
                               MAX_SECONDS / 60))
+
+    w_ok, w_reason, _w_model = _whisper_ready()
+    force = _force_engine()
+    use_whisper = w_ok and force != "vosk"
+    if force == "whisper" and not w_ok:
+        raise RuntimeError(w_reason)
+
+    if use_whisper:
+        w = _whisper_mod()
+        t0 = time.time()
+        r = w.transcribe(pcm)
+        elapsed = time.time() - t0
+        duration = len(pcm) / (SAMPLE_RATE * 2)
+        return {
+            "text": tidy(r.get("text") or ""),
+            "duration": round(duration, 2),
+            "elapsed": round(elapsed, 2),
+            "rtf": round(elapsed / duration, 3) if duration else 0,
+            "engine": "whisper.cpp",
+            "model": r.get("model") or "",
+        }
 
     model = _ensure_model()
 
@@ -198,4 +292,6 @@ def transcribe(pcm: bytes):
         "elapsed": round(elapsed, 2),
         # 语速比：<1 表示比实时快。实测服务器约 0.10（小模型 + 2 vCPU）
         "rtf": round(elapsed / duration, 3) if duration else 0,
+        "engine": "vosk",
+        "model": os.path.basename(model_dir()),
     }

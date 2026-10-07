@@ -387,7 +387,7 @@ sudo tail -20 /var/log/nginx/error.log | grep -i limiting || echo "  最近没�
 
 ---
 
-## 12. 语音转写（Vosk）—— 模型不在仓库里，换服务器必须手动搬
+## 12. 语音转写（Vosk 默认 / whisper.cpp 可选侧车）—— 模型不在仓库里，换服务器必须手动搬
 
 `/api/asr` 依赖两个**仓库外**的东西（模型 66MB，进不了 git，Gitee 会拒）：
 
@@ -425,4 +425,33 @@ PM2 常驻内存从 49MB 涨到约 162MB（峰值 178MB）；
 
 **回滚**：`rm -rf /home/admin/asr` 即彻底移除依赖；代码侧 revert 对应 commit 后
 重新 `npm run build` + `pm2 restart my-api`。部署前备份在 `/home/admin/backups/dist-pre-asr-*`。
+
+**whisper.cpp 可选侧车**（不要把 openai-whisper / Docling ASR 装进 api_server）：
+
+二进制和 ggml 模型同样放仓库外。中文必须用多语言模型（`ggml-small.bin` / `ggml-medium.bin`），**不要用 `*.en`**。浏览器已经把音频重采样成 16 kHz PCM，服务端只包 WAV 头，不依赖 ffmpeg。
+
+```bash
+# 示例路径（代码默认值）
+# /home/admin/asr/whisper/whisper-cli
+# /home/admin/asr/whisper/ggml-small.bin
+# 或用环境变量覆盖：
+# STUDY_LIU_WHISPER_BIN  STUDY_LIU_WHISPER_MODEL
+# 强制引擎：STUDY_LIU_ASR_ENGINE=whisper|vosk
+```
+
+`GET /api/asr` 现在会多 `engine` 与 `backends`：有 whisper.cpp 就优先；没有则继续 Vosk。两侧都缺时 `available=false`，界面照旧置灰。1.6G 机器上不要同时常驻 Vosk 大模型和 whisper medium。
+
+## 13. PDF 解析（pypdf 默认 / MinerU 可选侧车）
+
+`POST /api/knowledge/import` 的 HTTP 契约不变。数字文本 PDF 仍走 pypdf；文本层少于约 200 字且文件 ≥ 50KB 时，才尝试 `mineru-kit parse --tier basic`。Docling 不作为中文 PDF 主引擎，也不把 MinerU 4.0 整包 import 进 `api_server`。
+
+```bash
+# 可选：把 mineru-kit 放到 PATH，或
+# export STUDY_LIU_MINERU_BIN=/home/admin/asr/mineru/mineru-kit
+# export STUDY_LIU_MINERU_TIER=basic
+# 强制：STUDY_LIU_PDF_ENGINE=mineru|pypdf
+# 探测：curl -s localhost:8000/api/knowledge/capabilities
+```
+
+未装 MinerU 时导入照常工作，只是扫描件几乎抽不到字。不要在这台 1.6G 机器上用 `--tier advanced`。
 

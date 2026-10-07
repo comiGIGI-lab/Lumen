@@ -63,7 +63,7 @@ from crisis import (                                                 # noqa: E40
     strip_non_whitelist_numbers,
 )
 
-# 离线语音转写（Vosk）。刻意做成「可选模块」：asr 内部延迟 import vosk，
+# 离线语音转写。asr 内部默认 Vosk（延迟 import），whisper.cpp 是可选侧车；
 # 引擎/模型缺失只让 /api/asr 返回明确的中文提示，不会拖垮整个服务。
 import asr as asr_mod                                               # noqa: E402
 

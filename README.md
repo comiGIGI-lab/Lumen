@@ -29,13 +29,17 @@ ai-coding/
 │   └── dev.mjs               # 无额外依赖的双进程启动器（自动找 Python / 自动开浏览器）
 ├── tests/
 │   ├── safety_cases.py       # 内容安全回归用例
-│   └── run_safety_regression.py
+│   ├── run_safety_regression.py
+│   └── run_sidecar_regression.py  # MinerU / whisper.cpp 侧车回归（假 CLI）
 ├── server/
 │   ├── api_server.py         # ★ 纯标准库 HTTP API，直接 import study-liu 源码
 │   ├── safety_words.py       # 敏感词表（已拆出，不要塞回 api_server）
 │   ├── safety_gate.py        # 内容安全判定
 │   ├── safety_rules.py       # 拼音 / 豁免 / How-to
 │   ├── kb_ingest.py          # 知识库导入：解析、分块、入库
+│   ├── doc_parse.py          # PDF 侧车：MinerU 可选，pypdf 兜底
+│   ├── asr.py                # 语音转写：Vosk 默认，whisper.cpp 可选
+│   ├── whisper_cpp.py        # whisper.cpp CLI 封装（不 import openai-whisper）
 │   ├── form_parser.py        # multipart 解析（标准库）
 │   └── source.json.example   # 源码路径配置模板（可选，一般用不到）
 ├── vendor/
