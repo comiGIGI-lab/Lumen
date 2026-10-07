@@ -9,7 +9,7 @@
  * 所有业务逻辑都在后端（复用 study-liu 桌面版的 core / agents / tools），
  * 前端只做展示与交互。
  */
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, onMounted, ref, watch } from 'vue'
 import { useI18n } from '@/i18n'
 const { t } = useI18n()
 import AppHeader from './components/AppHeader.vue'
@@ -25,15 +25,15 @@ import SettingsDialog from './components/SettingsDialog.vue'
 import HistoryDialog from './components/HistoryDialog.vue'
 import SceneBackdrop from './components/SceneBackdrop.vue'
 import SpaceLayer from './components/SpaceLayer.vue'
-import KnowledgePage from './components/KnowledgePage.vue'
-import ImportPage from './components/ImportPage.vue'
-import TranscribePage from './components/TranscribePage.vue'
-import ChatPage from './components/ChatPage.vue'
-import StudySpacePage from './components/StudySpacePage.vue'
-import WrongBookPage from './components/WrongBookPage.vue'
-import LearningProgress from './components/LearningProgress.vue'
-import MindMapPage from './components/MindMapPage.vue'
-import ExportPreview from './components/ExportPreview.vue'
+const KnowledgePage = defineAsyncComponent(() => import('./components/KnowledgePage.vue'))
+const ImportPage = defineAsyncComponent(() => import('./components/ImportPage.vue'))
+const TranscribePage = defineAsyncComponent(() => import('./components/TranscribePage.vue'))
+const ChatPage = defineAsyncComponent(() => import('./components/ChatPage.vue'))
+const StudySpacePage = defineAsyncComponent(() => import('./components/StudySpacePage.vue'))
+const WrongBookPage = defineAsyncComponent(() => import('./components/WrongBookPage.vue'))
+const LearningProgress = defineAsyncComponent(() => import('./components/LearningProgress.vue'))
+const MindMapPage = defineAsyncComponent(() => import('./components/MindMapPage.vue'))
+const ExportPreview = defineAsyncComponent(() => import('./components/ExportPreview.vue'))
 import { usePlanStream } from './composables/usePlanStream'
 import { useSpace } from './composables/useSpace'
 import { useStudyTimer } from './composables/useStudyTimer'
