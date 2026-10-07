@@ -250,7 +250,8 @@ function cardStyle(i) {
   min-height: 100svh;
   display: flex;
   align-items: flex-end;
-  padding: 0 0 64px;
+  justify-content: center;
+  padding: 0 64px 64px;
   color: #f7f2ea;
   overflow: hidden;
 }
@@ -279,8 +280,10 @@ function cardStyle(i) {
 .wl-hero-inner {
   position: relative;
   z-index: 1;
-  max-width: 760px;
-  padding: 72px 32px 64px;
+  width: 100%;
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 72px 0 64px;
 }
 
 .wl-wordmark {
@@ -610,8 +613,12 @@ function cardStyle(i) {
 }
 
 @media (max-width: 860px) {
+  .wl-hero {
+    padding: 0 20px 48px;
+  }
+
   .wl-hero-inner {
-    padding: 56px 20px 48px;
+    padding: 56px 0 48px;
   }
 
   .wl-wordmark {
@@ -645,10 +652,10 @@ function cardStyle(i) {
 
 @media (max-width: 430px) {
   .wl-hero {
-    padding-bottom: 80px;
+    padding: 0 16px 80px;
   }
   .wl-hero-inner {
-    padding: 88px 16px 40px;
+    padding: 88px 0 40px;
   }
   .wl-wordmark {
     font-size: 48px;
