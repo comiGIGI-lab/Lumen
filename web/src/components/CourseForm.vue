@@ -327,8 +327,9 @@ const deadlineHint = computed(() => {
   background: var(--bg-soft);
   color: var(--text-secondary);
   border-radius: 999px;
-  padding: 2px 10px;
-  font-size: 11.5px;
+  min-height: 44px;
+  padding: 10px 12px;
+  font-size: 12px;
   transition: all 0.15s;
 }
 
@@ -372,8 +373,9 @@ const deadlineHint = computed(() => {
   background: var(--bg-card);
   color: var(--text-secondary);
   border-radius: 999px;
-  padding: 4px 12px;
-  font-size: 12px;
+  min-height: 44px;
+  padding: 10px 14px;
+  font-size: 13px;
 }
 .chip-btn.on {
   border-color: var(--primary);

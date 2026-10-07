@@ -241,8 +241,9 @@ onBeforeUnmount(() => {
     gap: 4px;
   }
   .nav-link {
-    padding: 5px 8px;
-    font-size: 11.5px;
+    min-height: 44px;
+    padding: 10px 12px;
+    font-size: 12px;
   }
 }
 

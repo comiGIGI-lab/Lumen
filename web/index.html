@@ -45,6 +45,9 @@
         stroke: #ece7e0;
         fill: #ece7e0;
       }
+      @media (prefers-reduced-motion: reduce) {
+        .hg-sand-top, .hg-sand-bot, .hg-stream, .hg-frame { animation: none; }
+      }
       #boot-hourglass.is-out {
         opacity: 0;
         pointer-events: none;
