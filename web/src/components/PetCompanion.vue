@@ -413,10 +413,11 @@ const interaction = usePetInteraction({
   onAction(action, exp) {
     if (typeof logExp === 'function') {
       logExp(`学伴互动·${action.name}`, exp)
-    } else {
+    } else if (typeof grantExp === 'function') {
       grantExp(exp)
     }
     showBubble(action.bubble, 'action')
+    showCenterToast(`学伴互动 +${exp} 经验`, 1800)
   },
   onCozyBubble(name) {
     showCenterToast(`${name} 蹭了蹭你的手指`, 3000)
@@ -429,7 +430,7 @@ const interaction = usePetInteraction({
 function handleMenuAction(action) {
   const res = interaction.runAction(action)
   if (!res.success) {
-    showBubble(`「${action.name}」冷却中，${res.remaining}s 后再试`, 'cooldown', 1500)
+    showCenterToast(`「${action.name}」冷却中，${res.remaining}s 后再试`, 1500)
   }
 }
 </script>
