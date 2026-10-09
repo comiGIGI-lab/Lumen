@@ -31,7 +31,7 @@ export const TAG_LABEL = {
 }
 
 /** 从文件导入的条目会带这些标签之一 */
-const FILE_TAGS = ['pdf', 'md', 'markdown', 'txt', 'text', 'docx', 'pptx', 'image', 'vision']
+const FILE_TAGS = ['pdf', 'md', 'markdown', 'txt', 'text', 'image', 'vision']
 
 /** 后端扩展名标签 → 界面上的文档类型（TYPE_LABEL 的键） */
 const TYPE_OF = {
@@ -40,8 +40,6 @@ const TYPE_OF = {
   markdown: 'md',
   txt: 'txt',
   text: 'txt',
-  docx: 'docx',
-  pptx: 'pptx',
   image: 'image',
   vision: 'image',
   paste: 'note',
@@ -207,12 +205,12 @@ export function useKnowledge() {
    * @param {string} q 关键词。传了就走后端的打分检索（能命中改写过的说法）；
    *                   不传就取全部。空结果时保留上一次的数据不闪屏。
    */
-  async function refresh(q = '') {
+  async function refresh(q = '', options = {}) {
     loading.value = true
     error.value = ''
     lastQuery.value = q
     try {
-      const res = await api.knowledgeList(q, 50)
+      const res = await api.knowledgeList(q, 50, options)
       applyGroups(groupEntries(res.items || []))
       loadedOnce = true
     } catch (e) {
@@ -228,10 +226,16 @@ export function useKnowledge() {
   }
 
   /** 新建笔记（真实写入后端；正文留空作为待导入材料的容器） */
-  async function createNote(title = '未命名笔记') {
+  async function createNote(title = '未命名笔记', options = {}) {
     const name = String(title || '').trim() || '未命名笔记'
     try {
-      const res = await api.knowledgeCreate({ title: name, content: '', tags: ['#manual'] })
+      const res = await api.knowledgeCreate({
+        title: name,
+        content: '',
+        tags: ['#manual'],
+        scope: options.scope || 'private',
+        category: options.category || '',
+      })
       await refresh(lastQuery.value)
       pickNote(`src:${name}`) // 若已存在同名来源会被并到同一组
       return res.id
@@ -242,29 +246,6 @@ export function useKnowledge() {
   }
 
   /** 删除某个「文档」= 删掉它底下的全部条目 */
-  /**
-   * 删掉整条笔记 —— 即删它下面**所有文档**的所有分块条目。
-   * 后端是扁平条目，前端按来源聚合成「笔记 / 文档」，
-   * 所以「删笔记」在前端就是把它名下所有文档的条目逐个删掉。
-   * 返回删掉的条目数（0 表示这条笔记下本来就没有材料）。
-   */
-  async function removeNote(noteId) {
-    const docs = docsByNote.value[noteId] || []
-    const ids = []
-    for (const d of docs) {
-      ids.push(...(docEntries.value[d.id] || []))
-    }
-    if (!ids.length) return 0
-    try {
-      for (const id of ids) await api.knowledgeDelete(id)
-      await refresh(lastQuery.value)
-      return ids.length
-    } catch (e) {
-      error.value = e.message || String(e)
-      return -1
-    }
-  }
-
   async function removeDoc(noteId, docId) {
     const ids = docEntries.value[docId] || []
     if (!ids.length) return
@@ -300,7 +281,6 @@ export function useKnowledge() {
     notes,
     docsByNote,
     chunksByDoc,
-    docEntries,
     currentId,
     current,
     currentDocs,
@@ -314,7 +294,6 @@ export function useKnowledge() {
     pickNote,
     createNote,
     removeDoc,
-    removeNote,
     retryDoc,
     setRemark,
   }

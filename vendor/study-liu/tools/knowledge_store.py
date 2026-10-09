@@ -49,16 +49,24 @@ class KnowledgeStore:
         with open(self.filepath, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
 
-    def add(self, title, content, tags=None):
+    def add(self, title, content, tags=None, owner="", scope="public", category=""):
         """
         添加一条笔记。
         参数：
             title: 标题
             content: 内容
             tags: 标签列表（可选）
+            owner: 归属账号；旧调用不传，按公共资料保存
+            scope: private / shared / public；旧调用默认 public
+            category: 用户分类；没有时回退为 tags 的第一项
         返回：
             新增笔记的 id
         """
+        clean_tags = [str(tag).strip() for tag in (tags or []) if str(tag).strip()]
+        scope = scope if scope in ("private", "shared", "public") else "public"
+        category = str(category or "").strip()
+        if not category and clean_tags:
+            category = clean_tags[0]
         with self._lock:
             data = self._load()
             # id 自增：取现有最大 id + 1
@@ -67,12 +75,48 @@ class KnowledgeStore:
                 "id": next_id,
                 "title": title,
                 "content": content,
-                "tags": tags or [],
+                "tags": clean_tags,
+                "owner": str(owner or "").strip(),
+                "scope": scope,
+                "category": category,
                 "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             }
             data.append(note)
             self._save(data)
             return next_id
+
+    def normalize(self, item):
+        """给旧条目补齐归属字段，只补读取结果，不回写文件。"""
+        note = dict(item)
+        tags = [str(tag).strip() for tag in (note.get("tags") or []) if str(tag).strip()]
+        note["tags"] = tags
+        note["owner"] = str(note.get("owner") or "").strip()
+        scope = note.get("scope")
+        if scope not in ("private", "shared", "public"):
+            scope = "public"
+        note["scope"] = scope
+        note["category"] = str(note.get("category") or (tags[0] if tags else "")).strip()
+        return note
+
+    def visible(self, username=""):
+        """返回当前账号可见的条目：公共、共享，以及本人私有。"""
+        username = str(username or "").strip()
+        out = []
+        for item in self._load():
+            note = self.normalize(item)
+            if note["scope"] == "private" and note["owner"] != username:
+                continue
+            out.append(note)
+        return out
+
+    def categories(self, username=""):
+        """从可见条目汇总分类，作为没有独立分类表时的可增补分类来源。"""
+        seen = []
+        for note in self.visible(username):
+            category = note.get("category") or ""
+            if category and category not in seen:
+                seen.append(category)
+        return seen
 
     def search(self, keyword):
         """
@@ -120,6 +164,11 @@ class KnowledgeStore:
         """
         from tools.text_match import rank
         return rank(query, self._load(), top_k=top_k)
+
+    def retrieve_visible(self, query, username="", top_k=5):
+        """只在当前账号可见的条目里打分检索。"""
+        from tools.text_match import rank
+        return rank(query, self.visible(username), top_k=top_k)
 
     def delete(self, note_id):
         """

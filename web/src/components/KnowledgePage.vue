@@ -8,28 +8,24 @@
  */
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from '@/i18n'
-import { useAuth } from '@/composables/useAuth'
 import SnakeBar from './SnakeBar.vue'
 import { api } from '@/api/client'
 import { TAG_LABEL, useKnowledge } from '@/composables/useKnowledge'
 
 const emit = defineEmits(['back', 'open-import', 'go-course'])
 const { t } = useI18n()
-// 删除是管理员专属；服务端还会再校验一次角色
-const { isAdmin } = useAuth()
 
-const TAGS = [
-  { id: 'all', label: '全部' },
-  { id: 'high-math', label: '高数' },
-  { id: 'english', label: '英语' },
-  { id: 'mistakes', label: '错题' },
-  { id: 'others', label: '其他' },
+const SCOPES = [
+  { id: 'all', label: '全部可见' },
+  { id: 'private', label: '我的私有' },
+  { id: 'shared', label: '团队共享' },
+  { id: 'public', label: '公共资料' },
 ]
 
-const TYPE_LABEL = { pdf: 'PDF', image: '图片', md: 'Markdown', txt: '文本', note: '笔记', docx: 'Word', pptx: 'PPT' }
+const TYPE_LABEL = { pdf: 'PDF', image: '图片', md: 'Markdown', txt: '文本', note: '笔记' }
 const STATUS_LABEL = { ready: '已入库', parsing: '解析中', queue: '排队中', failed: '失败' }
 
-const ACCEPT = '.pdf,.md,.markdown,.txt,.text,.docx,.pptx,.png,.jpg,.jpeg,.webp,.bmp,.gif'
+const ACCEPT = '.pdf,.md,.markdown,.txt,.text,.png,.jpg,.jpeg,.webp,.bmp,.gif'
 const MAX_FILES = 10
 const MAX_BYTES = 16 * 1024 * 1024
 
@@ -48,11 +44,16 @@ const {
   createNote,
   removeDoc,
   retryDoc,
-  setRemark, docsByNote, removeNote, docEntries } = useKnowledge()
+  setRemark,
+} = useKnowledge()
 
 ensureLoaded()
 
-const filter = ref('all')
+const scope = ref('all')
+const category = ref('')
+const categories = ref([])
+const uploadScope = ref('private')
+const uploadCategory = ref('')
 const keyword = ref('')
 const showImport = ref(false)
 const savedHint = ref(false)
@@ -69,26 +70,55 @@ let hintTimer = 0
 api.knowledgeCapabilities().then((c) => { caps.value = c }).catch(() => {})
 
 /** 搜索防抖 300ms 后打后端；清空则回到全量列表 */
+async function loadCategories() {
+  try {
+    const res = await api.knowledgeCategories()
+    categories.value = res.categories || []
+  } catch (_) {
+    categories.value = []
+  }
+}
+
+function listOptions() {
+  return {
+    scope: scope.value === 'all' ? '' : scope.value,
+    category: category.value,
+  }
+}
+
 watch(keyword, (q) => {
   clearTimeout(searchTimer)
-  searchTimer = setTimeout(() => refresh(String(q || '').trim()), 300)
+  searchTimer = setTimeout(() => refresh(String(q || '').trim(), listOptions()), 300)
 })
+watch([scope, category], () => refresh(keyword.value.trim(), listOptions()))
+loadCategories()
 
 const empty = computed(() => !loading.value && notes.value.length === 0)
 
-const filtered = computed(() => {
-  if (filter.value === 'all') return notes.value
-  return notes.value.filter((n) => n.tag === filter.value)
-})
+const filtered = computed(() => notes.value)
 
 function reload() {
-  refresh(lastQuery.value || '')
+  refresh(lastQuery.value || '', listOptions())
+  loadCategories()
+}
+
+async function addCategory() {
+  const name = window.prompt('新分类名称', '')
+  if (name === null) return
+  const categoryName = name.trim()
+  if (!categoryName) return
+  await api.knowledgeCreateCategory(categoryName)
+  uploadCategory.value = categoryName
+  await loadCategories()
 }
 
 function newNote() {
   const title = window.prompt('新笔记标题', '未命名笔记')
   if (title === null) return
-  createNote(title.trim() || '未命名笔记')
+  createNote(title.trim() || '未命名笔记', {
+    scope: uploadScope.value,
+    category: uploadCategory.value,
+  })
 }
 
 function saveRemark() {
@@ -99,20 +129,6 @@ function saveRemark() {
   hintTimer = setTimeout(() => {
     savedHint.value = false
   }, 1400)
-}
-
-async function deleteNote(note) {
-  if (!note) return
-  const docs = docsByNote.value[note.id] || []
-  const count = docs.reduce((sum, d) => sum + (docEntries.value[d.id] || []).length, 0)
-  // 破坏性操作，且是整条笔记，文案里写清不可恢复
-  const ok = window.confirm(
-    `删除笔记「${note.title}」？\n\n将同时删除它下面的 ${docs.length} 个文档、共 ${count} 个分块，且不可恢复。`,
-  )
-  if (!ok) return
-  const n = await removeNote(note.id)
-  if (n === 0) window.alert('这条笔记下没有材料可删。')
-  else if (n < 0) window.alert('删除失败，请查看后端日志。')
 }
 
 async function deleteDoc(doc) {
@@ -187,6 +203,8 @@ async function startUpload() {
     try {
       const res = await api.knowledgeImport([row.file], {
         title: current.value?.title || '', // 归到当前正在看的这条笔记下
+        scope: uploadScope.value,
+        category: uploadCategory.value,
       })
       const r = (res.results || [])[0] || {}
       if (r.ok) {
@@ -202,7 +220,7 @@ async function startUpload() {
       row.error = e.message || String(e)
     }
   }
-  await refresh('')
+  await refresh('', listOptions())
   keyword.value = ''
   running.value = false
   importNote.value = ok
@@ -232,6 +250,23 @@ onBeforeUnmount(() => {
     </div>
 
     <div class="kb-search">
+      <select v-model="scope" aria-label="资料空间">
+        <option v-for="item in SCOPES" :key="item.id" :value="item.id">{{ item.label }}</option>
+      </select>
+      <select v-model="category" aria-label="资料分类">
+        <option value="">全部分类</option>
+        <option v-for="item in categories" :key="item" :value="item">{{ item }}</option>
+      </select>
+      <button type="button" class="ghost" @click="addCategory">新增分类</button>
+      <select v-model="uploadScope" aria-label="上传空间">
+        <option value="private">上传到我的私有</option>
+        <option value="shared">上传到团队共享</option>
+        <option value="public">上传到公共资料</option>
+      </select>
+      <select v-model="uploadCategory" aria-label="上传分类">
+        <option value="">上传时不指定分类</option>
+        <option v-for="item in categories" :key="`upload-${item}`" :value="item">{{ item }}</option>
+      </select>
       <input v-model="keyword" type="search" :placeholder="t('knowledgePage.1')" />
       <span v-if="loading" class="kb-state">{{ t('knowledgePage.10') }}</span>
       <span v-else-if="error" class="kb-state err">{{ error }}</span>
@@ -261,28 +296,18 @@ onBeforeUnmount(() => {
           <button type="button" class="ghost small" @click="reload">{{ t('knowledgePage.23') }}</button>
         </div>
         <div class="note-list">
-          <!-- 用 div 而不是 button：里面还要放删除按钮，button 不能嵌套 button -->
-          <div
+          <button
             v-for="n in filtered"
             :key="n.id"
+            type="button"
             class="note"
             :class="{ on: n.id === currentId }"
-            role="button"
-            tabindex="0"
             @click="pickNote(n.id)"
-            @keydown.enter="pickNote(n.id)"
           >
             <span class="note-t">{{ n.title }}</span>
             <span class="chip">{{ TAG_LABEL[n.tag] }}</span>
             <span class="note-d">{{ n.updated }}</span>
-            <button
-              v-if="isAdmin"
-              type="button"
-              class="note-del"
-              :title="t('knowledgePage.38')"
-              @click.stop="deleteNote(n)"
-            >✕</button>
-          </div>
+          </button>
           <p v-if="!filtered.length" class="none">{{ t('knowledgePage.24') }}</p>
         </div>
         <button type="button" class="ghost new" @click="newNote">{{ t('knowledgePage.25') }}</button>
@@ -291,13 +316,13 @@ onBeforeUnmount(() => {
       <section v-if="current" class="detail">
         <div class="chips">
           <button
-            v-for="t in TAGS"
-            :key="t.id"
+            v-for="item in SCOPES"
+            :key="item.id"
             type="button"
             class="chip"
-            :class="{ on: filter === t.id }"
-            @click="filter = t.id"
-          >{{ t.label }}</button>
+            :class="{ on: scope === item.id }"
+            @click="scope = item.id"
+          >{{ item.label }}</button>
         </div>
 
         <label class="title-lab">
@@ -338,8 +363,7 @@ onBeforeUnmount(() => {
                 <td>{{ d.chunks || '—' }}</td>
                 <td class="ops">
                   <button v-if="d.status === 'failed'" type="button" class="danger" @click="retryDoc(d)">{{ t('knowledgePage.37') }}</button>
-                  <button v-if="isAdmin" type="button" class="ghost small" @click="deleteDoc(d)">{{ t('knowledgePage.38') }}</button>
-                  <span v-else class="admin-only" :title="t('auth.adminOnlyTip')">{{ t('auth.adminOnly') }}</span>
+                  <button type="button" class="ghost small" @click="deleteDoc(d)">{{ t('knowledgePage.38') }}</button>
                 </td>
               </tr>
             </tbody>
@@ -732,33 +756,5 @@ th, td {
   .meta, .empty ol { grid-template-columns: 1fr; }
   .kb-actions { width: 100%; }
   .kb-actions button { flex: 1 1 auto; }
-}
-
-/* 笔记项的删除按钮：平时淡出，hover 才明显，避免误点 */
-.note {
-  position: relative;
-}
-.note-del {
-  position: absolute;
-  top: 6px;
-  right: 6px;
-  width: 20px;
-  height: 20px;
-  border: 0;
-  border-radius: 50%;
-  background: transparent;
-  color: var(--text-3, #8b8378);
-  font-size: 11px;
-  line-height: 1;
-  cursor: pointer;
-  opacity: 0;
-  transition: opacity 0.15s, background 0.15s, color 0.15s;
-}
-.note:hover .note-del {
-  opacity: 1;
-}
-.note-del:hover {
-  background: rgba(229, 21, 32, 0.12);
-  color: #c4101a;
 }
 </style>

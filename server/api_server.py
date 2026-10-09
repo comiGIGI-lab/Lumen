@@ -778,7 +778,9 @@ class ApiHandler(BaseHTTPRequestHandler):
     def _cors(self):
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type, X-Client-Id")
+        self.send_header(
+            "Access-Control-Allow-Headers",
+            "Content-Type, X-Client-Id, X-Auth-Token")
         # 跨域下前端默认读不到 Content-Disposition，导出时拿不到文件名；
         # 显式放行这个响应头，前端就能用后端定的文件名。
         self.send_header("Access-Control-Expose-Headers", "Content-Disposition")
@@ -872,12 +874,18 @@ class ApiHandler(BaseHTTPRequestHandler):
             traceback.print_exc()
             return self._send_json({"ok": False, "error": "上传解析失败：%s" % e}, 400)
 
+        user = self._auth()
+        if not user:
+            return self._send_json({"ok": False, "error": "请先登录后再上传"}, 401)
+
         files = parsed["files"]
         if not files:
             return self._send_json({"ok": False, "error": "没有收到文件"}, 400)
 
         fields = parsed["fields"]
         tags = [t.strip() for t in (fields.get("tags") or "").split(",") if t.strip()]
+        scope = self._knowledge_scope(fields.get("scope"))
+        category = (fields.get("category") or "").strip()
         # 「归入的笔记名」：界面选了某条笔记时传过来，这批文件的块都用它作前缀，
         # 分组时就聚到同一条笔记下；不传则每个文件按自己的文件名各成一条。
         group_title = (fields.get("title") or "").strip()
@@ -897,7 +905,9 @@ class ApiHandler(BaseHTTPRequestHandler):
             path = None
             try:
                 path = save_upload(f["data"], f["filename"], DATA_DIR)
-                r = ingest(path, f["filename"], tags=tags, store=store, title=group_title)
+                r = ingest(
+                    path, f["filename"], tags=tags, store=store, title=group_title,
+                    owner=user["username"], scope=scope, category=category)
             except Exception as e:
                 traceback.print_exc()
                 r = {"ok": False, "kind": "", "notes": [], "chunks": 0, "chars": 0,
@@ -918,7 +928,7 @@ class ApiHandler(BaseHTTPRequestHandler):
             "imported": ok_n,
             "failed": len(results) - ok_n,
             "results": results,
-            "total": len(store.list_all()),
+            "total": len(store.visible(user["username"])),
         }, 200 if ok_n > 0 else 400)
 
     def _handle_asr_transcribe(self):
@@ -967,6 +977,11 @@ class ApiHandler(BaseHTTPRequestHandler):
     def _auth(self):
         """取当前登录用户；未登录返回 None。"""
         return accounts.check_token(self.headers.get("X-Auth-Token") or "")
+
+    def _knowledge_scope(self, raw):
+        """上传空间只接受三档；缺省或非法值都落到本人私有空间。"""
+        scope = str(raw or "").strip().lower()
+        return scope if scope in ("private", "shared", "public") else "private"
 
     def _require_admin(self):
         """管理员校验。
@@ -1158,11 +1173,28 @@ class ApiHandler(BaseHTTPRequestHandler):
                 # 前端据此置灰不支持的入口（例如没装 pypdf 时 PDF 不可用）
                 return self._send_json({"ok": True, **kb_capabilities()})
 
+            if path == "/api/knowledge/categories":
+                user = self._auth()
+                store = KnowledgeStore()
+                username = (user or {}).get("username", "")
+                return self._send_json({
+                    "ok": True,
+                    "categories": store.categories(username),
+                })
+
             if path == "/api/knowledge":
+                user = self._auth()
+                username = (user or {}).get("username", "")
                 q = (query.get("q") or [""])[0].strip()
+                scope = (query.get("scope") or [""])[0].strip().lower()
+                category = (query.get("category") or [""])[0].strip()
                 store = KnowledgeStore()
                 if not q:
-                    items = store.list_all()
+                    items = store.visible(username)
+                    if scope in ("private", "shared", "public"):
+                        items = [item for item in items if item.get("scope") == scope]
+                    if category:
+                        items = [item for item in items if item.get("category") == category]
                     return self._send_json({"items": items, "total": len(items)})
                 # 打分检索：替代原来的「整句子串匹配」。
                 # 旧实现只有措辞和笔记原文高度一致才命中，口语化提问一律搜不到。
@@ -1170,7 +1202,7 @@ class ApiHandler(BaseHTTPRequestHandler):
                     top_k = max(1, min(50, int((query.get("top_k") or ["20"])[0])))
                 except ValueError:
                     top_k = 20
-                hits = store.retrieve(q, top_k=top_k)
+                hits = store.retrieve_visible(q, username, top_k=top_k)
                 items = []
                 for note, score, detail in hits:
                     it = dict(note)
@@ -1259,11 +1291,32 @@ class ApiHandler(BaseHTTPRequestHandler):
                     return self._send_json({"ok": False, "error": msg}, 400)
                 return self._send_json({"ok": True, "message": msg, "users": accounts.list_users()})
 
+            if path == "/api/knowledge/categories":
+                user = self._auth()
+                if not user:
+                    return self._send_json({"ok": False, "error": "请先登录后再添加分类"}, 401)
+                category = str(body.get("category") or "").strip()
+                if not category or len(category) > 24:
+                    return self._send_json({"ok": False, "error": "分类名需为 1–24 个字符"}, 400)
+                store = KnowledgeStore()
+                note_id = store.add(
+                    title=category, content="", tags=[category],
+                    owner=user["username"], scope="private", category=category)
+                return self._send_json({
+                    "ok": True, "id": note_id, "category": category,
+                    "categories": store.categories(user["username"]),
+                })
+
             if path == "/api/knowledge":
                 # 粘贴文本入库（与上传导入共用分块 + 内容安全逻辑）
+                user = self._auth()
+                if not user:
+                    return self._send_json({"ok": False, "error": "请先登录后再上传"}, 401)
                 text = (body.get("content") or body.get("text") or "").strip()
                 title = (body.get("title") or "").strip()
                 tags = body.get("tags")
+                scope = self._knowledge_scope(body.get("scope"))
+                category = str(body.get("category") or "").strip()
                 if isinstance(tags, str):
                     tags = [t.strip() for t in tags.split(",") if t.strip()]
 
@@ -1281,7 +1334,8 @@ class ApiHandler(BaseHTTPRequestHandler):
                     try:
                         note_id = store.add(
                             title=title, content="",
-                            tags=tags if isinstance(tags, list) and tags else ["#manual"])
+                            tags=tags if isinstance(tags, list) and tags else ["#manual"],
+                            owner=user["username"], scope=scope, category=category)
                     except Exception as e:
                         return self._send_json({"ok": False, "error": "写入失败：%s" % e}, 500)
                     return self._send_json({
@@ -1294,7 +1348,9 @@ class ApiHandler(BaseHTTPRequestHandler):
                 if len(text) > 100_000:
                     return self._send_json(
                         {"ok": False, "error": "内容过长（上限 10 万字）"}, 400)
-                r = ingest_text(text, title=title or None, tags=tags, store=store)
+                r = ingest_text(
+                    text, title=title or None, tags=tags, store=store,
+                    owner=user["username"], scope=scope, category=category)
                 r["total"] = len(store.list_all())
                 return self._send_json(r, 200 if r.get("ok") else 400)
 
@@ -1559,16 +1615,27 @@ class ApiHandler(BaseHTTPRequestHandler):
                 })
 
             if path.startswith("/api/knowledge/"):
-                # 删除不可逆，且知识库是多人共用的 —— 只允许管理员
-                guard = self._require_admin()
-                if guard:
-                    return self._send_json(guard[0], guard[1])
+                # 删除不可逆。管理员维持原权限；普通登录用户只能删除自己拥有的条目。
+                # 没有 owner 的旧公共资料仍只允许管理员删除。
                 raw_id = urllib.parse.unquote(path[len("/api/knowledge/"):])
                 try:
                     note_id = int(raw_id)
                 except ValueError:
                     return self._send_json({"ok": False, "error": "id 必须是数字"}, 400)
+                user = self._auth()
+                if not user:
+                    return self._send_json({"ok": False, "error": "请先登录后再删除"}, 401)
                 store = KnowledgeStore()
+                target = next(
+                    (store.normalize(item) for item in store.list_all()
+                     if item.get("id") == note_id),
+                    None)
+                if not target:
+                    return self._send_json({"ok": False, "error": "未找到该笔记"}, 404)
+                owner = str(target.get("owner") or "").strip()
+                is_admin = user.get("role") == "admin"
+                if not is_admin and (not owner or owner != user.get("username")):
+                    return self._send_json({"ok": False, "error": "只能删除自己的资料"}, 403)
                 if not store.delete(note_id):
                     return self._send_json({"ok": False, "error": "未找到该笔记"}, 404)
                 return self._send_json({

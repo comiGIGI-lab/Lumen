@@ -23,25 +23,12 @@ export function clientId() {
   return id
 }
 
-/**
- * 登录 token —— 管理员身份靠它带到后端（X-Auth-Token 头）。
- * 存在 localStorage，刷新不掉线；校验由后端做，前端只负责携带。
- */
-export function authToken() {
-  try {
-    return localStorage.getItem('zjxt.auth.token') || ''
-  } catch (_) {
-    return ''
-  }
-}
-
 async function request(path, options = {}) {
   const res = await fetch(`${BASE}${path}`, {
     ...options,
     headers: {
       'Content-Type': 'application/json',
       'X-Client-Id': clientId(),
-      'X-Auth-Token': authToken(),
       ...(options.headers || {}),
     },
   })
@@ -59,27 +46,6 @@ async function request(path, options = {}) {
 }
 
 export const api = {
-  /** 登录。成功返回 {ok, token, username, role}；失败返回 {ok:false, error}。 */
-  login(username, password) {
-    return request('/login', {
-      method: 'POST',
-      body: JSON.stringify({ username, password }),
-    })
-  },
-
-  /** 注册。只创建普通账号，成功后直接返回 token（注册即登录）。 */
-  register(username, password) {
-    return request('/register', {
-      method: 'POST',
-      body: JSON.stringify({ username, password }),
-    })
-  },
-
-  /** 当前登录用户（未登录时 ok=false）。用来在刷新后校验本地 token 是否还有效。 */
-  me() {
-    return request('/me')
-  },
-
   /** 启动元信息：运行模式 / 用户画像 / 可选项 / 历史 */
   bootstrap() {
     return request('/bootstrap')
@@ -209,9 +175,11 @@ export const api = {
    * 带 q 时后端走「分词 + 字段加权 + 覆盖率」打分检索，
    * 返回的条目会多出 _score（分数）与 _match（命中明细），按分数降序。
    */
-  knowledgeList(q = '', topK = 50) {
+  knowledgeList(q = '', topK = 50, { scope = '', category = '' } = {}) {
     const qs = new URLSearchParams()
     if (q) qs.set('q', q)
+    if (scope) qs.set('scope', scope)
+    if (category) qs.set('category', category)
     if (topK) qs.set('top_k', String(topK))
     const tail = qs.toString()
     return request(`/knowledge${tail ? '?' + tail : ''}`)
@@ -226,10 +194,21 @@ export const api = {
    * 新建一条知识库笔记（正文可留空，作为待导入材料的容器）。
    * tags 可传数组或逗号分隔的字符串。
    */
-  knowledgeCreate({ title = '', content = '', tags = [] } = {}) {
+  knowledgeCreate({ title = '', content = '', tags = [], scope = 'private', category = '' } = {}) {
     return request('/knowledge', {
       method: 'POST',
-      body: JSON.stringify({ title, content, tags }),
+      body: JSON.stringify({ title, content, tags, scope, category }),
+    })
+  }
+
+  knowledgeCategories() {
+    return request('/knowledge/categories')
+  }
+
+  knowledgeCreateCategory(category) {
+    return request('/knowledge/categories', {
+      method: 'POST',
+      body: JSON.stringify({ category }),
     })
   },
 
@@ -253,7 +232,7 @@ export const api = {
    *   onProgress —— (0~1) 上传进度回调
    * @returns {Promise<object>} 后端返回 {ok, imported, failed, results, total}
    */
-  knowledgeImport(files, { tags = [], title = '', onProgress } = {}) {
+  knowledgeImport(files, { tags = [], title = '', scope = 'private', category = '', onProgress } = {}) {
     return new Promise((resolve, reject) => {
       const list = Array.from(files || [])
       if (!list.length) {
@@ -264,10 +243,13 @@ export const api = {
       list.forEach((f) => form.append('file', f, f.name))
       if (tags.length) form.append('tags', tags.join(','))
       if (title) form.append('title', title)
+      form.append('scope', scope || 'private')
+      if (category) form.append('category', category)
 
       const xhr = new XMLHttpRequest()
       xhr.open('POST', `${BASE}/knowledge/import`)
       xhr.setRequestHeader('X-Client-Id', clientId()) // 不设 Content-Type，交给浏览器
+      if (authToken()) xhr.setRequestHeader('X-Auth-Token', authToken())
       xhr.upload.onprogress = (e) => {
         if (e.lengthComputable && onProgress) onProgress(e.loaded / e.total)
       }
@@ -375,64 +357,6 @@ export const api = {
   /** 删除某门课的导图 */
   mindmapDelete(course) {
     return request(`/mindmap/${encodeURIComponent(course)}`, { method: 'DELETE' })
-  },
-
-  // ---------------- 语音转写 ----------------
-
-  /**
-   * 语音转写能力探测。
-   * 引擎/模型没装好时（例如换服务器忘了搬模型），这里就能拿到原因，
-   * 界面可以提前置灰并说明怎么修，而不是让用户白录一遍再失败。
-   */
-  asrStatus() {
-    return request('/asr')
-  },
-
-  /**
-   * 上传 16k 单声道 16bit PCM（Int16Array 或其 ArrayBuffer）做**离线**转写。
-   *
-   * ⚠️ 刻意不复用 request()，两个原因：
-   *   1. request() 强制 `Content-Type: application/json`，而这里发的是原始二进制；
-   *   2. 8 分钟音频约 15MB，要用 XHR 才能拿到真实上传进度。
-   *
-   * 采样率转换在调用方完成（见 utils/audio.js 的 decodeToPcm16k）——
-   * 服务器没装 ffmpeg，也不打算装。
-   *
-   * @returns {Promise<{ok:boolean, text:string, duration:number, elapsed:number, rtf:number}>}
-   */
-  asrTranscribe(pcm, { onProgress } = {}) {
-    return new Promise((resolve, reject) => {
-      const buf = pcm instanceof ArrayBuffer ? pcm : pcm.buffer
-      if (!buf || !buf.byteLength) {
-        reject(new Error('没有音频数据'))
-        return
-      }
-      const xhr = new XMLHttpRequest()
-      xhr.open('POST', `${BASE}/asr`)
-      xhr.setRequestHeader('Content-Type', 'application/octet-stream')
-      xhr.setRequestHeader('X-Client-Id', clientId())
-      xhr.upload.onprogress = (e) => {
-        if (e.lengthComputable && onProgress) onProgress(e.loaded / e.total)
-      }
-      xhr.onload = () => {
-        let data = {}
-        try {
-          data = JSON.parse(xhr.responseText)
-        } catch (_) {
-          /* 后端异常时可能不是 JSON */
-        }
-        if (xhr.status >= 200 && xhr.status < 300 && data.ok !== false) {
-          resolve(data)
-        } else {
-          reject(new Error(data.error || `转写失败（HTTP ${xhr.status}）`))
-        }
-      }
-      xhr.onerror = () => reject(new Error('网络错误，音频没传上去'))
-      xhr.ontimeout = () => reject(new Error('转写超时，请换一段更短的音频'))
-      // 服务器实测约 10 倍实时（8 分钟音频 ≈ 50 秒），给足余量
-      xhr.timeout = 420000
-      xhr.send(buf)
-    })
   },
 }
 
