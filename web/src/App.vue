@@ -1160,13 +1160,15 @@ const degradedBanner = computed(() => {
 /* ---------- Toast ---------- */
 .toasts {
   position: fixed;
-  top: 16px;
+  /* 顶栏 z-index 128，会盖住右上角 16px 处的提示。挂到顶栏正下方，不改文案、不抢导航。 */
+  top: 76px;
   right: 16px;
-  z-index: 100;
+  z-index: 126;
   display: flex;
   flex-direction: column;
   gap: 8px;
   max-width: 340px;
+  pointer-events: none;
 }
 
 .toast {
@@ -1179,6 +1181,7 @@ const degradedBanner = computed(() => {
   background: var(--bg-card);
   border-left: 4px solid var(--primary);
   color: var(--text-secondary);
+  pointer-events: auto;
 }
 
 .toast.t-success {
@@ -1194,6 +1197,10 @@ const degradedBanner = computed(() => {
 }
 
 @media (max-width: 860px) {
+  .toasts {
+    top: 64px;
+    right: 12px;
+  }
   .main {
     padding: 14px 16px 22px;
   }
@@ -1209,6 +1216,12 @@ const degradedBanner = computed(() => {
 }
 
 @media (max-width: 430px) {
+  .toasts {
+    top: 108px;
+    right: 12px;
+    left: 12px;
+    max-width: none;
+  }
   .main.under-wins {
     padding-top: 248px;
     padding-bottom: 96px;
