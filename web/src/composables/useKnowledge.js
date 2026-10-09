@@ -31,7 +31,7 @@ export const TAG_LABEL = {
 }
 
 /** 从文件导入的条目会带这些标签之一 */
-const FILE_TAGS = ['pdf', 'md', 'markdown', 'txt', 'text', 'image', 'vision']
+const FILE_TAGS = ['pdf', 'md', 'markdown', 'txt', 'text', 'docx', 'pptx', 'image', 'vision']
 
 /** 后端扩展名标签 → 界面上的文档类型（TYPE_LABEL 的键） */
 const TYPE_OF = {
@@ -40,6 +40,8 @@ const TYPE_OF = {
   markdown: 'md',
   txt: 'txt',
   text: 'txt',
+  docx: 'docx',
+  pptx: 'pptx',
   image: 'image',
   vision: 'image',
   paste: 'note',

@@ -26,10 +26,10 @@ const TAGS = [
   { id: 'others', label: '其他' },
 ]
 
-const TYPE_LABEL = { pdf: 'PDF', image: '图片', md: 'Markdown', txt: '文本', note: '笔记' }
+const TYPE_LABEL = { pdf: 'PDF', image: '图片', md: 'Markdown', txt: '文本', note: '笔记', docx: 'Word', pptx: 'PPT' }
 const STATUS_LABEL = { ready: '已入库', parsing: '解析中', queue: '排队中', failed: '失败' }
 
-const ACCEPT = '.pdf,.md,.markdown,.txt,.text,.png,.jpg,.jpeg,.webp,.bmp,.gif'
+const ACCEPT = '.pdf,.md,.markdown,.txt,.text,.docx,.pptx,.png,.jpg,.jpeg,.webp,.bmp,.gif'
 const MAX_FILES = 10
 const MAX_BYTES = 16 * 1024 * 1024
 

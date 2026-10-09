@@ -99,7 +99,7 @@ pm2 restart my-api
 > ⚠️ `web/dist/` 在 `.gitignore` 里，**服务器上的 dist 是本地构建出来的**。
 > 改了 `web/src/` 或 `web/public/` 而忘记 `npm run build`，线上不会有任何变化。
 >
-> **决赛冲刺（Day1 问答引用 + Day2 方案引用知识库 + MinerU 内存闸）已合入 Gitee master。**
+> **决赛冲刺（Day1 问答引用 + Day2 方案引用知识库 + MinerU 内存闸）已合入 Gitee master。** Day3 Word/PPT 侧车见第 14 节。
 > `git pull` 才会更新服务器上的源码。push 本身不会改 `http://47.106.76.244`。
 > 有服务器登录的队友按上面做：备份 dist → `git pull --ff-only` → `cd web && npm run build` → `pm2 restart my-api`。改 nginx 才需要 sudo。用户本人没有登录通道，不要替他 SSH。
 
@@ -460,4 +460,14 @@ PM2 常驻内存从 49MB 涨到约 162MB（峰值 178MB）；
 ```
 
 未装 MinerU、或内存不足 2GiB 时导入照常工作，只是扫描件几乎抽不到字。`GET /api/knowledge/capabilities` 的 `document.mineru.available` 为 false，`note` 会写明是缺二进制还是内存不够。不要在这台 1.6G 机器上用 `--tier standard` / `--tier advanced`。测试可覆盖：`STUDY_LIU_MINERU_RAM_KB` / `STUDY_LIU_MINERU_MIN_RAM_KB`（0 关闭闸）。
+
+## 14. Word / PPT 导入（Docling 可选侧车 / OOXML 标准库回退）
+
+`POST /api/knowledge/import` 现接受 `.docx` / `.pptx`。Docling **不作为中文 PDF 主引擎**（PDF 仍走第 13 节），也不 import 进 `api_server`。有 CLI 时：
+
+```bash
+docling convert lecture.docx --to md --no-ocr --output /tmp/docling-out
+```
+
+官方参考：<https://docling-project.github.io/docling/reference/cli/>。不要 `--pipeline vlm`，不要 GraniteDocling。缺 `docling` 时 `server/office_parse.py` 用 zipfile + xml 抽 OOXML 正文，服务仍能起。强制：`STUDY_LIU_OFFICE_ENGINE=docling|ooxml`。探测：`curl -s localhost:8000/api/knowledge/capabilities` 看 `document.office`。
 

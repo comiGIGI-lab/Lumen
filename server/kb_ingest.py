@@ -8,6 +8,7 @@
 #                                  以及分句 split_sentences()
 #   server/doc_parse.py         —— PDF 侧车：扫描件走 mineru-kit，数字文本仍走 pypdf
 #                                  MinerU 没装时静默回退，不让 api_server 起不来
+#   server/office_parse.py      —— Word/PPT 侧车：docling convert，缺 CLI 回退 OOXML
 #   tools/vision_ocr.py         —— 图片走多模态模型识图（替代装不下的本地 OCR）
 #   tools/knowledge_store.py    —— 入库
 #   server/safety_gate.py       —— 内容安全（导入也是一条写入路径，要过审核）
@@ -23,7 +24,7 @@ import re
 import time
 
 # ---------- 支持的格式 ----------
-DOC_EXTS = [".pdf", ".md", ".markdown", ".txt", ".text"]
+DOC_EXTS = [".pdf", ".md", ".markdown", ".txt", ".text", ".docx", ".pptx"]
 IMAGE_EXTS = [".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif"]
 
 # ---------- 分块参数 ----------
@@ -67,6 +68,12 @@ def capabilities():
     except Exception:
         mineru = {"available": False, "engine": "", "tier": "", "note": "doc_parse 模块不可用"}
 
+    try:
+        import office_parse
+        office = office_parse.capabilities()
+    except Exception:
+        office = {"available": False, "engine": "", "fallback": "ooxml", "extensions": [".docx", ".pptx"], "note": "office_parse 模块不可用"}
+
     pdf_note = ""
     if not pdf_mod and not mineru.get("available"):
         pdf_note = "未安装 pypdf，PDF 暂不可解析（Markdown / txt 正常）"
@@ -74,6 +81,10 @@ def capabilities():
         pdf_note = "数字 PDF 走 pypdf；扫描件 / 复杂版式走 MinerU 侧车（tier=%s）" % (mineru.get("tier") or "basic")
     elif pdf_mod:
         pdf_note = "当前只有 pypdf 文本层。扫描件几乎抽不到字时需要另装 MinerU 侧车。"
+    if office.get("available"):
+        pdf_note = (pdf_note + " Word / PPT 走 Docling 侧车，缺 CLI 回退 OOXML。" if pdf_note else "Word / PPT 走 Docling 侧车，缺 CLI 回退 OOXML。")
+    else:
+        pdf_note = (pdf_note + " Word / PPT 走 OOXML 标准库抽字。" if pdf_note else "Word / PPT 走 OOXML 标准库抽字。")
 
     return {
         "document": {
@@ -81,6 +92,7 @@ def capabilities():
             "pdf": bool(pdf_mod) or bool(mineru.get("available")),
             "pdf_backend": ("mineru+" + (pdf_mod or "none")) if mineru.get("available") else (pdf_mod or ""),
             "mineru": mineru,
+            "office": office,
             # 没有 pypdf 时 PDF 仍会尝试导入，但会明确报错，这里给出提示
             "note": pdf_note,
         },
@@ -295,6 +307,20 @@ def ingest(path, filename, tags=None, store=None, data_dir=None, title=None):
                     out["error"] = err
                 else:
                     out["error"] = "解析失败：%s" % err
+                return out
+        elif ext in (".docx", ".pptx"):
+            try:
+                import office_parse
+                parsed = office_parse.extract_office_text(path)
+            except ImportError as e:
+                parsed = {"text": "", "engine": "", "error": "Office 解析模块不可用：%s" % e}
+            except Exception as e:
+                parsed = {"text": "", "engine": "", "error": "解析失败：%s" % e}
+            text = (parsed.get("text") or "").strip()
+            parse_engine = parsed.get("engine") or ""
+            if not text:
+                err = (parsed.get("error") or "").strip() or "文件里没有解析到任何文字"
+                out["error"] = err if ("失败" in err or "没有解析" in err or "不支持" in err) else ("解析失败：%s" % err)
                 return out
         else:
             try:

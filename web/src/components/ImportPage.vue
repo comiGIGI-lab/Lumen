@@ -3,7 +3,7 @@
  * ImportPage —— 主应用内正式文档导入页（已接真实后端）
  *
  * 与后端 /api/knowledge/import 对接：选中/拖入文件 → 逐个上传 → 后端解析入库
- * （PDF 走 pypdf、Markdown/txt 直读、图片走多模态模型识图），上传完就能在知识库看到。
+ * （PDF 走 pypdf、Word/PPT 走 Docling 侧车或缺则 OOXML、Markdown/txt 直读、图片走多模态模型识图），上传完就能在知识库看到。
  * 逐文件上传而不是一次全发：这样每一行的进度是**真实**的，一个文件失败也不拖累其它。
  */
 import { computed, onBeforeUnmount, ref } from 'vue'
@@ -16,7 +16,7 @@ const emit = defineEmits(['back', 'open-knowledge', 'go-course'])
 const { t } = useI18n()
 
 /** 与后端 kb_ingest 支持的扩展名保持一致 */
-const ACCEPT = '.pdf,.md,.markdown,.txt,.text,.png,.jpg,.jpeg,.webp,.bmp,.gif'
+const ACCEPT = '.pdf,.md,.markdown,.txt,.text,.docx,.pptx,.png,.jpg,.jpeg,.webp,.bmp,.gif'
 const MAX_FILES = 10
 const MAX_BYTES = 16 * 1024 * 1024
 
@@ -358,7 +358,7 @@ onBeforeUnmount(() => {
         </div>
         <div class="card">
           <h3>{{ t('importPage.26') }}</h3>
-          <p><span>{{ t('importPage.27') }}</span><em>.pdf .md .txt</em></p>
+          <p><span>{{ t('importPage.27') }}</span><em>.pdf .docx .pptx .md .txt</em></p>
           <p><span>{{ t('importPage.28') }}</span><em>.png .jpg .webp</em></p>
           <small>{{ t('importPage.29') }}</small>
         </div>

@@ -71,6 +71,41 @@ with open(out, "w", encoding="utf-8") as f:
     f.write("# MinerU sidecar\n\nparsed-from: %s\n表格单元格甲\n" % name)
 '''
 
+FAKE_DOCLING = r'''#!/usr/bin/env python3
+# fake docling CLI reference: convert <src> --to md --output <dir> [--no-ocr]
+# https://docling-project.github.io/docling/reference/cli/
+import sys, os
+args = sys.argv[1:]
+if "--pipeline" in args:
+    i = args.index("--pipeline")
+    if i + 1 < len(args) and args[i + 1] == "vlm":
+        sys.stderr.write("Day3 sidecar must not use --pipeline vlm\n")
+        sys.exit(5)
+if not args or args[0] != "convert":
+    sys.stderr.write("usage: convert\n")
+    sys.exit(2)
+src = args[1]
+out = "."
+of = None
+i = 2
+while i < len(args):
+    if args[i] == "--output" and i + 1 < len(args):
+        out = args[i + 1]; i += 2; continue
+    if args[i] == "--output-file" and i + 1 < len(args):
+        of = args[i + 1]; i += 2; continue
+    i += 1
+stem = os.path.splitext(os.path.basename(src))[0] or "doc"
+text = "# Docling sidecar\n\nparsed-office: %s\n特征值与对角化\n" % os.path.basename(src)
+if of:
+    os.makedirs(os.path.dirname(of) or ".", exist_ok=True)
+    with open(of, "w", encoding="utf-8") as f:
+        f.write(text)
+else:
+    os.makedirs(out, exist_ok=True)
+    with open(os.path.join(out, stem + ".md"), "w", encoding="utf-8") as f:
+        f.write(text)
+'''
+
 FAKE_WHISPER = r'''#!/usr/bin/env python3
 # fake whisper-cli: -m model -f wav -l zh -otxt -of prefix
 import sys, os
@@ -396,9 +431,230 @@ def test_kb_capabilities_surface():
     check("mineru 是 dict 且有 available", isinstance(mineru, dict) and "available" in mineru, mineru)
 
 
+def _write_ooxml_docx(path, text):
+    import zipfile
+    from xml.sax.saxutils import escape
+    body = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+        "<w:body><w:p><w:r><w:t>%s</w:t></w:r></w:p></w:body></w:document>"
+        % escape(text)
+    )
+    ctypes = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+        '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+        '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>'
+        "</Types>"
+    )
+    rels = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+        '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>'
+        "</Relationships>"
+    )
+    with zipfile.ZipFile(path, "w") as z:
+        z.writestr("[Content_Types].xml", ctypes)
+        z.writestr("_rels/.rels", rels)
+        z.writestr("word/document.xml", body)
+
+
+def _write_ooxml_pptx(path, text):
+    import zipfile
+    from xml.sax.saxutils import escape
+    slide = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" '
+        'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">'
+        "<p:cSld><p:spTree><p:sp><p:txBody><a:p><a:r><a:t>%s</a:t></a:r></a:p></p:txBody></p:sp>"
+        "</p:spTree></p:cSld></p:sld>"
+        % escape(text)
+    )
+    with zipfile.ZipFile(path, "w") as z:
+        z.writestr("[Content_Types].xml", '<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"/>')
+        z.writestr("ppt/slides/slide1.xml", slide)
+
+
+def test_office_sidecar():
+    print("\n[office_parse] Day3 docx/pptx 侧车")
+    src_api = os.path.join(SERVER_DIR, "api_server.py")
+    src_office = os.path.join(SERVER_DIR, "office_parse.py")
+    src_kb = os.path.join(SERVER_DIR, "kb_ingest.py")
+    src_import = os.path.join(REPO_ROOT, "web", "src", "components", "ImportPage.vue")
+    src_know = os.path.join(REPO_ROOT, "web", "src", "components", "KnowledgePage.vue")
+    src_know_js = os.path.join(REPO_ROOT, "web", "src", "composables", "useKnowledge.js")
+    src_zh = os.path.join(REPO_ROOT, "web", "src", "i18n", "auto-zh.json")
+    src_en = os.path.join(REPO_ROOT, "web", "src", "i18n", "auto-en.json")
+    deploy = os.path.join(REPO_ROOT, "docs", "DEPLOY.md")
+
+    with open(src_api, "r", encoding="utf-8") as f:
+        api_txt = f.read()
+    check("api_server 不 import docling", "import docling" not in api_txt and "from docling" not in api_txt)
+
+    office_exists = os.path.isfile(src_office)
+    check("存在 server/office_parse.py", office_exists)
+    if office_exists:
+        with open(src_office, "r", encoding="utf-8") as f:
+            office_txt = f.read()
+        code_lines = [
+            ln.strip() for ln in office_txt.splitlines()
+            if ln.strip() and not ln.strip().startswith("#")
+        ]
+        joined = "\n".join(code_lines)
+        check(
+            "office_parse 不 import docling 包",
+            "import docling" not in joined and "from docling" not in joined,
+        )
+        check("CLI 走 docling convert", '"convert"' in office_txt or "'convert'" in office_txt)
+        check("写出 Markdown 用 --to md", "--to" in office_txt and "md" in office_txt)
+        check("输出目录用 --output", "--output" in office_txt)
+        check("关闭 OCR --no-ocr", "--no-ocr" in office_txt)
+        check("禁止 VLM pipeline", "vlm" not in office_txt.lower() or "granite_docling" not in office_txt)
+    else:
+        check("CLI 走 docling convert", False)
+        check("写出 Markdown 用 --to md", False)
+        check("输出目录用 --output", False)
+        check("关闭 OCR --no-ocr", False)
+        check("禁止 VLM pipeline", False)
+
+    with open(src_kb, "r", encoding="utf-8") as f:
+        kb_txt = f.read()
+    check("kb_ingest DOC_EXTS 含 docx", ".docx" in kb_txt)
+    check("kb_ingest DOC_EXTS 含 pptx", ".pptx" in kb_txt)
+
+    with open(src_import, "r", encoding="utf-8") as f:
+        import_txt = f.read()
+    with open(src_know, "r", encoding="utf-8") as f:
+        know_txt = f.read()
+    check("ImportPage ACCEPT 含 docx", ".docx" in import_txt)
+    check("ImportPage ACCEPT 含 pptx", ".pptx" in import_txt)
+    check("KnowledgePage ACCEPT 含 docx", ".docx" in know_txt)
+    check("KnowledgePage ACCEPT 含 pptx", ".pptx" in know_txt)
+    with open(src_know_js, "r", encoding="utf-8") as f:
+        know_js = f.read()
+    check("useKnowledge FILE_TAGS 含 docx", "docx" in know_js)
+    check("useKnowledge FILE_TAGS 含 pptx", "pptx" in know_js)
+
+    with open(src_zh, "r", encoding="utf-8") as f:
+        zh = f.read()
+    with open(src_en, "r", encoding="utf-8") as f:
+        en = f.read()
+    check("中文导入文案提到 Word 或 docx", "docx" in zh.lower() or "Word" in zh)
+    check("英文导入文案提到 Word 或 docx", "docx" in en.lower() or "Word" in en)
+
+    with open(deploy, "r", encoding="utf-8") as f:
+        deploy_txt = f.read()
+    check("DEPLOY 写 docling convert", "docling convert" in deploy_txt)
+    check("DEPLOY 写明 Docling 不当中文 PDF 主引擎", "不当中文 PDF" in deploy_txt or "不作为中文 PDF" in deploy_txt)
+    check("DEPLOY 写 OOXML 回退", "ooxml" in deploy_txt.lower() or "标准库" in deploy_txt)
+
+    vendor = os.path.join(REPO_ROOT, "vendor", "study-liu")
+    if vendor not in sys.path:
+        sys.path.insert(0, vendor)
+    import kb_ingest
+    caps = kb_ingest.capabilities()
+    doc = caps.get("document") or {}
+    check("capabilities.document.extensions 含 .docx", ".docx" in (doc.get("extensions") or []), doc)
+    check("capabilities.document.extensions 含 .pptx", ".pptx" in (doc.get("extensions") or []), doc)
+    office_caps = doc.get("office") or doc.get("docling") or {}
+    check("capabilities 暴露 office/docling", isinstance(office_caps, dict) and "available" in office_caps, doc)
+
+    tmp = tempfile.mkdtemp(prefix="sidecar-office-")
+    fake = os.path.join(tmp, "fake_docling.py")
+    _write(fake, FAKE_DOCLING)
+    docx = os.path.join(tmp, "lecture.docx")
+    pptx = os.path.join(tmp, "slides.pptx")
+    _write_ooxml_docx(docx, "线性代数讲义·特征值与对角化（OOXML 夹具）")
+    _write_ooxml_pptx(pptx, "矩阵对角化课堂幻灯片")
+    pdf = os.path.join(tmp, "not-office.pdf")
+    with open(pdf, "wb") as f:
+        f.write(b"%PDF-1.4 not office")
+
+    missing_bin = os.path.join(tmp, "no-such-docling")
+
+    def refuse_pdf():
+        import office_parse
+        r = office_parse.extract_office_text(pdf)
+        check("PDF 不走进 office_parse 成功路径", r.get("engine") != "docling" and not (r.get("text") or "").strip(), r)
+        check("PDF 被 office_parse 拒绝", "pdf" in (r.get("error") or "").lower() or "不支持" in (r.get("error") or ""), r)
+    try:
+        with_env({
+            "STUDY_LIU_DOCLING_BIN": fake,
+            "STUDY_LIU_OFFICE_ENGINE": None,
+        }, refuse_pdf)
+    except ImportError:
+        check("PDF 不走进 office_parse 成功路径", False, "office_parse missing")
+        check("PDF 被 office_parse 拒绝", False)
+
+    def missing_uses_ooxml():
+        import office_parse
+        ok, reason = office_parse.available()
+        check("缺 docling 时 available=False", ok is False, (ok, reason))
+        check("reason 提到 docling", "docling" in (reason or "").lower(), reason)
+        r = office_parse.extract_office_text(docx)
+        check("缺 CLI 回退 ooxml", r.get("engine") == "ooxml", r)
+        check("OOXML 抽到夹具正文", "特征值" in (r.get("text") or ""), r)
+        r2 = office_parse.extract_office_text(pptx)
+        check("pptx OOXML 抽到正文", "对角化" in (r2.get("text") or "") and r2.get("engine") == "ooxml", r2)
+    try:
+        with_env({
+            "STUDY_LIU_DOCLING_BIN": missing_bin,
+            "STUDY_LIU_OFFICE_ENGINE": None,
+        }, missing_uses_ooxml)
+    except ImportError:
+        check("缺 docling 时 available=False", False)
+        check("reason 提到 docling", False)
+        check("缺 CLI 回退 ooxml", False)
+        check("OOXML 抽到夹具正文", False)
+        check("pptx OOXML 抽到正文", False)
+
+    def fake_cli():
+        import office_parse
+        ok, reason = office_parse.available()
+        check("假 CLI available=True", ok is True, (ok, reason))
+        r = office_parse.extract_office_text(docx)
+        check("假 CLI 走 docling", r.get("engine") == "docling", r)
+        check("假 CLI 正文含 sidecar 标记", "parsed-office" in (r.get("text") or "") and "特征值" in (r.get("text") or ""), r)
+        os.environ["STUDY_LIU_OFFICE_ENGINE"] = "ooxml"
+        r = office_parse.extract_office_text(docx)
+        check("强制 ooxml 不调侧车", r.get("engine") == "ooxml" and "OOXML" in (r.get("text") or ""), r)
+        os.environ.pop("STUDY_LIU_OFFICE_ENGINE", None)
+    try:
+        with_env({
+            "STUDY_LIU_DOCLING_BIN": fake,
+            "STUDY_LIU_OFFICE_ENGINE": None,
+        }, fake_cli)
+    except ImportError:
+        check("假 CLI available=True", False)
+        check("假 CLI 走 docling", False)
+        check("假 CLI 正文含 sidecar 标记", False)
+        check("强制 ooxml 不调侧车", False)
+
+    store_path = os.path.join(tmp, "knowledge.json")
+    with open(store_path, "w", encoding="utf-8") as f:
+        f.write("[]")
+    from tools.knowledge_store import KnowledgeStore
+    store = KnowledgeStore(filepath=store_path)
+
+    def ingest_docx():
+        r = kb_ingest.ingest(docx, "线性代数讲义.docx", store=store)
+        check("ingest docx ok", r.get("ok") is True, r)
+        check("ingest 正文进库", r.get("chunks", 0) >= 1 and r.get("chars", 0) > 0, r)
+        check("ingest engine 为 docling 或 ooxml", r.get("engine") in ("docling", "ooxml"), r)
+    try:
+        with_env({
+            "STUDY_LIU_DOCLING_BIN": fake,
+            "STUDY_LIU_OFFICE_ENGINE": None,
+        }, ingest_docx)
+    except Exception as e:
+        check("ingest docx ok", False, str(e))
+        check("ingest 正文进库", False)
+        check("ingest engine 为 docling 或 ooxml", False)
+
+
 def main():
     print("=" * 60)
-    print("侧车回归（MinerU + whisper.cpp，假 CLI，不装真引擎）")
+    print("侧车回归（MinerU + whisper.cpp + Docling office，假 CLI，不装真引擎）")
     print("=" * 60)
     for fn in (
         test_mineru_missing,
@@ -409,6 +665,7 @@ def main():
         test_whisper_probe_and_transcribe,
         test_asr_router,
         test_kb_capabilities_surface,
+        test_office_sidecar,
     ):
         try:
             fn()
