@@ -23,6 +23,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import shutil
@@ -570,12 +571,12 @@ def runtime_day6():
             _lt.TavilySearch, _lt.TavilyExtract = _os, _oe
         sd = next((k for n, k in recorded if k.get("search_depth") == "advanced"), None)
         check("tavily_search_deep_raw_content",
-              sd is not None and sd.get("include_raw_content") is True and sd.get("max_results") == 8,
-              "tavily_search_deep must be advanced+raw_content+max8: %s" % sd)
+              sd is not None and sd.get("include_raw_content") is True and (sd.get("max_results") or 0) >= 15,
+              "tavily_search_deep must be advanced+raw_content+max>=15: %s" % sd)
         sb = next((k for n, k in recorded if k.get("search_depth") == "basic"), None)
         check("tavily_search_basic_cfg",
-              sb is not None and sb.get("include_raw_content") is False and sb.get("max_results") == 3,
-              "tavily_search must be basic+no_raw+max3: %s" % sb)
+              sb is not None and sb.get("include_raw_content") is False and (sb.get("max_results") or 0) >= 10,
+              "tavily_search must be basic+no_raw+max>=10: %s" % sb)
         exb = next((k for n, k in recorded if n == "extract" and k.get("extract_depth") == "basic"), None)
         check("tavily_extract_basic_cfg", exb is not None, "tavily_extract basic missing")
         exd = next((k for n, k in recorded if n == "extract" and k.get("extract_depth") == "advanced"), None)
@@ -584,6 +585,15 @@ def runtime_day6():
         check("tavily_tools_construction_skipped", True,
               "langchain-tavily not installed in this env; construction not exercised")
     teardown(tmp)
+
+    # 工具智能体 prompt 必须强调「多关键词检索 + 以多数为准」，避免少数结果误判领域
+    try:
+        _sys = getattr(quiz_mod, "_TOOL_SYSTEM", "")
+        check("agent_prompt_multi_keyword",
+              "harness engineering" in _sys and "以多数为准" in _sys and "多关键词" in _sys,
+              "tool-agent system prompt must guide multi-keyword search + majority voting")
+    except Exception:
+        check("agent_prompt_multi_keyword", False, "cannot read _TOOL_SYSTEM")
 
     # ---- 工具智能体：search 出题（主题 → tavily_search → 标 web 来源） ----
     tmp = tempfile.mkdtemp(prefix="zjxt-quiz-agent-")
@@ -760,6 +770,42 @@ def runtime_day6():
     except Exception as e:
         check("day6_nourlkey_no_crash", False, "nourlkey crashed: %r" % e)
     finally:
+        teardown(tmp)
+
+    # ---- 工具智能体：日志可见性（每执行一次搜索都要打印工具名 / 参数 / 结果） ----
+    tmp = tempfile.mkdtemp(prefix="zjxt-quiz-log-")
+    quiz_mod, llm_mod = setup(tmp)
+    if quiz_mod is None:
+        return
+    record = []
+    os.environ["STUDY_LIU_TAVILY_KEY"] = "tvly-test-dummy"
+    quiz_mod._build_tavily_tools = lambda key: make_fake_tools(record)
+    quiz_mod._llm_chat = scripted([
+        tool_call("tavily_search", {"query": "harness engineering", "include_domains": ["*.cn"]}),
+        finish(SINGLE_QS, [{"title": "Web A", "url": "https://example.com/a"}]),
+    ])
+    # 捕获 quiz 模块 logger 的 INFO 记录（搜索工具名 / 调用参数 / 返回结果）
+    _cap = []
+    class _CapH(logging.Handler):
+        def emit(self, rec):
+            _cap.append(rec.getMessage())
+    _h = _CapH()
+    _h.setLevel(logging.INFO)
+    quiz_mod._log.addHandler(_h)
+    try:
+        res = quiz_mod.generate_quiz("harness engineering", difficulty="easy", count=3, web_search=True)
+        _joined = "\n".join(_cap)
+        check("agent_logs_tool_call", "Tavily 工具调用" in _joined,
+              "search tool call (name+params) must be logged: %s" % _joined[:300])
+        check("agent_logs_tool_result", "返回" in _joined and "tavily_search" in _joined,
+              "search result (count+summary) must be logged: %s" % _joined[:300])
+        check("agent_logs_query_param", '"harness engineering"' in _joined,
+              "search query param must appear in logs: %s" % _joined[:300])
+        check("agent_logs_generates", res.get("ok") is True, "logged search must still generate")
+    except Exception as e:
+        check("day6_logcap_no_crash", False, "logcap crashed: %r" % e)
+    finally:
+        quiz_mod._log.removeHandler(_h)
         teardown(tmp)
 
 

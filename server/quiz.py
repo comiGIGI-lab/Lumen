@@ -55,10 +55,24 @@ MAX_RUNS_KEPT = 200
 
 # Tavily 联网出题：key 只从环境变量注入，绝不入库 / 不落盘
 TAVILY_KEY_ENV = "STUDY_LIU_TAVILY_KEY"
-# 工具智能体最多对话轮数（避免模型空转）
-MAX_AGENT_STEPS = 4
+# 工具智能体最多对话轮数（避免模型空转；多关键词变体检索需要更多轮）
+MAX_AGENT_STEPS = 8
 # 国内用户默认限定的中文域（浅层检索也带上，提升中文资料召回）
 DOMESTIC_INCLUDE_DOMAINS = ["*.cn", "*.edu.cn", "*.gov.cn", "*.com.cn", "*.org.cn"]
+# 检索条数下限（search 至少 10、deep 至少 15，结果少时便于「以多数为准」判断领域）
+TAVILY_SEARCH_MAX = 10
+TAVILY_SEARCH_DEEP_MAX = 15
+
+# 联网出题需要 INFO 级日志（默认 root 仅 WARNING，会吞掉搜索过程）。
+# 给 quiz 模块挂独立 stderr handler，确保「搜索工具名 / 参数 / 结果」全程可见。
+_log = logging.getLogger("quiz")
+if not _log.handlers:
+    _lh = logging.StreamHandler()
+    _lh.setLevel(logging.INFO)
+    _lh.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+    _log.addHandler(_lh)
+    _log.setLevel(logging.INFO)
+    _log.propagate = False
 
 # mixed 配比 single:multi:judge = 2:1:1（count=8 → 4+2+2）
 MIXED_RATIO = {"single": 2, "multi": 1, "judge": 1}
@@ -165,48 +179,77 @@ _FINISH_RE = re.compile(r"<finish>\s*(\{[\s\S]*?\})\s*</finish>", re.S)
 def _build_tavily_tools(api_key):
     """构造 4 个 Tavily 工具（延迟 import，便于无依赖时跳过 / 测试注入）。
 
-    - tavily_search：浅层检索，3 条，不含原文；
-    - tavily_search_deep：深层检索，8 条，含原文（raw_content）；
+    - tavily_search：浅层检索，至少 10 条，不含原文；
+    - tavily_search_deep：深层检索，至少 15 条，含原文（raw_content）；
     - tavily_extract：浅层抓单页正文；
     - tavily_extract_deep：深层抓单页正文。
-    返回 {工具名: BaseTool}。
+    返回 {工具名: BaseTool}。结果条数已显著上调，避免少数结果误导领域判断。
     """
     from langchain_tavily import TavilySearch, TavilyExtract
     return {
         "tavily_search": TavilySearch(
             tavily_api_key=api_key, search_depth="basic",
-            max_results=3, include_raw_content=False,
+            max_results=TAVILY_SEARCH_MAX, include_raw_content=False,
         ),
         "tavily_search_deep": TavilySearch(
             tavily_api_key=api_key, search_depth="advanced",
-            max_results=8, include_raw_content=True,
+            max_results=TAVILY_SEARCH_DEEP_MAX, include_raw_content=True,
         ),
         "tavily_extract": TavilyExtract(tavily_api_key=api_key, extract_depth="basic"),
         "tavily_extract_deep": TavilyExtract(tavily_api_key=api_key, extract_depth="advanced"),
     }
 
 
+def _tavily_result_text(out, name, cap=16000):
+    """把工具返回整理成紧凑可读文本（每条结果给标题+链接+摘要），便于模型看到
+    全部结果并据「多数领域」判断；同时适合直接打印日志。"""
+    if isinstance(out, dict) and isinstance(out.get("results"), list):
+        is_search = "search" in name
+        snip = 500 if is_search else 1500
+        parts = []
+        for i, r in enumerate(out["results"], 1):
+            title = r.get("title") or r.get("url") or "(无标题)"
+            url = r.get("url") or ""
+            if is_search:
+                body = r.get("content") or r.get("raw_content") or ""
+            else:
+                body = r.get("raw_content") or r.get("content") or ""
+            body = (body or "").strip()
+            if len(body) > snip:
+                body = body[:snip] + "…"
+            parts.append("【结果 %d】%s\n链接：%s\n%s" % (i, title, url, body))
+        return "\n\n".join(parts)[:cap]
+    return str(out)[:cap]
+
+
 def _exec_tavily_tool(tools, name, args, collected):
     """执行一次工具调用，返回给模型的字符串结果；失败记 warning 并降级提示。
 
     collected：收集到的 sources（extract 时按 url 记录，供收尾兜底）。
+    全程 INFO 日志：工具名、调用参数、返回结果条数与摘要（调试可见）。
     """
     tool = tools.get(name)
     if tool is None:
+        _log.warning("Tavily 未知工具：%s（可用：tavily_search / tavily_search_deep / "
+                     "tavily_extract / tavily_extract_deep）", name)
         return ("未知工具：%s（可用：tavily_search / tavily_search_deep / "
                 "tavily_extract / tavily_extract_deep）" % name)
     # 只转发工具 schema 允许的字段，避免把模型臆造的参数喂给 pydantic
     allowed = set(getattr(tool, "args", {}) or {})
     clean = {k: v for k, v in (args or {}).items() if k in allowed}
+    _log.info("Tavily 工具调用 → %s | 参数：%s", name, json.dumps(clean, ensure_ascii=False))
     try:
         out = tool.invoke(clean)
     except Exception as e:
-        logging.warning("Tavily 工具 %s 调用失败，降级: %s", name, e)
+        _log.warning("Tavily 工具 %s 调用失败，降级: %s", name, e)
         return "工具调用失败：%s（可改用浅层检索，或基于通用知识出题）" % e
     if name.startswith("tavily_extract"):
         for u in (clean.get("urls") or []):
             collected.append({"title": u, "url": u})
-    return str(out)[:8000]
+    text = _tavily_result_text(out, name)
+    n = len(out.get("results", [])) if isinstance(out, dict) else 0
+    _log.info("Tavily 工具 %s 返回 %d 条结果：\n%s", name, n, text[:4000])
+    return text
 
 
 def _parse_tool_call(raw):
@@ -260,8 +303,8 @@ def _norm_sources(srcs):
 _TOOL_SYSTEM = """你是严谨的 AI 出题老师。你需要借助 Tavily 联网工具，为「课程主题」或「文档链接」生成选择题。
 
 可用工具（由系统注入）：
-- tavily_search：浅层检索，返回 3 条结果（标题+摘要，不含原文）。适合概念明确、资料量足够的主题。
-- tavily_search_deep：深层检索，返回 8 条结果并含原文（raw_content）。适合复杂主题或需要权威出处。
+- tavily_search：浅层检索，返回至少 10 条结果（标题+摘要，不含原文）。适合概念明确、资料量足够的主题。
+- tavily_search_deep：深层检索，返回至少 15 条结果并含原文（raw_content）。适合复杂主题或需要权威出处。
 - tavily_extract：浅层抓取单个网页正文。
 - tavily_extract_deep：深层抓取单个网页正文（更完整）。
 
@@ -270,6 +313,17 @@ _TOOL_SYSTEM = """你是严谨的 AI 出题老师。你需要借助 Tavily 联�
 - 用户输入是主题/课程名 → 用 tavily_search 或 tavily_search_deep，参数 query=用户输入的主题。
 - 按复杂度自选自浅/深实例；需要时可动态覆盖 search_depth / time_range / include_domains。
 - 国内用户默认 include_domains 含中文域（如 "*.cn"、"*.edu.cn"、"*.gov.cn"、"*.com.cn"），除非主题明显偏国际。
+
+多关键词检索（重要）：
+- 对专业、多义或易混淆的术语（例如 "harness engineering" 可能指汽车约束系统、软件测试框架、航空/汽车线束等），不要只搜一次。
+- 必须用多个关键词变体分别检索，覆盖不同可能的含义，例如："harness engineering automotive"、
+  "harness engineering software testing"、"harness system design"、"线束工程"、"约束系统 harness" 等。
+- 单次检索结果很少（如仅 1~2 条）时，不要急于下结论；换更宽泛或更具体的关键词变体再搜，直到拿到足量结果。
+
+领域判定（以多数为准）：
+- 综合所有检索结果判断主题所属领域：以「多数结果」为准——若多数结果指向同一领域，则按该领域出题。
+- 个别指向错误领域的离群结果应忽略，避免把主题识别到错误的领域。
+- 只有当多数结果都指向某个领域时，才在该领域出题；否则继续多关键词检索以收敛判断。
 
 出题要求：
 - 每题带 type（single/multi/judge）；选项文本两两不同；题干/解析/知识点中文非空。
@@ -317,13 +371,15 @@ def _run_tool_agent(course, difficulty, plan, api_key, is_url, kb_ctx=""):
         {"role": "user", "content": _tool_user(course, difficulty, plan, is_url, kb_ctx)},
     ]
     sources = []
-    for _ in range(MAX_AGENT_STEPS):
+    for step in range(1, MAX_AGENT_STEPS + 1):
         raw = _llm_chat(messages)
         if not isinstance(raw, str) or raw.startswith("[LLM 不可用]"):
+            _log.warning("[工具智能体] 第 %d 轮：大模型不可用，终止出题", step)
             return {"ok": False, "error": "大模型不可用，无法出题。请检查 AI 模型设置。", "sources": sources}
         call = _parse_tool_call(raw)
         if call:
             name, args = call
+            _log.info("[工具智能体] 第 %d 轮：模型发起工具调用 %s", step, name)
             result = _exec_tavily_tool(tools, name, args, sources)
             messages.append({"role": "assistant", "content": raw})
             messages.append({"role": "user", "content": "[工具结果]\n" + result})
@@ -333,16 +389,21 @@ def _run_tool_agent(course, difficulty, plan, api_key, is_url, kb_ctx=""):
             qs, _bad = _parse_llm_questions(json.dumps({"questions": fin.get("questions", [])}))
             if len(qs) >= MIN_VALID_QUESTIONS:
                 srcs = _norm_sources(fin.get("sources")) or sources
+                _log.info("[工具智能体] 第 %d 轮：模型收尾，产出 %d 题，来源 %d 条", step, len(qs), len(srcs))
                 return {"ok": True, "questions": qs, "sources": srcs}
+            _log.info("[工具智能体] 第 %d 轮：题目数量不足或校验未过，要求补充", step)
             messages.append({"role": "assistant", "content": raw})
             messages.append({"role": "user", "content": "题目数量不足或校验未过，请补充/修正后用 <finish> 输出。"})
             continue
         # 无标记：尝试直接当成题目 JSON 收尾
         qs, _bad = _parse_llm_questions(raw)
         if qs:
+            _log.info("[工具智能体] 第 %d 轮：直接产出 %d 题", step, len(qs))
             return {"ok": True, "questions": qs, "sources": sources}
+        _log.info("[工具智能体] 第 %d 轮：未识别到工具调用或题目，提示继续", step)
         messages.append({"role": "assistant", "content": raw})
         messages.append({"role": "user", "content": "未识别到工具调用或最终题目，请继续：需联网请调用工具，否则用 <finish>{...}</finish> 输出题目。"})
+    _log.warning("[工具智能体] 超出 %d 轮仍未产出题目，终止", MAX_AGENT_STEPS)
     return {"ok": False, "error": "出题超时（模型未在限定步数内产出题目）。", "sources": sources}
 
 
