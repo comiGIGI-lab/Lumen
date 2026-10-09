@@ -111,8 +111,8 @@ def source_checks():
           "quiz_runs.json" in quiz_src,
           "quiz.py must persist runs to data/quiz_runs.json")
     check("quiz_stdlib_only",
-          not re.search(r"^\s*(import|from)\s+(fastapi|langchain|langgraph|chromadb|mysql)", quiz_src, re.M),
-          "quiz.py must stay stdlib-only")
+          not re.search(r"^\s*(import|from)\s+(fastapi|langchain(?!_tavily)|langgraph|chromadb|mysql)", quiz_src, re.M),
+          "quiz.py must stay stdlib-only (langchain_tavily is the lead-approved quiz-chain exception)")
 
     print("scope guards (must stay)")
     loop = read(LOOP)
@@ -180,8 +180,8 @@ def source_checks():
     check("report_safety_gate", rep_block and "check_detail" in rep_block,
           "report route must run check_detail")
     check("quiz_tavily_env_guarded",
-          "STUDY_LIU_TAVILY_KEY" in quiz_src and "urllib.request" in quiz_src,
-          "quiz.py must gate Tavily behind env var + use stdlib urllib")
+          "STUDY_LIU_TAVILY_KEY" in quiz_src and "langchain_tavily" in quiz_src and "TavilySearch" in quiz_src,
+          "quiz.py must gate Tavily behind env var + use langchain_tavily (TavilySearch/TavilyExtract)")
     check("quiz_has_types_plan", "_resolve_plan" in quiz_src and "_distribute_mixed" in quiz_src,
           "quiz.py must support types plan")
     check("quiz_has_report", "def quiz_report" in quiz_src, "quiz.py missing quiz_report")
@@ -194,8 +194,8 @@ def source_checks():
     check("panel_has_web_search_toggle",
           "webSearch" in panel, "QuizPanel missing web-search toggle")
     check("quiz_has_tavily_extract",
-          "api.tavily.com/extract" in quiz_src and "raw_content" in quiz_src,
-          "quiz.py must implement Tavily extract path for URL direct-gen")
+          "TavilyExtract" in quiz_src and "tavily_extract" in quiz_src and "tavily_search_deep" in quiz_src,
+          "quiz.py must implement Tavily extract + 4 search/extract tools for URL direct-gen")
     check("quiz_generate_takes_web_search",
           "def generate_quiz" in quiz_src and "web_search" in quiz_src,
           "generate_quiz must accept web_search flag")
@@ -493,125 +493,272 @@ def runtime_day6():
     finally:
         teardown(tmp)
 
-    # ---- Tavily 联网兜底：有 key 出题并标来源；无 key 回退拒绝 ----
-    tmp = tempfile.mkdtemp(prefix="zjxt-quiz-tav-")
-    quiz_mod, llm_mod = setup(tmp)
-    if quiz_mod is None:
-        return
-    orig_tav = quiz_mod._tavily_search
-    os.environ["STUDY_LIU_TAVILY_KEY"] = "tvly-test-dummy"
-    quiz_mod._tavily_search = lambda q, k: [
-        {"title": "Web A", "url": "https://example.com/a", "content": "矩阵乘法满足结合律。"},
-        {"title": "Web B", "url": "https://example.com/b", "content": "特征值刻画伸缩比例。"},
+    # ===== 工具智能体回归（langchain-tavily）=====
+    # 公共辅助：脚本化 LLM 与假工具（真实依赖 langchain-tavily 仅在 _build_tavily_tools
+    # 内延迟 import；本组测试用假工具替换，避免联网，同时断言工具被正确调用）。
+    SINGLE_QS = [
+        {"type": "single", "stem": "矩阵乘法满足？", "options": [
+            {"key": "A", "text": "结合律"}, {"key": "B", "text": "交换律"},
+            {"key": "C", "text": "幂等律"}, {"key": "D", "text": "对称律"}],
+         "answer": ["A"], "explanation": "满足结合律", "knowledge_point": "矩阵乘法"},
+        {"type": "single", "stem": "行列式为零说明？", "options": [
+            {"key": "A", "text": "可逆"}, {"key": "B", "text": "不可逆"},
+            {"key": "C", "text": "正交"}, {"key": "D", "text": "对称"}],
+         "answer": ["B"], "explanation": "为零不可逆", "knowledge_point": "行列式"},
+        {"type": "single", "stem": "特征值刻画？", "options": [
+            {"key": "A", "text": "旋转"}, {"key": "B", "text": "伸缩"},
+            {"key": "C", "text": "投影"}, {"key": "D", "text": "转置"}],
+         "answer": ["B"], "explanation": "伸缩比例", "knowledge_point": "特征值"},
     ]
-    llm_mod.chat = fake_chat_ok if "fake_chat_ok" in dir() else None
-    # 复用上面定义的 fake_chat_ok（single 三题）
+
     def fake_single(messages):
-        return json.dumps({
-            "questions": [
-                {"type": "single", "stem": "矩阵乘法满足？", "options": [
-                    {"key": "A", "text": "结合律"}, {"key": "B", "text": "交换律"},
-                    {"key": "C", "text": "幂等律"}, {"key": "D", "text": "对称律"}],
-                 "answer": ["A"], "explanation": "满足结合律", "knowledge_point": "矩阵乘法"},
-                {"type": "single", "stem": "行列式为零说明？", "options": [
-                    {"key": "A", "text": "可逆"}, {"key": "B", "text": "不可逆"},
-                    {"key": "C", "text": "正交"}, {"key": "D", "text": "对称"}],
-                 "answer": ["B"], "explanation": "为零不可逆", "knowledge_point": "行列式"},
-                {"type": "single", "stem": "特征值刻画？", "options": [
-                    {"key": "A", "text": "旋转"}, {"key": "B", "text": "伸缩"},
-                    {"key": "C", "text": "投影"}, {"key": "D", "text": "转置"}],
-                 "answer": ["B"], "explanation": "伸缩比例", "knowledge_point": "特征值"},
-            ]
-        }, ensure_ascii=False)
+        return json.dumps({"questions": SINGLE_QS}, ensure_ascii=False)
 
-    llm_mod.chat = fake_single
-    quiz_mod._llm_chat = fake_single
-    try:
-        res = quiz_mod.generate_quiz("量子占卜玄学导论", difficulty="easy", count=3)
-        check("tavily_with_key_ok", res.get("ok") is True, "tavily gen failed: %s" % res.get("error"))
-        if res.get("ok"):
-            check("tavily_source_web", res.get("source") == "web", "source should be web: %s" % res.get("source"))
-            q0 = (res.get("questions") or [{}])[0]
-            check("tavily_question_source_web", q0.get("source") == "web", "q source should be web")
-            check("tavily_question_sources", isinstance(q0.get("sources"), list) and len(q0.get("sources")) >= 1,
-                  "q sources missing: %s" % q0.get("sources"))
-        # 无 key：恢复真实 _tavily_search + 撤环境变量 → 降级为空上下文出题（不拒绝）
-        quiz_mod._tavily_search = orig_tav
-        os.environ.pop("STUDY_LIU_TAVILY_KEY", None)
-        weak = quiz_mod.generate_quiz("量子占卜玄学导论", difficulty="easy", count=3)
-        check("tavily_no_key_degraded", weak.get("ok") is True and weak.get("source") == "topic",
-              "no-key weak hit must degrade to topic gen, not refuse: %s" % weak.get("error"))
-    except Exception as e:
-        check("day6_tavily_no_crash", False, "tavily crashed: %r" % e)
-    finally:
-        teardown(tmp)
+    def scripted(responses):
+        state = {"i": 0}
+        def f(messages):
+            r = responses[min(state["i"], len(responses) - 1)]
+            state["i"] += 1
+            return r
+        return f
 
-    # ---- Tavily extract：URL 直出题；失败/超时/无 key 回退拒绝 ----
-    tmp = tempfile.mkdtemp(prefix="zjxt-quiz-ext-")
+    def tool_call(name, args):
+        return "<tool>\n%s</tool>" % json.dumps({"name": name, "args": args}, ensure_ascii=False)
+
+    def finish(questions, sources):
+        return "<finish>\n%s</finish>" % json.dumps(
+            {"questions": questions, "sources": sources}, ensure_ascii=False)
+
+    class _FakeTool:
+        def __init__(self, name, record):
+            self.name = name
+            self.args = {"query": None, "include_domains": None, "exclude_domains": None,
+                         "search_depth": None, "time_range": None, "topic": None,
+                         "urls": None, "extract_depth": None, "include_images": None}
+            self._record = record
+        def invoke(self, a):
+            self._record.append((self.name, dict(a or {})))
+            if self.name.startswith("tavily_extract"):
+                return "【抓取正文】网页 %s 陈述：矩阵乘法满足结合律但不满足交换律；特征值刻画伸缩。" % (a or {}).get("urls")
+            return ("【联网资料】标题A URL=https://example.com/a 内容：矩阵乘法满足结合律。"
+                    "标题B URL=https://example.com/b 内容：特征值刻画伸缩比例。")
+
+    def make_fake_tools(record):
+        return {n: _FakeTool(n, record) for n in
+                ("tavily_search", "tavily_search_deep", "tavily_extract", "tavily_extract_deep")}
+
+    # ---- 工具构造：4 个 Tavily 工具参数校验（需 langchain-tavily，缺则跳过） ----
+    tmp = tempfile.mkdtemp(prefix="zjxt-quiz-ctor-")
     quiz_mod, llm_mod = setup(tmp)
     if quiz_mod is None:
         return
-    orig_extract = quiz_mod._tavily_extract
-    os.environ["STUDY_LIU_TAVILY_KEY"] = "tvly-test-dummy"
-    quiz_mod._tavily_extract = lambda url, k: (
-        "矩阵乘法满足结合律但不满足交换律。特征值刻画线性变换在特征向量方向上的伸缩比例。"
-        "行列式非零是可逆的充要条件。向量空间对加法与数乘封闭。")
-    llm_mod.chat = fake_single
-    quiz_mod._llm_chat = fake_single
     try:
-        url = "https://example.com/linear-algebra-notes"
-        res = quiz_mod.generate_quiz(url, difficulty="easy", count=3)
-        check("extract_url_ok", res.get("ok") is True, "extract gen failed: %s" % res.get("error"))
-        if res.get("ok"):
-            check("extract_source_web", res.get("source") == "web",
-                  "source should be web: %s" % res.get("source"))
-            check("extract_questions_source_web",
-                  all(q.get("source") == "web" for q in (res.get("questions") or [])),
-                  "questions source should be web")
-            qsrc = (res.get("questions") or [{}])[0].get("sources") or []
-            check("extract_sources_carry_url",
-                  isinstance(qsrc, list) and any(s.get("url") == url for s in qsrc),
-                  "sources should carry the input url: %s" % qsrc)
-        # extract 抛异常 → 回退 WEAK_HIT_ERROR
-        quiz_mod._tavily_extract = lambda url, k: (_ for _ in ()).throw(RuntimeError("network down"))
-        failed = quiz_mod.generate_quiz(url, difficulty="easy", count=3)
-        check("extract_fail_fallback", failed.get("ok") is False and failed.get("retrieved") == [],
-              "extract failure must fall back to WEAK_HIT_ERROR")
-        # 无 key：extract 不会被调用，直接拒绝
-        quiz_mod._tavily_extract = orig_extract
-        os.environ.pop("STUDY_LIU_TAVILY_KEY", None)
-        nokey = quiz_mod.generate_quiz(url, difficulty="easy", count=3)
-        check("extract_no_key_rejected", nokey.get("ok") is False and nokey.get("retrieved") == [],
-              "url without key must refuse")
+        import langchain_tavily as _lt
+    except Exception:
+        _lt = None
+    if _lt is not None:
+        recorded = []
+        class _RecS:
+            def __init__(self, **kw): recorded.append(("search", dict(kw)))
+        class _RecE:
+            def __init__(self, **kw): recorded.append(("extract", dict(kw)))
+        _os, _oe = _lt.TavilySearch, _lt.TavilyExtract
+        _lt.TavilySearch, _lt.TavilyExtract = _RecS, _RecE
+        try:
+            quiz_mod._build_tavily_tools("dummy-key")
+        finally:
+            _lt.TavilySearch, _lt.TavilyExtract = _os, _oe
+        sd = next((k for n, k in recorded if k.get("search_depth") == "advanced"), None)
+        check("tavily_search_deep_raw_content",
+              sd is not None and sd.get("include_raw_content") is True and sd.get("max_results") == 8,
+              "tavily_search_deep must be advanced+raw_content+max8: %s" % sd)
+        sb = next((k for n, k in recorded if k.get("search_depth") == "basic"), None)
+        check("tavily_search_basic_cfg",
+              sb is not None and sb.get("include_raw_content") is False and sb.get("max_results") == 3,
+              "tavily_search must be basic+no_raw+max3: %s" % sb)
+        exb = next((k for n, k in recorded if n == "extract" and k.get("extract_depth") == "basic"), None)
+        check("tavily_extract_basic_cfg", exb is not None, "tavily_extract basic missing")
+        exd = next((k for n, k in recorded if n == "extract" and k.get("extract_depth") == "advanced"), None)
+        check("tavily_extract_deep_cfg", exd is not None, "tavily_extract_deep advanced missing")
+    else:
+        check("tavily_tools_construction_skipped", True,
+              "langchain-tavily not installed in this env; construction not exercised")
+    teardown(tmp)
+
+    # ---- 工具智能体：search 出题（主题 → tavily_search → 标 web 来源） ----
+    tmp = tempfile.mkdtemp(prefix="zjxt-quiz-agent-")
+    quiz_mod, llm_mod = setup(tmp)
+    if quiz_mod is None:
+        return
+    record = []
+    os.environ["STUDY_LIU_TAVILY_KEY"] = "tvly-test-dummy"
+    quiz_mod._build_tavily_tools = lambda key: make_fake_tools(record)
+    quiz_mod._llm_chat = scripted([
+        tool_call("tavily_search", {"query": "量子占卜玄学导论"}),
+        finish(SINGLE_QS, [{"title": "Web A", "url": "https://example.com/a"}]),
+    ])
+    try:
+        res = quiz_mod.generate_quiz("量子占卜玄学导论", difficulty="easy", count=3, web_search=True)
+        check("agent_search_generates", res.get("ok") is True, "search agent failed: %s" % res.get("error"))
+        check("agent_search_source_web", res.get("source") == "web", "source should be web: %s" % res.get("source"))
+        check("agent_search_called_tool", any(n == "tavily_search" for n, _ in record), "tavily_search not invoked")
+        q0 = (res.get("questions") or [{}])[0]
+        check("agent_search_q_source_web", q0.get("source") == "web", "q source should be web")
+        check("agent_search_q_sources", isinstance(q0.get("sources"), list) and len(q0.get("sources")) >= 1,
+              "q sources missing: %s" % q0.get("sources"))
     except Exception as e:
-        check("day6_extract_no_crash", False, "extract crashed: %r" % e)
+        check("day6_agent_search_no_crash", False, "agent search crashed: %r" % e)
     finally:
         teardown(tmp)
 
-    # ---- 联网搜索开关：关 / 失败 均降级为空上下文、不拒绝，直接走出题 ----
-    tmp = tempfile.mkdtemp(prefix="zjxt-quiz-ws-")
+    # ---- 工具智能体：extract(URL) 出题（URL → tavily_extract → sources 带该 URL） ----
+    tmp = tempfile.mkdtemp(prefix="zjxt-quiz-agentx-")
+    quiz_mod, llm_mod = setup(tmp)
+    if quiz_mod is None:
+        return
+    record = []
+    url = "https://example.com/linear-algebra-notes"
+    os.environ["STUDY_LIU_TAVILY_KEY"] = "tvly-test-dummy"
+    quiz_mod._build_tavily_tools = lambda key: make_fake_tools(record)
+    quiz_mod._llm_chat = scripted([
+        tool_call("tavily_extract", {"urls": [url]}),
+        finish(SINGLE_QS, [{"title": url, "url": url}]),
+    ])
+    try:
+        res = quiz_mod.generate_quiz(url, difficulty="easy", count=3, web_search=True)
+        check("agent_extract_generates", res.get("ok") is True, "extract agent failed: %s" % res.get("error"))
+        check("agent_extract_source_web", res.get("source") == "web", "source web: %s" % res.get("source"))
+        check("agent_extract_called_tool", any(n == "tavily_extract" for n, _ in record), "tavily_extract not invoked")
+        qsrc = (res.get("questions") or [{}])[0].get("sources") or []
+        check("agent_extract_sources_carry_url",
+              isinstance(qsrc, list) and any(s.get("url") == url for s in qsrc),
+              "sources should carry url: %s" % qsrc)
+    except Exception as e:
+        check("day6_agent_extract_no_crash", False, "agent extract crashed: %r" % e)
+    finally:
+        teardown(tmp)
+
+    # ---- 国内域限定：模型应自定 include_domains 含中文域 ----
+    tmp = tempfile.mkdtemp(prefix="zjxt-quiz-dom-")
+    quiz_mod, llm_mod = setup(tmp)
+    if quiz_mod is None:
+        return
+    record = []
+    os.environ["STUDY_LIU_TAVILY_KEY"] = "tvly-test-dummy"
+    quiz_mod._build_tavily_tools = lambda key: make_fake_tools(record)
+    quiz_mod._llm_chat = scripted([
+        tool_call("tavily_search", {"query": "高考物理复习", "include_domains": ["*.cn", "*.edu.cn"]}),
+        finish(SINGLE_QS, [{"title": "国内站", "url": "https://school.edu.cn/x"}]),
+    ])
+    try:
+        res = quiz_mod.generate_quiz("高考物理复习", difficulty="easy", count=3, web_search=True)
+        check("agent_domestic_domain_called", res.get("ok") is True, "domestic failed: %s" % res.get("error"))
+        dom = next((a.get("include_domains") for n, a in record if n == "tavily_search"), None)
+        check("agent_domestic_include_cn", isinstance(dom, list) and any("cn" in d for d in dom),
+              "search must include *.cn domain: %s" % dom)
+        check("agent_domestic_prompt_guides", "*.cn" in quiz_mod._TOOL_SYSTEM,
+              "system prompt must mention *.cn default")
+    except Exception as e:
+        check("day6_agent_dom_no_crash", False, "domestic crashed: %r" % e)
+    finally:
+        teardown(tmp)
+
+    # ---- 失败回退拒绝：URL extract 失败 → WEAK_HIT_ERROR（无 URL 内容无法出题） ----
+    tmp = tempfile.mkdtemp(prefix="zjxt-quiz-fail-")
+    quiz_mod, llm_mod = setup(tmp)
+    if quiz_mod is None:
+        return
+    record = []
+    url = "https://example.com/broken"
+    os.environ["STUDY_LIU_TAVILY_KEY"] = "tvly-test-dummy"
+    bad = make_fake_tools(record)
+    bad["tavily_extract"].invoke = lambda a: (_ for _ in ()).throw(RuntimeError("network down"))
+    quiz_mod._build_tavily_tools = lambda key: bad
+    quiz_mod._llm_chat = scripted([tool_call("tavily_extract", {"urls": [url]})])
+    try:
+        failed = quiz_mod.generate_quiz(url, difficulty="easy", count=3, web_search=True)
+        check("agent_extract_fail_rejected",
+              failed.get("ok") is False and failed.get("retrieved") == [],
+              "extract failure must fall back to WEAK_HIT_ERROR: %s" % failed.get("error"))
+    except Exception as e:
+        check("day6_agent_fail_no_crash", False, "agent fail crashed: %r" % e)
+    finally:
+        teardown(tmp)
+
+    # ---- 联网搜索开关：关 → 不调工具，直接出题（source topic） ----
+    tmp = tempfile.mkdtemp(prefix="zjxt-quiz-wsoff-")
     quiz_mod, llm_mod = setup(tmp)
     if quiz_mod is None:
         return
     os.environ["STUDY_LIU_TAVILY_KEY"] = "tvly-test-dummy"
-    llm_mod.chat = fake_single
     quiz_mod._llm_chat = fake_single
     try:
-        # 开关关闭 → 不调 Tavily，ctx 空（无 KB 时）仍出题，source=topic
         off = quiz_mod.generate_quiz("量子占卜玄学导论", difficulty="easy", count=3, web_search=False)
         check("web_search_off_generates", off.get("ok") is True,
               "web_search off must still generate: %s" % off.get("error"))
         check("web_search_off_no_web_source", off.get("source") in ("topic", "kb"),
-              "web_search off should not mark web source: %s" % off.get("source"))
-        # 开关开启但 Tavily 抛异常 → 记 warning、降级、仍出题
-        quiz_mod._tavily_search = lambda q, k: (_ for _ in ()).throw(RuntimeError("boom"))
+              "web_search off should not mark web: %s" % off.get("source"))
+    except Exception as e:
+        check("day6_wsoff_no_crash", False, "wsoff crashed: %r" % e)
+    finally:
+        teardown(tmp)
+
+    # ---- 联网搜索开关：开但工具失败 → 降级为空上下文出题（不拒绝） ----
+    tmp = tempfile.mkdtemp(prefix="zjxt-quiz-wsfail-")
+    quiz_mod, llm_mod = setup(tmp)
+    if quiz_mod is None:
+        return
+    record = []
+    os.environ["STUDY_LIU_TAVILY_KEY"] = "tvly-test-dummy"
+    bad = make_fake_tools(record)
+    bad["tavily_search"].invoke = lambda a: (_ for _ in ()).throw(RuntimeError("boom"))
+    quiz_mod._build_tavily_tools = lambda key: bad
+    # 工具失败后，模型收到错误，回退到通用知识出题（裸 JSON 收尾，无 <finish>）
+    quiz_mod._llm_chat = scripted([
+        tool_call("tavily_search", {"query": "量子占卜玄学导论"}),
+        json.dumps({"questions": SINGLE_QS}, ensure_ascii=False),
+    ])
+    try:
         failed = quiz_mod.generate_quiz("量子占卜玄学导论", difficulty="easy", count=3, web_search=True)
         check("web_search_fail_degrades", failed.get("ok") is True,
               "web search fail must degrade, not reject: %s" % failed.get("error"))
         check("web_search_fail_no_web_source", failed.get("source") in ("topic", "kb"),
               "degraded run must not carry web source: %s" % failed.get("source"))
     except Exception as e:
-        check("day6_websearch_no_crash", False, "web_search crashed: %r" % e)
+        check("day6_wsfail_no_crash", False, "wsfail crashed: %r" % e)
+    finally:
+        teardown(tmp)
+
+    # ---- 无 key：主题题降级为空上下文出题（不拒绝） ----
+    tmp = tempfile.mkdtemp(prefix="zjxt-quiz-nokey-")
+    quiz_mod, llm_mod = setup(tmp)
+    if quiz_mod is None:
+        return
+    os.environ.pop("STUDY_LIU_TAVILY_KEY", None)
+    quiz_mod._llm_chat = fake_single
+    try:
+        weak = quiz_mod.generate_quiz("量子占卜玄学导论", difficulty="easy", count=3, web_search=True)
+        check("tavily_no_key_degraded", weak.get("ok") is True and weak.get("source") == "topic",
+              "no-key topic must degrade to topic gen, not refuse: %s" % weak.get("error"))
+    except Exception as e:
+        check("day6_nokey_no_crash", False, "nokey crashed: %r" % e)
+    finally:
+        teardown(tmp)
+
+    # ---- 无 key：URL 直出题直接拒绝（无 extract 内容无法出题） ----
+    tmp = tempfile.mkdtemp(prefix="zjxt-quiz-nourlkey-")
+    quiz_mod, llm_mod = setup(tmp)
+    if quiz_mod is None:
+        return
+    os.environ.pop("STUDY_LIU_TAVILY_KEY", None)
+    quiz_mod._llm_chat = fake_single
+    try:
+        url = "https://example.com/notes"
+        nokey = quiz_mod.generate_quiz(url, difficulty="easy", count=3, web_search=True)
+        check("extract_no_key_rejected", nokey.get("ok") is False and nokey.get("retrieved") == [],
+              "url without key must refuse")
+    except Exception as e:
+        check("day6_nourlkey_no_crash", False, "nourlkey crashed: %r" % e)
     finally:
         teardown(tmp)
 

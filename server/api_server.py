@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""study-liu Web API 后端 —— 纯标准库实现（零第三方依赖）。
+"""study-liu Web API 后端 —— 标准库实现（零第三方依赖；仅 quiz 出题链路经队长批准引入 langchain-tavily）。
 
 设计目标
 --------
@@ -34,6 +34,13 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+# ============================================================
+# 0. Tavily key 映射（quiz 出题链路使用 langchain-tavily）
+# ============================================================
+# 队长批准放宽零依赖约束：仅 quiz 出题链路引入 langchain-tavily，其要求环境变量
+# TAVILY_API_KEY。这里把既有的 STUDY_LIU_TAVILY_KEY 映射过去（不入库、不落盘）。
+os.environ["TAVILY_API_KEY"] = os.environ.get("STUDY_LIU_TAVILY_KEY", "")
 
 # ============================================================
 # 1. 定位 study-liu 源码目录

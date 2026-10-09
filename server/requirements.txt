@@ -1,0 +1,12 @@
+# quiz 出题链路依赖（langchain-tavily）
+#
+# 队长已批准放宽「零依赖」约束：仅 quiz 出题链路（server/quiz.py 的 Tavily 工具智能体）
+# 引入 langchain-tavily，用于把 Tavily 的 search/extract 封装成工具，交给现有出题 LLM
+# 以自写 tool-call 循环驱动。其余后端仍为标准库零依赖。
+#
+# 其余接口（/api/chat、文档导入、侧车、安全闸等）不受影响，无需此依赖。
+# Tavily key 仍只从环境变量 STUDY_LIU_TAVILY_KEY 注入（api_server 装配时映射到
+# TAVILY_API_KEY），不入库、不落盘。
+#
+# 安装：pip install -r server/requirements.txt
+langchain-tavily
