@@ -146,7 +146,7 @@ pm2 restart my-api
 **完全不用改 `nginx.conf`**。
 
 ```nginx
-limit_req_zone  $binary_remote_addr  zone=api_perip:10m   rate=30r/m;
+limit_req_zone  $binary_remote_addr  zone=api_perip:10m   rate=120r/m;   # 2026-10-09 由 30r/m 放宽
 limit_req_zone  $server_name         zone=api_global:10m  rate=60r/m;
 limit_conn_zone $binary_remote_addr  zone=conn_perip:10m;
 
@@ -192,8 +192,8 @@ server {
         proxy_read_timeout 300s;    # 大模型生成慢，给足
         proxy_send_timeout 300s;
 
-        limit_req  zone=api_perip  burst=10 nodelay;   # ★ 单 IP 限速
-        limit_req  zone=api_global burst=20 nodelay;   # ★ 全局兜底限速
+        limit_req  zone=api_perip  burst=60 nodelay;   # ★ 单 IP 限速（2026-10-09 由 burst=10 放宽）
+        limit_req  zone=api_global burst=120 nodelay;  # ★ 全局兜底限速（2026-10-09 由 burst=20 放宽）
         limit_conn conn_perip 16;                      # ★ 单 IP 并发上限
     }
 }
@@ -216,15 +216,35 @@ server {
 同一出口下多台机器一起刷就挡不住；只做全局的话，
 单个攻击者能把全局限额占满，反而把正常演示挤掉。两条一起才既挡得住又不误伤。
 
-**实测数据**（2026-09-21 验证）：
+**实测数据**：
+
+改前（2026-09-21，30r/m + burst 10）：
 - 4.5 秒内打 35 次 `/api/health` → **13 次 200、22 次 429**
 - 限速期间 `GET /` 仍返回 200（说明限速只作用于 `/api`，不会把整站打挂）
 - 停止施压 22 秒后全部恢复 200（**是自排空的限速，不是永久封禁**）
 - 300KB 请求体 → **413**，请求没进到后端
 
+改后（2026-10-09 放宽，实测于 1e23121 时的线上配置）：
+- 连续 **50** 次 `/api/health` → **50 次 200、零 429**（终检脚本硬指标，跑两轮都过）
+- 连续 **70** 次 → **63 次 200、7 次 429**；`error.log` 记
+  `limiting requests, excess: 60.59 by zone "api_perip"`（限流仍在拦，没被改废）
+
+**★ `burst=N` 的语义**：在速率之上**再放行 N 次**，即实际放行 **N+1** 次 ——
+实测 burst=10 时连打 15 次正好是「200×11 后全是 429」。所以要让一次 50 连发全过，burst 必须 ≥ 50。
+
+**★ 两条 `limit_req` 会叠加**：只抬「单 IP」那条不够，全局那条（burst 更早耗尽时）照样会掐。
+反过来，`burst` 只影响「突发额度」，**持续速率由 `rate=` 决定** ——
+本次只抬 burst、不动全局 rate（仍 60r/m），所以常态防护没有变弱。
+
+**★ 两个容易踩的时序**：
+- `reload` 会重置 zone 计数（测试前后互不干扰）
+- 但打完一次突发后，该 IP 要等 `burst ÷ rate` 秒才排空
+  （当前 60 ÷ 2/s ≈ **30 秒**），期间同 IP 的其他 `/api/*` 仍会 429 ——
+  终检脚本跑完别立刻接着连点，或者把两次连发隔开半分钟
+
 **当前值够用吗**：正常浏览一次约 3-5 个 `/api` 请求，生成方案 1 个 SSE 连接，
-30r/m 有充足余量。前端**没有任何轮询**（已确认无 `setInterval`），所以不会自触发。
-如果现场网络环境特殊需要放宽，改 `rate=` 的值即可，改完 `reload` 生效。
+120r/m + burst 60 有充足余量。前端**没有任何轮询**（已确认无 `setInterval`），不会自触发。
+若现场网络环境特殊还需更宽，**`00-limits.conf` 的 `rate=` 与 `default` 里的 `burst=` 要一起改**，改完 `reload` 生效。
 
 
 ---
@@ -253,7 +273,7 @@ tar xzf /home/admin/backups/ai-coding-<TS>.tar.gz -C /home/admin/ai-coding
 | 页面白屏，控制台 `Unexpected token '<'` | `index.html` 被缓存了旧哈希。确认 `Cache-Control: no-cache` 生效，然后硬刷新 |
 | 链路动画「一闪而过」，没有逐步推进 | `location /api/` 少了 `proxy_buffering off`，或改完没 `reload nginx` |
 | 页面 200 但内容不对（返回的是首页） | nginx 的 SPA 回退。**判断某个文件存不存在不能看状态码**，要看响应体长度是否等于 `index.html` 的长度 |
-| **接口返回 429** | **触发了限速**。看 `sudo tail /var/log/nginx/error.log` 会看到 `limiting requests ... by zone "api_perip"`。单 IP 限额 30r/m（burst 10），停手约 20 秒自动恢复。若是现场人多共用出口 IP，把 `00-limits.conf` 里的 `rate=` 放宽后 `reload` |
+| **接口返回 429** | **触发了限速**。看 `sudo tail /var/log/nginx/error.log` 会看到 `limiting requests ... by zone "api_perip"`。单 IP 限额 **120r/m（burst 60，2026-10-09 由 30r/m + burst 10 放宽）**，突发打满后约 **30 秒**自动恢复。若是现场人多共用出口 IP，把 `00-limits.conf` 的 `rate=` 与 `default` 里的 `burst=` **一起**放宽后 `reload` |
 | **接口返回 413** | 请求体超过 `client_max_body_size 256k`。正常接口最大也就 40KB 左右，出现 413 说明有异常大的请求，**属于预期拦截**，值得看一眼是谁在发 |
 | 生成方案报错 / 一直卡在「生成中」 | `pm2 logs my-api --lines 100`；再看 `data/trace.log` |
 | 「来源：知识库」从来没出现过 | 知识库为空。`curl /api/knowledge` 看 `total`；为 0 就检查 `data/knowledge.json` 是否存在 |
