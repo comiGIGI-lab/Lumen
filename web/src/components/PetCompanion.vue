@@ -423,7 +423,14 @@ const interaction = usePetInteraction({
     showCenterToast(`${name} 蹭了蹭你的手指`, 3000)
   },
   onIdleBubble() {
-    showCenterToast('要不要去自习一会儿？我陪你。', 4000)
+    const bubbles = [
+      '要不要去自习一会儿？我陪你。',
+      '学习累了吗？来做几道「选择题闯关」放松下吧！',
+      '记得把最新的课程资料传给我，我才能帮你出好题哦！',
+      '无聊的话，可以双击我玩耍一下~'
+    ]
+    const text = bubbles[Math.floor(Math.random() * bubbles.length)]
+    showCenterToast(text, 4000)
   },
 })
 

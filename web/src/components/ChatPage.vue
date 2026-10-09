@@ -95,6 +95,7 @@ const tab = ref('ask')
   overflow: hidden;
 }
 .tab {
+  min-height: 44px;
   border: none;
   background: var(--bg-card);
   color: var(--text-primary);

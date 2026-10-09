@@ -11,6 +11,7 @@ import { useI18n } from '@/i18n'
 import SnakeBar from './SnakeBar.vue'
 import { api } from '@/api/client'
 import { useKnowledge } from '@/composables/useKnowledge'
+import { usePet } from '@/composables/usePet'
 
 const emit = defineEmits(['back', 'open-knowledge', 'go-course'])
 const { t } = useI18n()
@@ -21,6 +22,7 @@ const MAX_FILES = 10
 const MAX_BYTES = 16 * 1024 * 1024
 
 const { notes, pickNote, createNote, refresh, ensureLoaded } = useKnowledge()
+const { logExp, XP_IMPORT_KB } = usePet()
 
 ensureLoaded()
 
@@ -220,6 +222,7 @@ async function startParse() {
     }
   }
 
+  if (okCount > 0) logExp('导入资料', XP_IMPORT_KB)
   summary.value = { ok: okCount, failed: failCount, total: picked.value.length }
   await refresh('')
   // 导入后把焦点切到刚归入的笔记（或第一条），用户点「去知识库查看」能直接看到

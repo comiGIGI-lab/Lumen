@@ -17,7 +17,7 @@ const props = defineProps({
 })
 const emit = defineEmits(['notify'])
 const { t } = useI18n()
-const { logExp } = usePet()
+const { logExp, XP_QUIZ_PER_Q } = usePet()
 
 const difficulty = ref('medium')
 const count = ref(5)
@@ -185,7 +185,7 @@ async function next() {
   if (index.value + 1 >= run.value.questions.length) {
     finished.value = true
     // 结算经验：每题 2 点，走既有 logExp 规则
-    logExp('答题闯关', results.value.length * 2)
+    logExp('答题闯关', results.value.length * XP_QUIZ_PER_Q)
     emit('notify', { type: 'success', text: t('quizPage.done') })
     // 拉复盘
     busy.value = true
@@ -486,6 +486,7 @@ function reset() {
   background: var(--bg-card);
   color: var(--text-primary);
   border-radius: 10px;
+  min-height: 44px;
   padding: 10px 14px;
   margin-bottom: 8px;
   font-size: 14px;

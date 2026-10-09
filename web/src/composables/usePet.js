@@ -26,6 +26,8 @@ export const XP_STUDY_DAILY_BONUS = 10
 export const XP_PLAN = 40
 /** 每天前几次方案生成给经验 */
 export const XP_PLAN_DAILY_CAP = 2
+export const XP_IMPORT_KB = 15
+export const XP_QUIZ_PER_Q = 2
 
 /** Lv5 起开放进阶形态；选「保持」后每次升级仍会再问 */
 export const EVOLVE_LEVEL = 5
@@ -458,6 +460,8 @@ export function usePet() {
     XP_STUDY_DAILY_BONUS,
     XP_PLAN,
     XP_PLAN_DAILY_CAP,
+    XP_IMPORT_KB,
+    XP_QUIZ_PER_Q,
     EVOLVE_LEVEL,
     EVOLVE2_LEVEL,
     STREAK_POOL_MAX,
