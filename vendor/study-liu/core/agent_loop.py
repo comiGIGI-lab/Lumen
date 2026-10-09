@@ -50,6 +50,39 @@ def _ensure_trace_dir():
         os.makedirs(_TRACE_DIR, exist_ok=True)
 
 
+def _retrieve_course_hits(query, min_score=RAG_MIN_SCORE, min_coverage=RAG_MIN_COVERAGE):
+    """按问答同一套门槛检索知识库。失败时返回空，不阻断方案生成。"""
+    try:
+        from tools.knowledge_store import KnowledgeStore
+        store = KnowledgeStore()
+        raw_hits = store.retrieve(query, top_k=RAG_TOP_K * 2)
+    except Exception as e:
+        log_trace("plan_retrieve_failed", {"error": str(e)})
+        return [], []
+    hits = [
+        h for h in raw_hits
+        if h[1] >= min_score and (h[2].get("coverage") or 0) >= min_coverage
+    ][:RAG_TOP_K]
+    citations = [
+        {"id": n.get("id"), "title": n.get("title", ""), "score": round(s, 2)}
+        for n, s, _ in hits
+    ]
+    return hits, citations
+
+
+def _kb_prompt_blocks(hits):
+    """把命中笔记拼进 Planner / Writer prompt。空命中返回空串。"""
+    if not hits:
+        return ""
+    blocks = []
+    for i, (note, _score, _detail) in enumerate(hits, 1):
+        body = (note.get("content") or "").strip()
+        if len(body) > RAG_PASSAGE_MAX:
+            body = body[:RAG_PASSAGE_MAX] + "…"
+        blocks.append("【资料 %d】%s\n%s" % (i, note.get("title", ""), body))
+    return "\n\n".join(blocks)
+
+
 def log_trace(event, data=None):
     """
     写一行 trace 日志到 data/trace.log，同时打印到 console。
@@ -81,7 +114,8 @@ def run_plan_pipeline(course, profile=None, use_cache=True):
         use_cache: 是否使用结果缓存（默认 True）。命中缓存时跳过整条流水线，
                    演示时重复点「生成方案」不会重复消耗 API 额度。
     返回：
-        包含 outline / resources / plan 的字典
+        包含 outline / resources / plan / retrieved 的字典
+        retrieved 形状与问答相同：[{id, title, score}, ...]，弱命中为 []
         （命中缓存时额外带 "_from_cache": True）
     """
     from agents.planner import plan_outline
@@ -122,9 +156,21 @@ def run_plan_pipeline(course, profile=None, use_cache=True):
     except Exception:
         pass
 
+    # 用课程名检索知识库（门槛与问答相同）。弱命中既不注入 prompt，也不进 retrieved。
+    hits, citations = _retrieve_course_hits(
+        course, min_score=RAG_MIN_SCORE, min_coverage=RAG_MIN_COVERAGE,
+    )
+    kb_context = _kb_prompt_blocks(hits)
+    if hits:
+        log_trace("plan_retrieve", {
+            "hits": len(hits),
+            "top_title": citations[0]["title"],
+            "top_score": citations[0]["score"],
+        })
+
     # 第一步：Planner 生成大纲
     log_trace("planner_start", {"course": course})
-    outline = plan_outline(course, profile=profile)
+    outline = plan_outline(course, profile=profile, kb_context=kb_context)
     log_trace("planner_done", {"outline_count": len(outline)})
 
     # 第二步：Searcher 搜索资源
@@ -134,7 +180,7 @@ def run_plan_pipeline(course, profile=None, use_cache=True):
 
     # 第三步：Writer 生成学习计划
     log_trace("writer_start", {"course": course})
-    plan = write_plan(course, outline, profile=profile)
+    plan = write_plan(course, outline, profile=profile, kb_context=kb_context)
     log_trace("writer_done", {"plan_count": len(plan)})
 
     # 第四步：Reviewer 质检
@@ -144,6 +190,7 @@ def run_plan_pipeline(course, profile=None, use_cache=True):
         "resources": resources,
         "plan": plan,
         "profile": profile or {},
+        "retrieved": citations,
     }
     log_trace("reviewer_start", {"course": course})
     ok, comments, result = review(result)
@@ -155,7 +202,7 @@ def run_plan_pipeline(course, profile=None, use_cache=True):
     # 第二次仍不过就带着当前 comments 返回，禁止再循环。
     if not ok:
         log_trace("reviewer_retry", {"comments": comments, "max_retries": 1})
-        plan = write_plan(course, outline, profile=profile)
+        plan = write_plan(course, outline, profile=profile, kb_context=kb_context)
         resources = search_resources(course, profile=profile)
         result = {
             "course": course,
@@ -163,6 +210,7 @@ def run_plan_pipeline(course, profile=None, use_cache=True):
             "resources": resources,
             "plan": plan,
             "profile": profile or {},
+            "retrieved": citations,
         }
         ok, comments, result = review(result)
         resources = result.get("resources", resources)

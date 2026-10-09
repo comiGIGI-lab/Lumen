@@ -638,12 +638,13 @@ def _parse_outline_from_llm(text):
     return []
 
 
-def plan_outline(course, profile=None):
+def plan_outline(course, profile=None, kb_context=None):
     """
     为课程生成学习大纲。
     参数：
         course: 课程名
         profile: 可选，用户画像（注入 prompt 让章节深度 / 数量更贴合）
+        kb_context: 可选，知识库检索到的资料文本（已截断），注入 prompt
     返回：
         章节列表，每项 {"title": str, "points": [str, ...]}
     """
@@ -665,8 +666,18 @@ def plan_outline(course, profile=None):
         elif level == "冲刺":
             chapter_count = "6-8 章（聚焦重难点）"
 
+    kb_text = ""
+    if kb_context:
+        kb_text = (
+            "下面是本课程知识库中检索到的资料。规划章节时请优先覆盖这些材料里出现的概念；"
+            "资料不足以构成章节时按常识补全。不要复述「资料1/资料2」这种编号。\n\n"
+            + str(kb_context)
+            + "\n\n"
+        )
+
     prompt = (
         profile_text
+        + kb_text
         + f"你是课程规划助手。请为课程「{course}」输出学习大纲，共 {chapter_count}。\n"
         + "要求：\n"
         + "1. 每章一个标题 + 至少 3 条要点；要点必须具体到概念或操作"

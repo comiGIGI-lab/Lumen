@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """离线中文语音转写。
 
-默认引擎是 Vosk（现网已部署，16 kHz PCM、无 ffmpeg）。
-whisper.cpp 作为**可选侧车**：二进制和 ggml 模型在仓库外，探测到才用，
-缺了静默回退 Vosk。不走 Docling ASR / openai-whisper。
+有 whisper.cpp 就优先（1.6G 只用 ggml-small 多语言模型）；缺了才 Vosk。
+whisper 已经能扛时 status() 不加载约 150MB 的 Vosk。二进制和 ggml
+模型在仓库外。不走 Docling ASR / openai-whisper。
 
 强制引擎：``STUDY_LIU_ASR_ENGINE=whisper|vosk``。
 

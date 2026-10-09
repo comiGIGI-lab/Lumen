@@ -608,6 +608,7 @@ def build_payload(course: str, result: dict, duration_ms: int) -> dict:
         "profile_text": format_profile_text(profile) if profile else "",
         "from_cache": bool(result.get("_from_cache")),
         "degraded": result.get("_degraded"),
+        "retrieved": result.get("retrieved") or [],
         "duration_ms": duration_ms,
         "stats": {
             "outline": len(outline),

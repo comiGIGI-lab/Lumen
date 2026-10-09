@@ -3,7 +3,7 @@
  * ChatPanel —— 课程问答（链路的下游能力）
  * 复用后端 run_chat_pipeline：先做知识库相关性检索（打分排序），
  * 把命中的片段注入 system prompt 交给大模型生成；材料里没有才按常识回答。
- * 后端在该接口一并返回 retrieved（命中的条目与分数），可用于展示「参考资料」。
+ * 后端在该接口一并返回 retrieved（命中的条目与分数）；AI 气泡下方展示「参考资料」。
  */
 import { nextTick, ref } from 'vue'
 import { useI18n } from '@/i18n'
@@ -52,14 +52,24 @@ async function ask() {
         text,
         source: 'intent',
         html: renderMarkdown(text),
+        retrieved: [],
       })
       emit('notify', { type: 'warn', text: '已识别为生成方案意图，请在顶部输入课程名' })
     } else {
+      const retrieved = Array.isArray(res.retrieved) ? res.retrieved : []
       messages.value.push({
         role: 'ai',
         text: res.answer,
         source: res.source,
         html: renderMarkdown(res.answer || ''),
+        retrieved: retrieved
+          .filter((c) => c && typeof c === 'object' && String(c.title || '').trim())
+          .slice(0, 3)
+          .map((c) => ({
+            id: c.id,
+            title: String(c.title).trim(),
+            score: typeof c.score === 'number' ? c.score : null,
+          })),
       })
     }
   } catch (e) {
@@ -132,6 +142,18 @@ function md(text) {
                       : t('chatPanelX.7')
             }}
           </span>
+          <div
+            v-if="m.role === 'ai' && m.retrieved && m.retrieved.length"
+            class="cites"
+          >
+            <div class="cites-label">{{ t('chatPanelX.8') }}</div>
+            <ul class="cites-list">
+              <li v-for="(c, ci) in m.retrieved" :key="c.id || ci">
+                <span class="cite-title">{{ c.title }}</span>
+                <span v-if="c.score != null" class="cite-score">{{ c.score }}</span>
+              </li>
+            </ul>
+          </div>
         </div>
       </div>
 
@@ -265,6 +287,48 @@ function md(text) {
   display: inline-block;
   margin-top: 5px;
   font-size: 10.5px;
+  color: var(--text-faint);
+}
+
+.cites {
+  margin-top: 8px;
+  padding-top: 7px;
+  border-top: 1px dashed var(--border);
+}
+
+.cites-label {
+  font-size: 10.5px;
+  color: var(--text-faint);
+  margin-bottom: 4px;
+}
+
+.cites-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cites-list li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.cite-title {
+  font-size: 12px;
+  color: var(--text-secondary);
+  word-break: break-word;
+  line-height: 1.45;
+}
+
+.cite-score {
+  flex: none;
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
   color: var(--text-faint);
 }
 

@@ -83,7 +83,9 @@ sudo nginx -t && sudo systemctl reload nginx
 
 ```bash
 cd /home/admin/ai-coding
-git pull                       # 或按需 git reset --hard origin/master
+# 备份当前 dist 与 settings，再快进。不要 git reset --hard（会丢掉未跟踪改动）。
+cp -a web/dist /home/admin/backups/dist-$(date +%Y%m%d-%H%M)
+git pull --ff-only
 
 # 只改了前端 → 必须重新构建，dist/ 不会被 git 带过来
 cd web && npm run build && cd ..
@@ -96,6 +98,10 @@ pm2 restart my-api
 
 > ⚠️ `web/dist/` 在 `.gitignore` 里，**服务器上的 dist 是本地构建出来的**。
 > 改了 `web/src/` 或 `web/public/` 而忘记 `npm run build`，线上不会有任何变化。
+>
+> **决赛冲刺（Day1 问答引用 + Day2 方案引用知识库 + MinerU 内存闸）已合入 Gitee master。**
+> `git pull` 才会更新服务器上的源码。push 本身不会改 `http://47.106.76.244`。
+> 有服务器登录的队友按上面做：备份 dist → `git pull --ff-only` → `cd web && npm run build` → `pm2 restart my-api`。改 nginx 才需要 sudo。用户本人没有登录通道，不要替他 SSH。
 
 ---
 
@@ -387,7 +393,7 @@ sudo tail -20 /var/log/nginx/error.log | grep -i limiting || echo "  最近没�
 
 ---
 
-## 12. 语音转写（Vosk 默认 / whisper.cpp 可选侧车）—— 模型不在仓库里，换服务器必须手动搬
+## 12. 语音转写（whisper.cpp `small` 优先 / Vosk 回退）—— 模型不在仓库里，换服务器必须手动搬
 
 `/api/asr` 依赖两个**仓库外**的东西（模型 66MB，进不了 git，Gitee 会拒）：
 
@@ -428,7 +434,7 @@ PM2 常驻内存从 49MB 涨到约 162MB（峰值 178MB）；
 
 **whisper.cpp 可选侧车**（不要把 openai-whisper / Docling ASR 装进 api_server）：
 
-二进制和 ggml 模型同样放仓库外。中文必须用多语言模型（`ggml-small.bin` / `ggml-medium.bin`），**不要用 `*.en`**。浏览器已经把音频重采样成 16 kHz PCM，服务端只包 WAV 头，不依赖 ffmpeg。
+二进制和 ggml 模型同样放仓库外。这台 1.6G 机器**只用**多语言 `ggml-small.bin`（约 852MB 可放）。**不要用 `ggml-medium.bin`（约 2.1GB，放不下）**，**不要用 `*.en`**。浏览器已经把音频重采样成 16 kHz PCM，服务端只包 WAV 头，不依赖 ffmpeg。
 
 ```bash
 # 示例路径（代码默认值）
@@ -439,11 +445,11 @@ PM2 常驻内存从 49MB 涨到约 162MB（峰值 178MB）；
 # 强制引擎：STUDY_LIU_ASR_ENGINE=whisper|vosk
 ```
 
-`GET /api/asr` 现在会多 `engine` 与 `backends`：有 whisper.cpp 就优先；没有则继续 Vosk。两侧都缺时 `available=false`，界面照旧置灰。1.6G 机器上不要同时常驻 Vosk 大模型和 whisper medium。
+`GET /api/asr` 现在会多 `engine` 与 `backends`：有 whisper.cpp 就优先，且 **status() 不再加载约 150MB 的 Vosk**；没有 whisper 才回退 Vosk。两侧都缺时 `available=false`，界面照旧置灰。1.6G 机器不要同时常驻 Vosk 大模型和任何 whisper 模型，也不要上 medium。
 
 ## 13. PDF 解析（pypdf 默认 / MinerU 可选侧车）
 
-`POST /api/knowledge/import` 的 HTTP 契约不变。数字文本 PDF 仍走 pypdf；文本层少于约 200 字且文件 ≥ 50KB 时，才尝试 `mineru-kit parse --tier basic`。Docling 不作为中文 PDF 主引擎，也不把 MinerU 4.0 整包 import 进 `api_server`。
+`POST /api/knowledge/import` 的 HTTP 契约不变。数字文本 PDF 仍走 pypdf；文本层少于约 200 字且文件 ≥ 50KB 时，**并且** `MemAvailable` ≥ 2GiB，才尝试 `mineru-kit parse --tier basic`。1.6G 机器低于这条线：路由保留、扫描件走 pypdf，不要强装。Docling 不作为中文 PDF 主引擎，也不把 MinerU 4.0 整包 import 进 `api_server`。
 
 ```bash
 # 可选：把 mineru-kit 放到 PATH，或
@@ -453,5 +459,5 @@ PM2 常驻内存从 49MB 涨到约 162MB（峰值 178MB）；
 # 探测：curl -s localhost:8000/api/knowledge/capabilities
 ```
 
-未装 MinerU 时导入照常工作，只是扫描件几乎抽不到字。不要在这台 1.6G 机器上用 `--tier advanced`。
+未装 MinerU、或内存不足 2GiB 时导入照常工作，只是扫描件几乎抽不到字。`GET /api/knowledge/capabilities` 的 `document.mineru.available` 为 false，`note` 会写明是缺二进制还是内存不够。不要在这台 1.6G 机器上用 `--tier standard` / `--tier advanced`。测试可覆盖：`STUDY_LIU_MINERU_RAM_KB` / `STUDY_LIU_MINERU_MIN_RAM_KB`（0 关闭闸）。
 

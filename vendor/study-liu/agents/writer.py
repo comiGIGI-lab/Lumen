@@ -22,13 +22,14 @@ _DAY_ACTIVITIES = [
 ]
 
 
-def write_plan(course, outline, profile=None):
+def write_plan(course, outline, profile=None, kb_context=None):
     """
     根据大纲为课程生成学习计划。
     参数：
         course: 课程名
         outline: 大纲列表（每项 {"title", "points"}，也兼容纯字符串项）
         profile: 可选，用户画像（决定计划天数 / 活动节奏）
+        kb_context: 可选，知识库检索到的资料文本（已截断），注入 prompt
     返回：
         学习计划列表（字符串数组，按天排）
     """
@@ -59,8 +60,18 @@ def write_plan(course, outline, profile=None):
         except Exception:
             profile_text = ""
 
+    kb_text = ""
+    if kb_context:
+        kb_text = (
+            "下面是本课程知识库中检索到的资料。安排每日任务时请优先覆盖这些材料里的概念；"
+            "资料不足的部分按大纲补全。不要复述「资料1/资料2」这种编号。\n\n"
+            + str(kb_context)
+            + "\n\n"
+        )
+
     prompt = (
         profile_text
+        + kb_text
         + f"你是学习计划助手。为「{course}」生成 {days} 天学习计划，每天任务必须不同。\n"
         + f"要求每天覆盖大纲一两个章节，并加上\"预习/视频/练习/项目/复盘\"等活动。\n"
         + f"格式\"第1天：xxx\"，每天一行，只输出计划。\n"

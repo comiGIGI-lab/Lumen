@@ -7,6 +7,7 @@
 - api_server 继续零第三方依赖；MinerU 没装时必须静默退回 pypdf。
 - 扫描件 / 几乎抽不到字的 PDF 才走 MinerU；数字文本 PDF 默认仍走 pypdf
   （1.6G 机器上拉起 MinerU 4.0 会把演示打挂）。
+- 可用内存低于 2GiB 时 available=false，连强制 mineru 也不拉侧车。
 - 强制引擎用环境变量：STUDY_LIU_PDF_ENGINE=mineru | pypdf
 
 CLI（官方 mineru-kit parse）：
@@ -18,6 +19,8 @@ STUDY_LIU_MINERU_BIN     可执行文件；.py 则用当前 Python 解释器跑�
 STUDY_LIU_MINERU_TIER    flash | basic | standard | advanced，默认 basic
 STUDY_LIU_MINERU_TIMEOUT 秒，默认 120
 STUDY_LIU_PDF_ENGINE     mineru | pypdf | 空（自动）
+STUDY_LIU_MINERU_RAM_KB  覆盖 MemAvailable（测试用）
+STUDY_LIU_MINERU_MIN_RAM_KB  闸值，默认 2097152（2GiB）；0 关闭
 """
 from __future__ import annotations
 
@@ -31,11 +34,66 @@ MIN_NATIVE_CHARS = 200
 SPARSE_FILE_BYTES = 50 * 1024
 DEFAULT_TIER = "basic"
 DEFAULT_TIMEOUT = 120
+# MinerU official basic+ONNX floor is 2GB RAM. 1.6G 演示机必须闸住。
+MIN_RAM_KB = 2 * 1024 * 1024
 _SERVER_BIN = "/home/admin/asr/mineru/mineru-kit"
 
 
 def _repo_root() -> str:
     return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def _min_ram_kb():
+    raw = (os.environ.get("STUDY_LIU_MINERU_MIN_RAM_KB") or "").strip()
+    if raw:
+        try:
+            return max(0, int(raw))
+        except ValueError:
+            pass
+    return MIN_RAM_KB
+
+
+def _mem_available_kb():
+    """返回可用内存 kB；测不出来返回 None（Windows 本机放行，线上读 /proc）。"""
+    raw = (os.environ.get("STUDY_LIU_MINERU_RAM_KB") or "").strip()
+    if raw:
+        try:
+            return int(raw)
+        except ValueError:
+            pass
+    meminfo = "/proc/meminfo"
+    try:
+        with open(meminfo, "r", encoding="utf-8", errors="ignore") as f:
+            available = None
+            free = None
+            for line in f:
+                if line.startswith("MemAvailable:"):
+                    available = int(line.split()[1])
+                    break
+                if line.startswith("MemFree:") and free is None:
+                    free = int(line.split()[1])
+            if available is not None:
+                return available
+            return free
+    except (OSError, ValueError, IndexError):
+        return None
+
+
+def ram_ok():
+    """(ok, reason)。闸关闭或读不到 /proc 时放行。"""
+    need = _min_ram_kb()
+    if need <= 0:
+        return True, ""
+    have = _mem_available_kb()
+    if have is None:
+        return True, ""
+    if have < need:
+        return False, (
+            "本机可用内存约 %d MB，低于 MinerU basic 的 %d MB 下限；"
+            "扫描件走 pypdf，不要强上。"
+            % (have // 1024, need // 1024)
+        )
+    return True, ""
 
 
 def mineru_cmd():
@@ -64,6 +122,9 @@ def available():
     exe = cmd[-1]
     if not os.path.isfile(exe) and shutil.which(exe) is None:
         return False, "mineru-kit 路径无效：%s" % exe
+    ok, reason = ram_ok()
+    if not ok:
+        return False, reason
     return True, ""
 
 
@@ -124,6 +185,9 @@ def parse_with_mineru(path, timeout=None):
     cmd = mineru_cmd()
     if not cmd:
         return {"text": "", "error": "mineru-kit 不可用"}
+    ram_pass, ram_reason = ram_ok()
+    if not ram_pass:
+        return {"text": "", "error": ram_reason}
     if timeout is None:
         try:
             timeout = int(os.environ.get("STUDY_LIU_MINERU_TIMEOUT") or DEFAULT_TIMEOUT)

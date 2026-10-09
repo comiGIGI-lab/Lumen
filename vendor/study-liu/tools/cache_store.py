@@ -37,12 +37,13 @@ MAX_ENTRIES = 30                # 最多缓存条目数（LRU 淘汰）
 DEFAULT_TTL = 24 * 3600         # 默认过期时间 24 小时
 CACHE_FILENAME = "cache.json"   # 相对 data/ 目录
 
-# 结果结构版本。**改动 outline / resources / plan 的输出结构时必须 +1** ——
+# 结果结构版本。**改动 outline / resources / plan / retrieved 的输出结构时必须 +1** ——
 # 它参与 cache key 派生，旧结构的历史缓存会自动失效。
 # 背景：缓存 TTL 24h，若结构变了而 key 没变，部署后 24 小时内仍会命中
 # 旧结构结果（例如大纲还是纯字符串、导出里继续显示「要点待补充」），
 # 看起来像"改了没用"。
-CACHE_SCHEMA = 2
+# v3：方案结果增加 retrieved，且 cache key 纳入知识库指纹。
+CACHE_SCHEMA = 3
 
 
 def _now() -> float:
@@ -61,15 +62,41 @@ def _get_cache_path() -> str:
 # ============================================================
 # Key 派生
 # ============================================================
-def make_cache_key(course: str, profile: dict | None = None) -> str:
-    """根据课程名 + 用户画像指纹生成缓存 key。
+def knowledge_fingerprint() -> str:
+    """知识库指纹：导入 / 删除笔记后必须让方案缓存失效。
 
-    同一课程同一画像 → 同一 key → 命中同一缓存。
+    只吃 id / title / 正文长度，避免把整份课件塞进 key。
+    读库失败时返回空指纹，等同「无知识库」，不阻断生成。
+    """
+    try:
+        from tools.knowledge_store import KnowledgeStore
+        notes = KnowledgeStore().list_all() or []
+    except Exception:
+        notes = []
+    payload = [
+        {
+            "id": n.get("id"),
+            "title": n.get("title") or "",
+            "n": len(n.get("content") or ""),
+        }
+        for n in notes
+        if isinstance(n, dict)
+    ]
+    raw = json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
+    return hashlib.sha256(raw).hexdigest()[:12]
+
+
+def make_cache_key(course: str, profile: dict | None = None) -> str:
+    """根据课程名 + 用户画像指纹 + 知识库指纹生成缓存 key。
+
+    同一课程同一画像同一知识库 → 同一 key → 命中同一缓存。
+    导入新材料后指纹变化，24h TTL 内也不会吃到旧方案。
     """
     # 课程名规范化：小写 + strip
     course_norm = (course or "").strip().lower()
     profile_str = json.dumps(profile or {}, sort_keys=True, ensure_ascii=False)
-    raw = f"v{CACHE_SCHEMA}|{course_norm}|{profile_str}".encode("utf-8")
+    kb_fp = knowledge_fingerprint()
+    raw = f"v{CACHE_SCHEMA}|{course_norm}|{profile_str}|{kb_fp}".encode("utf-8")
     return hashlib.sha256(raw).hexdigest()[:16]
 
 

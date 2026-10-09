@@ -26,3 +26,4 @@ curl -s http://127.0.0.1:8000/api/asr
 3. 未装 whisper.cpp 时 `/api/asr` 行为与现网 Vosk 一致（模型缺失则 available=false）。
 4. 假 whisper-cli 下 PCM 被包成 WAV 后转写出中文；`*.en` 模型被拒绝。
 5. `run_safety_regression.py` 仍全过。
+6. 可用内存 < 2GiB 时 mineru.available=false，扫描件走 pypdf；连 `STUDY_LIU_PDF_ENGINE=mineru` 也不拉侧车。Windows 读不到 `/proc/meminfo` 时放行。

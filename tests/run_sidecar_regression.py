@@ -168,7 +168,11 @@ def test_mineru_parse_and_route():
         os.environ.pop("STUDY_LIU_PDF_ENGINE", None)
 
     try:
-        with_env({"STUDY_LIU_MINERU_BIN": fake, "STUDY_LIU_PDF_ENGINE": None}, run)
+        with_env({
+            "STUDY_LIU_MINERU_BIN": fake,
+            "STUDY_LIU_PDF_ENGINE": None,
+            "STUDY_LIU_MINERU_RAM_KB": "3000000",
+        }, run)
     finally:
         doc_parse._read_native_pdf = orig_native
 
@@ -188,9 +192,81 @@ def test_mineru_falls_back_when_cli_fails():
         def run():
             r = doc_parse.extract_pdf_text(pdf)
             check("MinerU 失败但有文本层 → pypdf", r["engine"] == "pypdf" and r["text"] == "x", r)
-        with_env({"STUDY_LIU_MINERU_BIN": fake, "STUDY_LIU_PDF_ENGINE": None}, run)
+        with_env({
+            "STUDY_LIU_MINERU_BIN": fake,
+            "STUDY_LIU_PDF_ENGINE": None,
+            "STUDY_LIU_MINERU_RAM_KB": "3000000",
+        }, run)
     finally:
         doc_parse._read_native_pdf = orig
+
+
+def test_mineru_ram_gate():
+    print("\n[doc_parse] 内存不足 2G 不拉 MinerU")
+    tmp = tempfile.mkdtemp(prefix="sidecar-ram-")
+    fake = os.path.join(tmp, "fake_mineru.py")
+    _write(fake, FAKE_MINERU)
+    pdf = os.path.join(tmp, "scan.pdf")
+    with open(pdf, "wb") as f:
+        f.write(b"%PDF-1.4 fake " + b"x" * (60 * 1024))
+    orig_native = doc_parse._read_native_pdf
+
+    def low_ram():
+        ok, reason = doc_parse.available()
+        check("1.6G 时 available=False", ok is False, (ok, reason))
+        check("reason 提到内存", "内存" in (reason or ""), reason)
+        caps = doc_parse.capabilities()
+        check("低内存 capabilities.available=False", caps["available"] is False, caps)
+        doc_parse._read_native_pdf = lambda _p: "扫"
+        r = doc_parse.extract_pdf_text(pdf)
+        check("低内存扫描件走 pypdf", r["engine"] == "pypdf", r)
+        check("低内存正文不含 MinerU 标记", "parsed-from" not in (r.get("text") or ""), r)
+        os.environ["STUDY_LIU_PDF_ENGINE"] = "mineru"
+        r = doc_parse.extract_pdf_text(pdf)
+        check("强制 mineru 也被内存闸拦住", r["engine"] != "mineru", r)
+        os.environ.pop("STUDY_LIU_PDF_ENGINE", None)
+
+    def high_ram():
+        ok, reason = doc_parse.available()
+        check("内存充足 available=True", ok is True, (ok, reason))
+        doc_parse._read_native_pdf = lambda _p: "扫"
+        r = doc_parse.extract_pdf_text(pdf)
+        check("内存充足扫描件走 mineru", r["engine"] == "mineru", r)
+
+    def gate_off():
+        ok, reason = doc_parse.available()
+        check("MIN_RAM_KB=0 关闭闸", ok is True, (ok, reason))
+
+    try:
+        with_env({
+            "STUDY_LIU_MINERU_BIN": fake,
+            "STUDY_LIU_PDF_ENGINE": None,
+            "STUDY_LIU_MINERU_RAM_KB": "1600000",
+            "STUDY_LIU_MINERU_MIN_RAM_KB": None,
+        }, low_ram)
+        with_env({
+            "STUDY_LIU_MINERU_BIN": fake,
+            "STUDY_LIU_PDF_ENGINE": None,
+            "STUDY_LIU_MINERU_RAM_KB": "3000000",
+            "STUDY_LIU_MINERU_MIN_RAM_KB": None,
+        }, high_ram)
+        with_env({
+            "STUDY_LIU_MINERU_BIN": fake,
+            "STUDY_LIU_PDF_ENGINE": None,
+            "STUDY_LIU_MINERU_RAM_KB": "1000",
+            "STUDY_LIU_MINERU_MIN_RAM_KB": "0",
+        }, gate_off)
+        deploy = os.path.join(REPO_ROOT, "docs", "DEPLOY.md")
+        with open(deploy, "r", encoding="utf-8") as f:
+            deploy_txt = f.read()
+        check(
+            "DEPLOY 不再把 medium 与 small 并列成可选模型",
+            "ggml-small.bin` / `ggml-medium.bin" not in deploy_txt,
+        )
+        check("DEPLOY 写明 1.6G 只用 small", "ggml-small.bin" in deploy_txt and "不要用 `ggml-medium.bin`" in deploy_txt)
+        check("DEPLOY 写明 2GiB 内存闸", "2GiB" in deploy_txt)
+    finally:
+        doc_parse._read_native_pdf = orig_native
 
 
 def test_wav_header():
@@ -328,6 +404,7 @@ def main():
         test_mineru_missing,
         test_mineru_parse_and_route,
         test_mineru_falls_back_when_cli_fails,
+        test_mineru_ram_gate,
         test_wav_header,
         test_whisper_probe_and_transcribe,
         test_asr_router,

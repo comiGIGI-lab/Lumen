@@ -20,6 +20,16 @@ const emit = defineEmits(['copy-outline', 'copy-plan', 'toggle-progress', 'expor
 const outline = computed(() => props.result?.outline || [])
 const resources = computed(() => props.result?.resources || [])
 const planItems = computed(() => props.result?.plan_items || [])
+const retrieved = computed(() =>
+  (Array.isArray(props.result?.retrieved) ? props.result.retrieved : [])
+    .filter((c) => c && typeof c === 'object' && String(c.title || '').trim())
+    .slice(0, 3)
+    .map((c) => ({
+      id: c.id,
+      title: String(c.title).trim(),
+      score: typeof c.score === 'number' ? c.score : null,
+    })),
+)
 const canExport = computed(
   () => !props.loading && !!(outline.value.length || planItems.value.length || props.result?.plan?.length),
 )
@@ -179,6 +189,16 @@ const dayNo = (item, i) => item?.day ?? i + 1
           {{ r.url }}
         </a>
         <span v-else class="res-url muted">{{ t('resultsGrid.9') }}</span>
+      </div>
+
+      <div v-if="retrieved.length" class="cites">
+        <div class="cites-label">{{ t('resultsGridX.3') }}</div>
+        <ul class="cites-list">
+          <li v-for="(c, ci) in retrieved" :key="c.id || ci">
+            <span class="cite-title">{{ c.title }}</span>
+            <span v-if="c.score != null" class="cite-score">{{ c.score }}</span>
+          </li>
+        </ul>
       </div>
 
       <template #footer>
@@ -485,6 +505,48 @@ const dayNo = (item, i) => item?.day ?? i + 1
 
 .res-disclaimer {
   font-size: 11px;
+  color: var(--text-faint);
+}
+
+.cites {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--border);
+}
+
+.cites-label {
+  font-size: 10.5px;
+  color: var(--text-faint);
+  margin-bottom: 4px;
+}
+
+.cites-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cites-list li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.cite-title {
+  font-size: 12px;
+  color: var(--text-secondary);
+  word-break: break-word;
+  line-height: 1.45;
+}
+
+.cite-score {
+  flex: none;
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
   color: var(--text-faint);
 }
 
