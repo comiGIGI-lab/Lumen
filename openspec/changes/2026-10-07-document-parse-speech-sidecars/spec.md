@@ -28,3 +28,4 @@ curl -s http://127.0.0.1:8000/api/asr
 5. `run_safety_regression.py` 仍全过。
 6. 可用内存 < 2GiB 时 mineru.available=false，扫描件走 pypdf；连 `STUDY_LIU_PDF_ENGINE=mineru` 也不拉侧车。Windows 读不到 `/proc/meminfo` 时放行。
 7. `.docx` / `.pptx` 可导入；有假 `docling convert` 时 engine=docling；缺 CLI 时 OOXML 抽字；PDF 不走进 office_parse。不 import docling，不用 `--pipeline vlm`。
+8. 有 Silero ggml 时 `whisper-cli` 加 `--vad -vm`；缺模型或 `STUDY_LIU_WHISPER_VAD=0` 时整段转写，不传 `--vad`。VAD 缺失不影响 whisper 可用性。转写页只在 `engine.vad` 为真时展示 `engine.vad_model`，空不画块，禁止 `v-html`。

@@ -9,3 +9,5 @@
 - [x] OpenSpec 只写本切片，不回填全库
 - [x] `doc_parse.available`：MemAvailable < 2GiB 不拉 MinerU；DEPLOY 口径改为 ggml-small、禁止 medium
 - [x] Day3：`server/office_parse.py` 只接 docx/pptx；`docling convert --to md --no-ocr --output`；缺 CLI 回退 OOXML；kb_ingest / 导入页白名单；DEPLOY 第 14 节
+- [x] Day4：whisper.cpp 有 Silero ggml 才 `--vad -vm`；缺则整段转写；`STUDY_LIU_WHISPER_VAD=0` 强制关；DEPLOY 第 12 节
+- [x] Day4 UI：转写页读 `engine.vad` / `engine.vad_model`；`v-if="engine.vad"`，`{{ engine.vad_model }}`，空不画块

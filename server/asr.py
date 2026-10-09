@@ -206,14 +206,32 @@ def status():
     else:
         engine, model = "", ""
 
+    w_vad, w_vad_model = False, ""
+    if w_ok:
+        w = _whisper_mod()
+        try:
+            wst = w.status() if w else {}
+            w_vad = bool(wst.get("vad"))
+            w_vad_model = wst.get("vad_model") or ""
+        except Exception:
+            w_vad, w_vad_model = False, ""
+
     return {
         "ok": ok,
         "available": ok,
         "reason": reason,
         "engine": engine,
         "model": model,
+        "vad": bool(use_whisper and w_vad),
+        "vad_model": w_vad_model if use_whisper else "",
         "backends": {
-            "whisper.cpp": {"available": w_ok, "reason": w_reason, "model": w_model},
+            "whisper.cpp": {
+                "available": w_ok,
+                "reason": w_reason,
+                "model": w_model,
+                "vad": w_vad,
+                "vad_model": w_vad_model,
+            },
             "vosk": {"available": vosk_ok, "reason": vosk_reason if not vosk_ok else "",
                      "model": os.path.basename(model_dir()) if vosk_ok else ""},
         },
@@ -257,6 +275,8 @@ def transcribe(pcm: bytes):
             "rtf": round(elapsed / duration, 3) if duration else 0,
             "engine": "whisper.cpp",
             "model": r.get("model") or "",
+            "vad": bool(r.get("vad")),
+            "vad_model": r.get("vad_model") or "",
         }
 
     model = _ensure_model()

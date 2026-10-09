@@ -10,14 +10,19 @@
 
 CLI：
     whisper-cli -m ggml-small.bin -f input.wav -l zh -otxt -of outprefix
+    有 Silero ggml 时追加： --vad -vm ggml-silero-v6.2.0.bin
+    官方：https://github.com/ggml-org/whisper.cpp#voice-activity-detection-vad
+    `--vad` 默认关；缺 VAD 模型则整段转写，不传 `--vad`。
 
 环境变量
 --------
-STUDY_LIU_WHISPER_BIN     whisper-cli / main；.py 则用当前解释器（测试用）
-STUDY_LIU_WHISPER_MODEL   ggml 模型路径（不要 *.en）
-STUDY_LIU_WHISPER_TIMEOUT 秒，默认 180
-STUDY_LIU_WHISPER_LANG    默认 zh
-STUDY_LIU_ASR_ENGINE      whisper | vosk | 空（自动：有 whisper 用 whisper）
+STUDY_LIU_WHISPER_BIN       whisper-cli / main；.py 则用当前解释器（测试用）
+STUDY_LIU_WHISPER_MODEL     ggml 模型路径（不要 *.en）
+STUDY_LIU_WHISPER_VAD_MODEL Silero ggml 路径；已设但不存在则判缺，不再搜 PATH
+STUDY_LIU_WHISPER_VAD       0/false/off 强制关；空=有模型才开
+STUDY_LIU_WHISPER_TIMEOUT   秒，默认 180
+STUDY_LIU_WHISPER_LANG      默认 zh
+STUDY_LIU_ASR_ENGINE        whisper | vosk | 空（自动：有 whisper 用 whisper）
 """
 from __future__ import annotations
 
@@ -33,6 +38,7 @@ DEFAULT_TIMEOUT = 180
 _SERVER_BIN = "/home/admin/asr/whisper/whisper-cli"
 _SERVER_BIN_LEGACY = "/home/admin/asr/whisper/main"
 _SERVER_MODEL = "/home/admin/asr/whisper/ggml-small.bin"
+_SERVER_VAD = "/home/admin/asr/whisper/ggml-silero-v6.2.0.bin"
 
 
 def _repo_root() -> str:
@@ -81,6 +87,28 @@ def model_path():
     return _SERVER_MODEL
 
 
+def vad_model_path():
+    """Silero ggml 路径。环境变量已设则用它（即便文件不存在也不再搜 PATH）。"""
+    env = (os.environ.get("STUDY_LIU_WHISPER_VAD_MODEL") or "").strip()
+    if env:
+        return env
+    if os.path.isfile(_SERVER_VAD):
+        return _SERVER_VAD
+    local = os.path.join(_repo_root(), "vendor", "asr", "ggml-silero-v6.2.0.bin")
+    if os.path.isfile(local):
+        return local
+    return _SERVER_VAD
+
+
+def vad_enabled():
+    """官方：`--vad` 默认关，且必须同时给 `-vm`。缺模型或强制 0 则 False。"""
+    raw = (os.environ.get("STUDY_LIU_WHISPER_VAD") or "").strip().lower()
+    if raw in ("0", "false", "off", "no"):
+        return False
+    path = vad_model_path()
+    return bool(path) and os.path.isfile(path)
+
+
 def _english_only_model(path):
     name = os.path.basename(path or "").lower()
     return name.endswith(".en.bin") or name.endswith(".en")
@@ -106,12 +134,16 @@ def available():
 
 def status():
     ok, reason, model = probe()
+    vad_on = bool(ok) and vad_enabled()
+    vad_name = os.path.basename(vad_model_path()) if vad_on else ""
     return {
         "ok": ok,
         "available": ok,
         "reason": reason,
         "engine": "whisper.cpp" if ok else "",
         "model": model,
+        "vad": vad_on,
+        "vad_model": vad_name,
         "sample_rate": SAMPLE_RATE,
     }
 
@@ -145,6 +177,12 @@ def transcribe(pcm, sample_rate=SAMPLE_RATE, timeout=None):
             "-otxt",
             "-of", out_prefix,
         ]
+        # 官方：`--vad` 必须同时给 `-vm`。缺文件则整段转写，不传 --vad。
+        # https://github.com/ggml-org/whisper.cpp#voice-activity-detection-vad
+        use_vad = vad_enabled()
+        vad_path = vad_model_path() if use_vad else ""
+        if use_vad:
+            argv += ["--vad", "-vm", vad_path]
         try:
             proc = subprocess.run(
                 argv,
@@ -172,6 +210,8 @@ def transcribe(pcm, sample_rate=SAMPLE_RATE, timeout=None):
             "text": (text or "").strip(),
             "engine": "whisper.cpp",
             "model": os.path.basename(model),
+            "vad": bool(use_vad),
+            "vad_model": os.path.basename(vad_path) if use_vad else "",
         }
     finally:
         shutil.rmtree(tmp, ignore_errors=True)

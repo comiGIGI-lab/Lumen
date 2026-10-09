@@ -443,7 +443,12 @@ PM2 常驻内存从 49MB 涨到约 162MB（峰值 178MB）；
 # 或用环境变量覆盖：
 # STUDY_LIU_WHISPER_BIN  STUDY_LIU_WHISPER_MODEL
 # 强制引擎：STUDY_LIU_ASR_ENGINE=whisper|vosk
+# 可选 VAD（官方 README：`--vad` 默认关，且必须同时给 `-vm`）：
+# /home/admin/asr/whisper/ggml-silero-v6.2.0.bin   # 约 864KB，不进 git
+# STUDY_LIU_WHISPER_VAD_MODEL  / STUDY_LIU_WHISPER_VAD=0 强制关
 ```
+
+官方：https://github.com/ggml-org/whisper.cpp#voice-activity-detection-vad 。有 Silero ggml 才传 `--vad -vm`；缺模型则整段转写，不传 `--vad`。不要改 `--vad-threshold` 等调参。可选量化：本机 `quantize ggml-small.bin ggml-small-q5_0.bin q5_0` 后把 `STUDY_LIU_WHISPER_MODEL` 指过去，不要上 medium。
 
 `GET /api/asr` 现在会多 `engine` 与 `backends`：有 whisper.cpp 就优先，且 **status() 不再加载约 150MB 的 Vosk**；没有 whisper 才回退 Vosk。两侧都缺时 `available=false`，界面照旧置灰。1.6G 机器不要同时常驻 Vosk 大模型和任何 whisper 模型，也不要上 medium。
 

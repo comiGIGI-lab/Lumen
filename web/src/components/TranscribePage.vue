@@ -399,6 +399,10 @@ onBeforeUnmount(reset)
             <span>{{ t('trPage.limit') }}</span>
             <em>{{ fmtClock(engine.max_seconds) }}</em>
           </p>
+          <p v-if="engine.vad">
+            <span>{{ t('trPage.vad') }}</span>
+            <em>{{ engine.vad_model }}</em>
+          </p>
           <small>{{ engine.engine === 'whisper.cpp' ? t('trPage.privacyWhisper') : t('trPage.privacy') }}</small>
         </div>
 
