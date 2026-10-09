@@ -1,15 +1,19 @@
 # -*- coding: utf-8 -*-
-"""quiz.py — 选择题闯关：出题 / 校验 / 判分 / 落盘（纯标准库）。
+"""quiz.py — 选择题闯关：出题 / 校验 / 判分 / 复盘 / 落盘（纯标准库）。
 
 复刻 yu-ai-learn 的「AI 出题 + 闯关答题」产品形态，落在现有零依赖后端上：
   1) 课程名按问答同一套 RAG 门槛检索知识库（RAG_MIN_SCORE/RAG_MIN_COVERAGE 不重调）；
-  2) 弱命中直接拒绝出题——绝不拿模型常识编题，评委追问"出自哪份材料"要答得上来；
-  3) 强命中注入 prompt，LLM 产出结构化单选 JSON，逐题严格校验，坏题丢弃；
+  2) 弱命中时若配置了 STUDY_LIU_TAVILY_KEY，改走 Tavily 联网补题并标注来源，
+     不再直接拒绝；无 key 或联网失败仍回退 WEAK_HIT_ERROR（不出编造题）；
+  3) 强命中注入 prompt，LLM 产出结构化 JSON（支持 single/multi/judge），
+     逐题严格校验，坏题丢弃；
   4) 标准答案只存在服务端（data/quiz_runs.json），generate 响应不带 answer；
-  5) 判分走 grade_quiz：服务端对照答案回 correct/answer/explanation。
+  5) 判分走 grade_quiz：服务端对照答案回 correct/answer/explanation；
+  6) 复盘走 quiz_report：纯聚合 quiz_runs.json，无新状态文件。
 
 不做（见 openspec/changes/2026-10-09-course-quiz-challenge/proposal.md）：
-FastAPI / LangChain / Chroma / MySQL / Tavily / 文生图 / 微信登录 / 异步轮询。
+FastAPI / LangChain / Chroma / MySQL / 文生图 / 微信登录 / 异步轮询。
+Tavily 仅以「可选联网兜底」形式存在：依赖环境变量注入的 key，不进仓库、不落盘。
 """
 
 from __future__ import annotations
@@ -18,6 +22,8 @@ import json
 import os
 import re
 import threading
+import urllib.error
+import urllib.request
 from datetime import datetime
 
 from core.paths import data_dir as _resolve_data_dir
@@ -31,10 +37,20 @@ _DATA_DIR = _resolve_data_dir()
 _RUNS_FILE = os.path.join(_DATA_DIR, "quiz_runs.json")
 
 DIFFICULTIES = ("easy", "medium", "hard")
+Q_TYPES = ("single", "multi", "judge")
 _COUNT_MIN, _COUNT_DEFAULT, _COUNT_MAX = 3, 5, 8
 # 有效题数下限：LLM 可能丢题，低于这个数就整单报错，不出残局
 MIN_VALID_QUESTIONS = 3
 MAX_RUNS_KEPT = 200
+
+# Tavily 联网兜底：key 只从环境变量注入，绝不入库 / 不落盘
+TAVILY_KEY_ENV = "STUDY_LIU_TAVILY_KEY"
+TAVILY_URL = "https://api.tavily.com/search"
+TAVILY_TIMEOUT = 8
+TAVILY_MAX_RESULTS = 3
+
+# mixed 配比 single:multi:judge = 2:1:1（count=8 → 4+2+2）
+MIXED_RATIO = {"single": 2, "multi": 1, "judge": 1}
 
 _LOCK = threading.RLock()
 _RUNS = None  # 进程内缓存 {quiz_id: run dict}
@@ -94,7 +110,7 @@ def _llm_chat(messages):
 
 
 # ---------------------------------------------------------------------------
-# 出题
+# 检索 / 联网兜底
 # ---------------------------------------------------------------------------
 
 def _retrieve(course):
@@ -122,51 +138,188 @@ def _kb_blocks(hits):
     return "\n\n".join(blocks)
 
 
-def _build_prompt(course, difficulty, count, kb):
+def _tavily_search(query, api_key, max_results=TAVILY_MAX_RESULTS, timeout=TAVILY_TIMEOUT):
+    """联网检索兜底（纯标准库 urllib）。失败抛异常，由调用方回退。
+
+    返回 [{title, url, content}]，最多 max_results 条。
+    """
+    body = json.dumps(
+        {"api_key": api_key, "query": query, "max_results": max_results}
+    ).encode("utf-8")
+    req = urllib.request.Request(
+        TAVILY_URL,
+        data=body,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        data = json.loads(resp.read().decode("utf-8"))
+    results = data.get("results") or []
+    out = []
+    for r in results[:max_results]:
+        out.append({
+            "title": (r.get("title") or "").strip(),
+            "url": (r.get("url") or "").strip(),
+            "content": (r.get("content") or "").strip(),
+        })
+    return out
+
+
+def _web_blocks(web):
+    blocks = []
+    for i, w in enumerate(web, 1):
+        blocks.append("【联网资料 %d】%s\n%s\n%s" % (
+            i, w.get("title", ""), w.get("url", ""), w.get("content", "")))
+    return "\n\n".join(blocks)
+
+
+# ---------------------------------------------------------------------------
+# 题型分布
+# ---------------------------------------------------------------------------
+
+def _distribute_mixed(count):
+    """mixed：按 2:1:1 拆 single/multi/judge，余数补到 single。"""
+    keys = ("single", "multi", "judge")
+    ratio = [MIXED_RATIO[k] for k in keys]
+    total = sum(ratio)
+    raw = [count * r // total for r in ratio]
+    rem = count - sum(raw)
+    raw[0] += rem
+    return dict(zip(keys, raw))
+
+
+def _resolve_plan(types, count):
+    """把 types 参数归一成 {single, multi, judge} 的题数计划。
+
+    - None / "single" / ["single"]            → 全单选
+    - "mixed" / ["mixed"]                     → 2:1:1 配比
+    - 单类型字符串 "multi" / "judge"          → 全该类
+    - 多类型列表 ["single","multi","judge"]    → 按列数均分（余数给首个）
+    """
+    if types in (None, "", "single", ["single"]):
+        return {"single": count, "multi": 0, "judge": 0}
+    if types == "mixed" or types == ["mixed"]:
+        return _distribute_mixed(count)
+    if isinstance(types, str):
+        t = types.strip().lower()
+        if t in Q_TYPES:
+            return {"single": count if t == "single" else 0,
+                    "multi": count if t == "multi" else 0,
+                    "judge": count if t == "judge" else 0}
+        return {"single": count, "multi": 0, "judge": 0}
+    if isinstance(types, (list, tuple)):
+        ts = [str(x).strip().lower() for x in types if str(x).strip().lower() in Q_TYPES]
+        if not ts:
+            return {"single": count, "multi": 0, "judge": 0}
+        if len(ts) == 1:
+            t = ts[0]
+            return {"single": count if t == "single" else 0,
+                    "multi": count if t == "multi" else 0,
+                    "judge": count if t == "judge" else 0}
+        n = len(ts)
+        base = count // n
+        plan = {"single": 0, "multi": 0, "judge": 0}
+        rem = count - base * n
+        for i, t in enumerate(ts):
+            plan[t] += base + (1 if i < rem else 0)
+        return plan
+    return {"single": count, "multi": 0, "judge": 0}
+
+
+# ---------------------------------------------------------------------------
+# 出题 prompt
+# ---------------------------------------------------------------------------
+
+def _build_prompt(course, difficulty, plan, kb):
     hint = DIFFICULTY_HINT.get(difficulty, DIFFICULTY_HINT["medium"])
+    parts = []
+    if plan.get("single"):
+        parts.append(
+            "%d 道单选题（四选一，answer 为 1 个选项 key 的数组，如 [\"A\"]）" % plan["single"])
+    if plan.get("multi"):
+        parts.append(
+            "%d 道多选题（4-5 个选项，answer 为正确选项 key 的数组，如 [\"A\",\"C\"]，"
+            "至少 2 个正确）" % plan["multi"])
+    if plan.get("judge"):
+        parts.append(
+            "%d 道判断题（选项固定为 [{\"key\":\"0\",\"text\":\"正确\"},"
+            "{\"key\":\"1\",\"text\":\"错误\"}]，answer 为整数 0 或 1）" % plan["judge"])
+    spec = "；".join(parts) if parts else "3 道单选题"
     return (
         "你是严谨的出题老师。只能依据下方资料出题，不得使用资料之外的知识。\n\n"
         "课程：%s\n难度要求：%s\n\n"
-        "请出 %d 道四选一的单项选择题，只输出一个 JSON 对象，不要输出其他文字：\n"
-        '{"questions": [{"id": "q1", "stem": "题干", '
+        "请出：%s。只输出一个 JSON 对象，不要输出其他文字：\n"
+        '{"questions": [{"type": "single", "stem": "题干", '
         '"options": [{"key": "A", "text": "选项"}, {"key": "B", "text": "选项"}, '
         '{"key": "C", "text": "选项"}, {"key": "D", "text": "选项"}], '
         '"answer": ["A"], "explanation": "解析", "knowledge_point": "知识点"}]}\n\n'
-        "要求：answer 恰好 1 个且必须是选项 key 之一；四 个选项文本互不相同；"
+        "要求：每题必须带 type 字段（single/multi/judge）；选项文本两两不同；"
         "题干、解析、知识点都用中文且非空。\n\n"
-        "出题依据的资料：\n%s" % (course, hint, count, kb)
+        "出题依据的资料：\n%s" % (course, hint, spec, kb)
     )
+
+
+# ---------------------------------------------------------------------------
+# 单题校验
+# ---------------------------------------------------------------------------
+
+def _norm_answer_single(answer, keys):
+    if isinstance(answer, str):
+        answer = [answer]
+    if not isinstance(answer, list) or len(answer) != 1:
+        return None
+    a = str(answer[0]).strip().upper()
+    return [a] if a in keys else None
+
+
+def _norm_answer_multi(answer, keys):
+    if isinstance(answer, str):
+        answer = [x for x in answer.split(",")]
+    if not isinstance(answer, list) or len(answer) < 2:
+        return None
+    a = [str(x).strip().upper() for x in answer if str(x).strip() != ""]
+    if len(a) < 2 or any(x not in keys for x in a):
+        return None
+    return sorted(a)
+
+
+def _norm_answer_judge(answer):
+    if isinstance(answer, list):
+        answer = answer[0] if answer else None
+    try:
+        a = int(answer)
+    except (TypeError, ValueError):
+        try:
+            a = int(str(answer).strip())
+        except (TypeError, ValueError):
+            return None
+    return a if a in (0, 1) else None
 
 
 def _valid_question(q, seen_ids):
     """单题校验：形状不对直接判废（返回 None），不让半截题进局。"""
     if not isinstance(q, dict):
         return None
+    qtype = str(q.get("type") or "single").strip().lower()
+    if qtype not in Q_TYPES:
+        qtype = "single"
     stem = str(q.get("stem") or "").strip()
     if not stem:
         return None
     options = q.get("options")
-    if not isinstance(options, list) or len(options) != 4:
+    if not isinstance(options, list) or len(options) < 2:
         return None
     cleaned = []
     keys = []
     for o in options:
         if not isinstance(o, dict):
             return None
-        key = str(o.get("key") or "").strip().upper()
+        key = str(o.get("key") or "").strip()
         text = str(o.get("text") or "").strip()
         if not key or not text or key in keys:
             return None
         keys.append(key)
         cleaned.append({"key": key, "text": text})
-    answer = q.get("answer")
-    if isinstance(answer, str):
-        answer = [answer]
-    if not isinstance(answer, list) or len(answer) != 1:
-        return None
-    ans = str(answer[0] or "").strip().upper()
-    if ans not in keys:
-        return None
     explanation = str(q.get("explanation") or "").strip()
     if not explanation:
         return None
@@ -175,14 +328,32 @@ def _valid_question(q, seen_ids):
         return None
     # 选项文本两两互不相同（大小写归一后比较，防"Aabc/ aabc"式敷衍）
     texts = [o["text"].strip().lower() for o in cleaned]
-    if len(set(texts)) != 4:
+    if len(set(texts)) != len(texts):
         return None
+
+    # 题型专属校验
+    if qtype == "single":
+        if len(cleaned) != 4:
+            return None
+        ans = _norm_answer_single(q.get("answer"), keys)
+    elif qtype == "multi":
+        if not (4 <= len(cleaned) <= 5):
+            return None
+        ans = _norm_answer_multi(q.get("answer"), keys)
+    else:  # judge
+        if len(cleaned) != 2:
+            return None
+        ans = _norm_answer_judge(q.get("answer"))
+    if ans is None:
+        return None
+
     qid = str(q.get("id") or "").strip()
     if not qid or qid in seen_ids:
         qid = ""
     return {
-        "id": qid, "stem": stem, "options": cleaned,
-        "answer": [ans], "explanation": explanation, "knowledge_point": kp,
+        "id": qid, "type": qtype, "stem": stem, "options": cleaned,
+        "answer": ans, "explanation": explanation, "knowledge_point": kp,
+        "source": "kb", "sources": [],
     }
 
 
@@ -219,11 +390,16 @@ def _parse_llm_questions(raw):
     return out, bad
 
 
-def generate_quiz(course, difficulty="medium", count=_COUNT_DEFAULT, client_id=""):
+# ---------------------------------------------------------------------------
+# 出题
+# ---------------------------------------------------------------------------
+
+def generate_quiz(course, difficulty="medium", count=_COUNT_DEFAULT, types=None, client_id=""):
     """出题入口。返回 dict（HTTP 层直接回 JSON）。
 
-    弱命中 / LLM 输出不可用 → {"ok": false, "error": ..., "retrieved": []}，
-    不出兜底假题。
+    弱命中且无联网 key → {"ok": false, "error": WEAK_HIT_ERROR, "retrieved": []}；
+    弱命中但有 key → Tavily 兜底出题（source 标 "web"）；
+    LLM 输出不可用 → 同样不出兜底假题。
     """
     course = str(course or "").strip()
     difficulty = str(difficulty or "medium").strip().lower()
@@ -237,15 +413,35 @@ def generate_quiz(course, difficulty="medium", count=_COUNT_DEFAULT, client_id="
     if not course:
         return {"ok": False, "error": "请先输入课程名", "retrieved": []}
 
+    plan = _resolve_plan(types, count)
     hits = _retrieve(course)
-    if not hits:
-        return {"ok": False, "error": WEAK_HIT_ERROR, "retrieved": []}
-    citations = [
-        {"id": n.get("id"), "title": n.get("title", ""), "score": round(s, 2)}
-        for n, s, _ in hits
-    ]
 
-    prompt = _build_prompt(course, difficulty, count, _kb_blocks(hits))
+    web = []
+    if not hits:
+        key = os.environ.get(TAVILY_KEY_ENV)
+        if key:
+            try:
+                web = _tavily_search(course, key)
+            except Exception:
+                web = []
+        if not web:
+            return {"ok": False, "error": WEAK_HIT_ERROR, "retrieved": []}
+
+    if hits:
+        ctx = _kb_blocks(hits)
+        citations = [
+            {"id": n.get("id"), "title": n.get("title", ""), "score": round(s, 2)}
+            for n, s, _ in hits
+        ]
+        src_kind = "kb"
+        src_list = []
+    else:
+        ctx = _web_blocks(web)
+        citations = [{"title": w["title"], "url": w["url"]} for w in web]
+        src_kind = "web"
+        src_list = [{"title": w["title"], "url": w["url"]} for w in web]
+
+    prompt = _build_prompt(course, difficulty, plan, ctx)
     raw = ""
     try:
         raw = _llm_chat([{"role": "user", "content": prompt}])
@@ -258,18 +454,27 @@ def generate_quiz(course, difficulty="medium", count=_COUNT_DEFAULT, client_id="
     if len(questions) < MIN_VALID_QUESTIONS:
         return {"ok": False, "error": "本次生成的题目未通过格式校验，请重试。", "retrieved": citations}
 
+    # 弱命中兜底题统一标联网来源
+    for q in questions:
+        q["source"] = src_kind
+        q["sources"] = src_list
+
     quiz_id = "z-%d-%s" % (
         int(datetime.now().strftime("%H%M%S")) + os.getpid() % 1000,
         os.urandom(3).hex(),
     )
+    ts = _now()
     run = {
         "quiz_id": quiz_id,
         "course": course,
         "difficulty": difficulty,
         "count": len(questions),
+        "types": plan,
+        "source": src_kind,
         "client_id": str(client_id or "")[:64],
-        "created_at": _now(),
-        # 完整题目（含 answer）只在服务端；对外负载由 grade 与调用方另行裁剪
+        "created_at": ts,
+        "started_at": ts,
+        # 完整题目（含 answer）只在服务端；对外负载由 grade/report 与调用方另行裁剪
         "questions": questions,
         "answers": {},
     }
@@ -288,8 +493,9 @@ def generate_quiz(course, difficulty="medium", count=_COUNT_DEFAULT, client_id="
 
     payload_questions = [
         {
-            "id": q["id"], "stem": q["stem"], "options": q["options"],
+            "id": q["id"], "type": q["type"], "stem": q["stem"], "options": q["options"],
             "explanation": q["explanation"], "knowledge_point": q["knowledge_point"],
+            "source": q["source"], "sources": q["sources"],
         }
         for q in questions
     ]
@@ -299,6 +505,8 @@ def generate_quiz(course, difficulty="medium", count=_COUNT_DEFAULT, client_id="
         "course": course,
         "difficulty": difficulty,
         "count": len(questions),
+        "types": plan,
+        "source": src_kind,
         "questions": payload_questions,
         "retrieved": citations,
     }
@@ -318,9 +526,20 @@ def grade_quiz(quiz_id, question_id, selected):
         q = next((x for x in run["questions"] if x.get("id") == question_id), None)
         if not q:
             raise KeyError("question_not_found")
-        correct = str(selected or "").strip().upper() == q["answer"][0]
+        qtype = q.get("type", "single")
+        if qtype == "multi":
+            sel = selected if isinstance(selected, list) else [selected]
+            sel = [str(x).strip().upper() for x in sel if str(x).strip() != ""]
+            correct = sorted(sel) == sorted(str(x).upper() for x in q["answer"])
+        elif qtype == "judge":
+            try:
+                correct = int(selected) == int(q["answer"])
+            except (TypeError, ValueError):
+                correct = False
+        else:
+            correct = str(selected).strip().upper() == str(q["answer"][0]).upper()
         run.setdefault("answers", {})[question_id] = {
-            "selected": str(selected or "").strip().upper(),
+            "selected": selected,
             "correct": correct,
             "answered_at": _now(),
         }
@@ -328,9 +547,91 @@ def grade_quiz(quiz_id, question_id, selected):
     return {
         "ok": True,
         "question_id": question_id,
-        "selected": str(selected or "").strip().upper(),
+        "type": qtype,
+        "selected": selected,
         "correct": correct,
         "answer": q["answer"],
         "explanation": q["explanation"],
         "knowledge_point": q["knowledge_point"],
+        "source": q.get("source", "kb"),
+        "sources": q.get("sources", []),
+    }
+
+
+# ---------------------------------------------------------------------------
+# 复盘
+# ---------------------------------------------------------------------------
+
+def quiz_report(run_id):
+    """复盘聚合：纯读 quiz_runs.json，不写新状态文件。
+
+    quiz_id 不存在抛 KeyError（HTTP 层转 404）。
+    """
+    with _LOCK:
+        runs = _load()
+        run = runs.get(run_id)
+        if not run:
+            raise KeyError("quiz_not_found")
+        questions = run.get("questions") or []
+        answers = run.get("answers") or {}
+        started = run.get("started_at") or run.get("created_at")
+
+        total = len(questions)
+        correct = 0
+        items = []
+        weak = {}
+        for q in questions:
+            a = answers.get(q["id"])
+            is_correct = bool(a.get("correct")) if a else False
+            if is_correct:
+                correct += 1
+            else:
+                kp = q.get("knowledge_point", "")
+                weak[kp] = weak.get(kp, 0) + 1
+            items.append({
+                "id": q["id"],
+                "type": q.get("type", "single"),
+                "stem": q["stem"],
+                "options": q["options"],
+                "user_answer": a.get("selected") if a else None,
+                "correct_answer": q["answer"],
+                "correct": is_correct,
+                "answered_at": a.get("answered_at") if a else None,
+                "explanation": q["explanation"],
+                "knowledge_point": q["knowledge_point"],
+                "source": q.get("source", "kb"),
+                "sources": q.get("sources", []),
+            })
+
+        duration_s = None
+        if started:
+            try:
+                st = datetime.strptime(started, "%Y-%m-%d %H:%M:%S")
+                end = datetime.now()
+                lasts = [a.get("answered_at") for a in answers.values() if a.get("answered_at")]
+                if lasts:
+                    end = max(datetime.strptime(x, "%Y-%m-%d %H:%M:%S") for x in lasts)
+                duration_s = int((end - st).total_seconds())
+            except Exception:
+                duration_s = None
+
+        accuracy = (correct / total) if total else 0
+        weak_points = sorted(weak.items(), key=lambda kv: -kv[1])[:3]
+        weak_points = [{"knowledge_point": k, "wrong": v} for k, v in weak_points]
+        materials = [c.get("title", "") for c in (run.get("retrieved") or [])]
+
+    return {
+        "ok": True,
+        "quiz_id": run_id,
+        "course": run.get("course", ""),
+        "difficulty": run.get("difficulty", ""),
+        "types": run.get("types", {}),
+        "source": run.get("source", "kb"),
+        "score": correct,
+        "total": total,
+        "accuracy": round(accuracy, 4),
+        "duration_s": duration_s,
+        "questions": items,
+        "weak_points": weak_points,
+        "materials": materials,
     }

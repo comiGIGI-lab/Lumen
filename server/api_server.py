@@ -1474,6 +1474,32 @@ class ApiHandler(BaseHTTPRequestHandler):
                     return self._send_json(
                         {"ok": False, "error": "本局不存在或已过期，请重新出题"}, 404)
                 return self._send_json(g)
+
+            if path == "/api/quiz/report":
+                # 选择题闯关复盘（Day6）：与 /api/chat 同一套安全闸，作用于本局课程名。
+                # run_id 取 POST body 或查询串 ?run_id=，二选一。
+                run_id = (body.get("run_id") or "").strip()
+                if not run_id:
+                    _q = urllib.parse.parse_qs(parsed.query)
+                    run_id = (_q.get("run_id") or [""])[0].strip()
+                if not run_id:
+                    return self._send_json({"ok": False, "error": "缺少 run_id"}, 400)
+                try:
+                    rep = quiz_mod.quiz_report(run_id)
+                except KeyError:
+                    return self._send_json(
+                        {"ok": False, "error": "本局不存在或已过期"}, 404)
+                course = rep.get("course") or ""
+                if course:
+                    if detect_crisis(course):
+                        log_crisis("quiz", course, self._client_id())
+                        return self._send_json(_crisis_response_chat(course))
+                    detail = check_detail(course)
+                    if detail["action"] == "BLOCK":
+                        log_safety_hit("quiz", course, detail, self._client_id())
+                        return self._send_json(
+                            {"ok": False, "error": SAFETY_ERROR_MESSAGE}, 400)
+                return self._send_json(rep)
             if path == "/api/export":
                 course = (body.get("course") or "").strip()
                 fmt = (body.get("format") or "markdown").strip().lower()

@@ -355,10 +355,10 @@ export const api = {
    * 响应不含 answer —— 判分走 quizGrade（服务端持标准答案）。
    * 知识库弱命中时 ok=false，前端提示先导入材料，不出编造题。
    */
-  quizGenerate(course, difficulty = 'medium', count = 5) {
+  quizGenerate(course, difficulty = 'medium', count = 5, types = 'mixed') {
     return request('/quiz/generate', {
       method: 'POST',
-      body: JSON.stringify({ course, difficulty, count }),
+      body: JSON.stringify({ course, difficulty, count, types }),
     })
   },
 
@@ -367,6 +367,17 @@ export const api = {
     return request('/quiz/grade', {
       method: 'POST',
       body: JSON.stringify({ quiz_id: quizId, question_id: questionId, selected }),
+    })
+  },
+
+  /**
+   * 复盘（Day6）：run_id 取自 generate 响应，聚合 score/accuracy/duration_s
+   * + 逐题回放 + 薄弱知识点 Top3。答案随复盘下发（已完成，属讲解非泄题）。
+   */
+  quizReport(runId) {
+    return request('/quiz/report', {
+      method: 'POST',
+      body: JSON.stringify({ run_id: runId }),
     })
   },
 
