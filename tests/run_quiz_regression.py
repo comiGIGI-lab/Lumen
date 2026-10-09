@@ -101,10 +101,12 @@ def source_checks():
         check("generate_payload_strips_answer",
               m2 is not None and '"answer"' not in m2.group(0),
               "questions payload must not carry answer")
-        check("quiz_rejects_weak_hits",
-              "RAG_MIN_SCORE" in quiz_src and "RAG_MIN_COVERAGE" in quiz_src
-              and "WEAK_HIT_ERROR" in quiz_src,
-              "quiz.py must reuse RAG thresholds and refuse weak hits")
+        check("quiz_kb_optional_enrichment",
+              "RAG_MIN_SCORE" in quiz_src and "RAG_MIN_COVERAGE" in quiz_src,
+              "quiz.py must reuse RAG thresholds for optional KB enrichment")
+        check("quiz_logs_web_warning",
+              "import logging" in quiz_src and "logging.warning" in quiz_src,
+              "quiz.py must log warning on web-search degrade")
     check("quiz_persists_runs",
           "quiz_runs.json" in quiz_src,
           "quiz.py must persist runs to data/quiz_runs.json")
@@ -183,9 +185,20 @@ def source_checks():
     check("quiz_has_types_plan", "_resolve_plan" in quiz_src and "_distribute_mixed" in quiz_src,
           "quiz.py must support types plan")
     check("quiz_has_report", "def quiz_report" in quiz_src, "quiz.py missing quiz_report")
+    check("api_forwards_web_search",
+          quiz_block and "web_search" in quiz_block,
+          "generate route must forward web_search (and types)")
+    check("client_forwards_web_search",
+          re.search(r"web_search", client) is not None,
+          "client.js quizGenerate must forward web_search")
+    check("panel_has_web_search_toggle",
+          "webSearch" in panel, "QuizPanel missing web-search toggle")
     check("quiz_has_tavily_extract",
           "api.tavily.com/extract" in quiz_src and "raw_content" in quiz_src,
           "quiz.py must implement Tavily extract path for URL direct-gen")
+    check("quiz_generate_takes_web_search",
+          "def generate_quiz" in quiz_src and "web_search" in quiz_src,
+          "generate_quiz must accept web_search flag")
     check("client_has_quiz_report",
           re.search(r"quizReport\(|'/quiz/report'|\"/quiz/report\"", client) is not None,
           "client.js missing quizReport")
@@ -194,10 +207,10 @@ def source_checks():
     check("panel_has_report_call",
           "quizReport" in panel, "QuizPanel must call quizReport")
     check("i18n_zh_day6_keys",
-          all(k in zh for k in ("quizPage.typeMixed", "quizPage.webSource", "quizPage.reportScore")),
+          all(k in zh for k in ("quizPage.typeMixed", "quizPage.webSource", "quizPage.webSearch", "quizPage.reportScore")),
           "auto-zh.json missing Day6 quizPage keys")
     check("i18n_en_day6_keys",
-          all(k in en for k in ("quizPage.typeMixed", "quizPage.webSource", "quizPage.reportScore")),
+          all(k in en for k in ("quizPage.typeMixed", "quizPage.webSource", "quizPage.webSearch", "quizPage.reportScore")),
           "auto-en.json missing Day6 quizPage keys")
 
 
@@ -334,8 +347,10 @@ def runtime_checks():
 
         quiz_mod._llm_chat = fake_chat_ok
         weak = quiz_mod.generate_quiz("量子占卜玄学导论", difficulty="easy", count=3)
-        check("weak_kb_hit_rejected", weak.get("ok") is False and weak.get("retrieved") == [],
-              "weak KB hits must refuse to generate")
+        check("weak_kb_degraded_generate", weak.get("ok") is True,
+              "weak KB hit must degrade to topic gen, not reject: %s" % weak.get("error"))
+        check("weak_kb_source_topic", weak.get("source") == "topic",
+              "degraded run source should be 'topic': %s" % weak.get("source"))
     except Exception as e:
         check("runtime_no_crash", False, "runtime crashed: %r" % e)
     finally:
@@ -520,12 +535,12 @@ def runtime_day6():
             check("tavily_question_source_web", q0.get("source") == "web", "q source should be web")
             check("tavily_question_sources", isinstance(q0.get("sources"), list) and len(q0.get("sources")) >= 1,
                   "q sources missing: %s" % q0.get("sources"))
-        # 无 key：恢复真实 _tavily_search + 撤环境变量 → 回退 WEAK_HIT_ERROR
+        # 无 key：恢复真实 _tavily_search + 撤环境变量 → 降级为空上下文出题（不拒绝）
         quiz_mod._tavily_search = orig_tav
         os.environ.pop("STUDY_LIU_TAVILY_KEY", None)
         weak = quiz_mod.generate_quiz("量子占卜玄学导论", difficulty="easy", count=3)
-        check("tavily_no_key_rejected", weak.get("ok") is False and weak.get("retrieved") == [],
-              "no-key weak hit must refuse")
+        check("tavily_no_key_degraded", weak.get("ok") is True and weak.get("source") == "topic",
+              "no-key weak hit must degrade to topic gen, not refuse: %s" % weak.get("error"))
     except Exception as e:
         check("day6_tavily_no_crash", False, "tavily crashed: %r" % e)
     finally:
@@ -570,6 +585,33 @@ def runtime_day6():
               "url without key must refuse")
     except Exception as e:
         check("day6_extract_no_crash", False, "extract crashed: %r" % e)
+    finally:
+        teardown(tmp)
+
+    # ---- 联网搜索开关：关 / 失败 均降级为空上下文、不拒绝，直接走出题 ----
+    tmp = tempfile.mkdtemp(prefix="zjxt-quiz-ws-")
+    quiz_mod, llm_mod = setup(tmp)
+    if quiz_mod is None:
+        return
+    os.environ["STUDY_LIU_TAVILY_KEY"] = "tvly-test-dummy"
+    llm_mod.chat = fake_single
+    quiz_mod._llm_chat = fake_single
+    try:
+        # 开关关闭 → 不调 Tavily，ctx 空（无 KB 时）仍出题，source=topic
+        off = quiz_mod.generate_quiz("量子占卜玄学导论", difficulty="easy", count=3, web_search=False)
+        check("web_search_off_generates", off.get("ok") is True,
+              "web_search off must still generate: %s" % off.get("error"))
+        check("web_search_off_no_web_source", off.get("source") in ("topic", "kb"),
+              "web_search off should not mark web source: %s" % off.get("source"))
+        # 开关开启但 Tavily 抛异常 → 记 warning、降级、仍出题
+        quiz_mod._tavily_search = lambda q, k: (_ for _ in ()).throw(RuntimeError("boom"))
+        failed = quiz_mod.generate_quiz("量子占卜玄学导论", difficulty="easy", count=3, web_search=True)
+        check("web_search_fail_degrades", failed.get("ok") is True,
+              "web search fail must degrade, not reject: %s" % failed.get("error"))
+        check("web_search_fail_no_web_source", failed.get("source") in ("topic", "kb"),
+              "degraded run must not carry web source: %s" % failed.get("source"))
+    except Exception as e:
+        check("day6_websearch_no_crash", False, "web_search crashed: %r" % e)
     finally:
         teardown(tmp)
 

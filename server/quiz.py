@@ -3,20 +3,21 @@
 
 复刻 yu-ai-learn 的「AI 出题 + 闯关答题」产品形态，落在现有零依赖后端上：
   1) 课程名按问答同一套 RAG 门槛检索知识库（RAG_MIN_SCORE/RAG_MIN_COVERAGE 不重调）；
-  2) 弱命中时若配置了 STUDY_LIU_TAVILY_KEY，改走 Tavily 联网补题并标注来源，
-     不再直接拒绝；无 key 或联网失败仍回退 WEAK_HIT_ERROR（不出编造题）；
-  2') 课程名以 http(s):// 开头视作「丢链接出题」：不经知识库，改用 Tavily extract
-      抓取该 URL 正文（截断 8000 字符）作素材，题目标 source:"web"、sources:[{title,url}]；
-      extract 失败/超时回退 WEAK_HIT_ERROR（不出编造题）。
-  3) 强命中注入 prompt，LLM 产出结构化 JSON（支持 single/multi/judge），
-     逐题严格校验，坏题丢弃；
+  2) 联网搜索开关（web_search，默认开）：开启且配置了 STUDY_LIU_TAVILY_KEY 时走 Tavily
+      search 取联网资料（标题+摘要，限长）作参考；关闭 / 无 key / 失败 / 超时均降级为空
+      上下文（记 warning 日志），不拒绝，直接带主题走出题。
+  2') 课程名以 http(s):// 开头视作「丢链接出题」：不经知识库，走 Tavily extract 抓取正文
+      （截断 8000 字符）；无 key / 失败 / 超时回退 WEAK_HIT_ERROR（无 URL 内容无法出题）。
+  3) 知识库为可选增强（与问答同 RAG 门槛），强命中注入 prompt；空上下文时 LLM 基于自身
+      通用知识出题（不杜撰）。
+      topic 题（非 URL）永不直接拒绝：搜索上下文为空也走出题，source 标 "topic"。
   4) 标准答案只存在服务端（data/quiz_runs.json），generate 响应不带 answer；
   5) 判分走 grade_quiz：服务端对照答案回 correct/answer/explanation；
   6) 复盘走 quiz_report：纯聚合 quiz_runs.json，无新状态文件。
 
 不做（见 openspec/changes/2026-10-09-course-quiz-challenge/proposal.md）：
 FastAPI / LangChain / Chroma / MySQL / 文生图 / 微信登录 / 异步轮询。
-Tavily 仅以「可选联网兜底」形式存在：依赖环境变量注入的 key，不进仓库、不落盘。
+Tavily 仅以「可选联网搜索」形式存在（由联网搜索开关控制）：依赖环境变量注入的 key，不进仓库、不落盘。
 """
 
 from __future__ import annotations
@@ -24,6 +25,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import logging
 import threading
 import urllib.error
 import urllib.request
@@ -52,6 +54,7 @@ TAVILY_URL = "https://api.tavily.com/search"
 TAVILY_EXTRACT_URL = "https://api.tavily.com/extract"
 TAVILY_TIMEOUT = 8
 TAVILY_MAX_RESULTS = 3
+TAVILY_SNIPPET_MAX = 500  # 单条联网资料的摘要限长（标题+摘要，控 prompt 体积）
 
 # mixed 配比 single:multi:judge = 2:1:1（count=8 → 4+2+2）
 MIXED_RATIO = {"single": 2, "multi": 1, "judge": 1}
@@ -195,9 +198,33 @@ def _tavily_extract(url, api_key, timeout=TAVILY_TIMEOUT):
 def _web_blocks(web):
     blocks = []
     for i, w in enumerate(web, 1):
+        content = (w.get("content") or "").strip()
+        if len(content) > TAVILY_SNIPPET_MAX:
+            content = content[:TAVILY_SNIPPET_MAX] + "…"
         blocks.append("【联网资料 %d】%s\n%s\n%s" % (
-            i, w.get("title", ""), w.get("url", ""), w.get("content", "")))
+            i, w.get("title", ""), w.get("url", ""), content))
     return "\n\n".join(blocks)
+
+
+def _web_search_context(course, enable):
+    """联网搜索上下文（受「联网搜索开关」控制）。
+
+    enable=False / 无 key / 失败或超时 → 返回 ("", [])（降级，不拒绝，记 warning 日志）。
+    成功 → 返回 (格式化正文, [{title, url}])。
+    """
+    if not enable:
+        return "", []
+    key = os.environ.get(TAVILY_KEY_ENV)
+    if not key:
+        return "", []
+    try:
+        web = _tavily_search(course, key)
+    except Exception as e:
+        logging.warning("Tavily 搜索失败，降级为空上下文: %s", e)
+        return "", []
+    if not web:
+        return "", []
+    return _web_blocks(web), [{"title": w["title"], "url": w["url"]} for w in web]
 
 
 # ---------------------------------------------------------------------------
@@ -272,8 +299,13 @@ def _build_prompt(course, difficulty, plan, kb):
             "%d 道判断题（选项固定为 [{\"key\":\"0\",\"text\":\"正确\"},"
             "{\"key\":\"1\",\"text\":\"错误\"}]，answer 为整数 0 或 1）" % plan["judge"])
     spec = "；".join(parts) if parts else "3 道单选题"
+    if kb and kb.strip():
+        material_rule = "只能依据下方资料出题，不得使用资料之外的知识。"
+    else:
+        material_rule = ("下方暂无参考资料，请基于你对该主题的可靠通用知识严谨出题，"
+                        "确保事实准确、不杜撰。")
     return (
-        "你是严谨的出题老师。只能依据下方资料出题，不得使用资料之外的知识。\n\n"
+        "你是严谨的出题老师。%s\n\n"
         "课程：%s\n难度要求：%s\n\n"
         "请出：%s。只输出一个 JSON 对象，不要输出其他文字：\n"
         '{"questions": [{"type": "single", "stem": "题干", '
@@ -282,7 +314,7 @@ def _build_prompt(course, difficulty, plan, kb):
         '"answer": ["A"], "explanation": "解析", "knowledge_point": "知识点"}]}\n\n'
         "要求：每题必须带 type 字段（single/multi/judge）；选项文本两两不同；"
         "题干、解析、知识点都用中文且非空。\n\n"
-        "出题依据的资料：\n%s" % (course, hint, spec, kb)
+        "出题依据的资料：\n%s" % (material_rule, course, hint, spec, kb)
     )
 
 
@@ -421,12 +453,16 @@ def _parse_llm_questions(raw):
 # 出题
 # ---------------------------------------------------------------------------
 
-def generate_quiz(course, difficulty="medium", count=_COUNT_DEFAULT, types=None, client_id=""):
+def generate_quiz(course, difficulty="medium", count=_COUNT_DEFAULT, types=None, client_id="", web_search=True):
     """出题入口。返回 dict（HTTP 层直接回 JSON）。
 
-    弱命中且无联网 key → {"ok": false, "error": WEAK_HIT_ERROR, "retrieved": []}；
-    弱命中但有 key → Tavily 兜底出题（source 标 "web"）；
-    LLM 输出不可用 → 同样不出兜底假题。
+    流程：判断「联网搜索开关」web_search →
+      - 关：搜索上下文为空，直接走出题；
+      - 开且配 key：调 Tavily search（超时+条数上限），成功则格式化作参考，
+        失败/超时记 warning 并降级为空上下文；
+    主题题（非 URL）永不直接拒绝，空上下文也走出题（source 标 "topic"）；
+    URL 题（丢链接出题）需要 extract，无 key/失败/超时回退 WEAK_HIT_ERROR。
+    LLM 输出不可用 → 不出兜底假题。
     """
     course = str(course or "").strip()
     difficulty = str(difficulty or "medium").strip().lower()
@@ -442,14 +478,15 @@ def generate_quiz(course, difficulty="medium", count=_COUNT_DEFAULT, types=None,
 
     plan = _resolve_plan(types, count)
 
-    # URL 直出题（「丢链接出题」）：跳过知识库，走 Tavily extract 抓取正文
+    # URL 直出题（「丢链接出题」）：需要 extract 抓取正文，无 key/失败/超时 → 拒绝（无 URL 内容无法出题）
     if re.match(r"https?://", course, re.I):
         key = os.environ.get(TAVILY_KEY_ENV)
         if not key:
             return {"ok": False, "error": WEAK_HIT_ERROR, "retrieved": []}
         try:
             raw_doc = _tavily_extract(course, key)
-        except Exception:
+        except Exception as e:
+            logging.warning("Tavily extract 失败，拒绝出题: %s", e)
             return {"ok": False, "error": WEAK_HIT_ERROR, "retrieved": []}
         if not raw_doc:
             return {"ok": False, "error": WEAK_HIT_ERROR, "retrieved": []}
@@ -458,31 +495,25 @@ def generate_quiz(course, difficulty="medium", count=_COUNT_DEFAULT, types=None,
         src_kind = "web"
         src_list = [{"title": course, "url": course}]
     else:
+        # 私有知识库：可选增强（非硬性门槛），强命中时作为参考资料
         hits = _retrieve(course)
-        web = []
-        if not hits:
-            key = os.environ.get(TAVILY_KEY_ENV)
-            if key:
-                try:
-                    web = _tavily_search(course, key)
-                except Exception:
-                    web = []
-            if not web:
-                return {"ok": False, "error": WEAK_HIT_ERROR, "retrieved": []}
-
-        if hits:
-            ctx = _kb_blocks(hits)
-            citations = [
-                {"id": n.get("id"), "title": n.get("title", ""), "score": round(s, 2)}
-                for n, s, _ in hits
-            ]
-            src_kind = "kb"
-            src_list = []
-        else:
-            ctx = _web_blocks(web)
-            citations = [{"title": w["title"], "url": w["url"]} for w in web]
+        kb_ctx = _kb_blocks(hits) if hits else ""
+        kb_citations = [
+            {"id": n.get("id"), "title": n.get("title", ""), "score": round(s, 2)}
+            for n, s, _ in hits
+        ]
+        # 联网搜索（开关 + 降级）：关闭 / 无 key / 失败都降级为空上下文，不拒绝
+        web_ctx, web_sources = _web_search_context(course, bool(web_search))
+        parts = [p for p in (kb_ctx, web_ctx) if p]
+        ctx = "\n\n".join(parts)
+        citations = kb_citations + web_sources
+        if web_sources:
             src_kind = "web"
-            src_list = [{"title": w["title"], "url": w["url"]} for w in web]
+        elif hits:
+            src_kind = "kb"
+        else:
+            src_kind = "topic"
+        src_list = web_sources
 
     prompt = _build_prompt(course, difficulty, plan, ctx)
     raw = ""
@@ -497,7 +528,7 @@ def generate_quiz(course, difficulty="medium", count=_COUNT_DEFAULT, types=None,
     if len(questions) < MIN_VALID_QUESTIONS:
         return {"ok": False, "error": "本次生成的题目未通过格式校验，请重试。", "retrieved": citations}
 
-    # 弱命中兜底题统一标联网来源
+    # 统一标来源（topic / kb / web）与来源清单
     for q in questions:
         q["source"] = src_kind
         q["sources"] = src_list

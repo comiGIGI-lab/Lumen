@@ -22,13 +22,15 @@
 
 ### POST /api/quiz/generate
 
-请求：`{ "course": "线性代数", "difficulty": "easy|medium|hard", "count": 3..8 }`
+请求：`{ "course": "线性代数", "difficulty": "easy|medium|hard", "count": 3..8, "types": "single|multi|judge|mixed", "web_search": true }`
 
 - course 必填（非空，经 detect_crisis + check_detail 同 `/api/chat` 前置闸）。
-- difficulty 默认 `medium`；count 默认 5，钳制到 [3,8]。
-- 知识库检索（课程名为 query）弱命中 → `{"ok": false, "error": "知识库没有足够相关的材料…请先导入", "retrieved": []}`，HTTP 200（前端按 ok=false 提示，不瞎编题）。
-- 课程名以 `http(s)://` 开头视作「丢链接出题」：跳过知识库检索；若配置了 `STUDY_LIU_TAVILY_KEY`，走 `POST https://api.tavily.com/extract`（body `{"api_key", "urls":[<url>]}`，超时 8s），取 `results[0].raw_content` 截断至 8000 字符作素材，题目 `source:"web"`、`sources:[{title,url}]`；无 key 或 extract 失败/超时 → 回退上述 WEAK_HIT_ERROR 拒绝（不出编造题）。
-- 强命中 → LLM 出题，题目逐条校验：`id` 唯一（q1..qN）、`stem` 非空、`options` 恰好 4 个（key A–D、text 非空）、`answer` 恰好 1 个且 ∈ 选项 key、`explanation` 非空、`knowledge_point` 非空。校验失败丢弃该题；有效题 <3 → 报错不降级。
+- difficulty 默认 `medium`；count 默认 5，钳制到 [3,8]；types 默认 `mixed`（按 2:1:1 拆 single/multi/judge）。
+- **联网搜索开关 `web_search`**：默认 `true`。开启且配置了 `STUDY_LIU_TAVILY_KEY` 时调 Tavily search（超时 + 条数上限）取标题+摘要（单条摘要限长 `TAVILY_SNIPPET_MAX=500` 字）作联网参考；关闭 / 无 key / 搜索失败或超时 → 联网上下文为空并记 `logging.warning`（**降级而非拒绝**），仍继续出题。
+- **私有知识库为可选增强**：课程名作 query 检索，命中则作为参考资料（题目 `source:"kb"`、`retrieved` 带 id/title/score）；弱命中或无结果**不再拒绝**，直接走入题（空上下文），题目 `source:"topic"`，前端按 `ok=true` 正常出题（不瞎编——由 `_build_prompt` 的 `material_rule` 约束「基于通用知识严谨出题，不杜撰」）。
+- 课程名以 `http(s)://` 开头视作「丢链接出题」：跳过知识库与联网搜索；若配置了 `STUDY_LIU_TAVILY_KEY`，走 `POST https://api.tavily.com/extract`（body `{"api_key", "urls":[<url>]}`，超时 8s），取 `results[0].raw_content` 截断至 8000 字符作素材，题目 `source:"web"`、`sources:[{title,url}]`；无 key 或 extract 失败/超时 → 拒绝 `{"ok": false, "error": WEAK_HIT_ERROR, "retrieved": []}`（无 URL 正文无法出题）。
+- Prompt 组装规则：有资料（kb 或 web）→「只能依据下方资料出题」；无任何资料（topic）→「下方暂无参考资料，请基于你对该主题的可靠通用知识严谨出题，确保事实准确、不杜撰」。
+- 命中 / 弱命中 / 降级均 → LLM 出题，题目逐条校验：`id` 唯一（q1..qN）、`stem` 非空、`options` 恰好 4 个（key A–D、text 非空）、`answer` 恰好 1 个且 ∈ 选项 key、`explanation` 非空、`knowledge_point` 非空。校验失败丢弃该题；有效题 <3 → 报错不降级。
 - 成功：`{"ok": true, "quiz_id": "z-xxxx", "course": ..., "difficulty": ..., "count": N, "questions": [{id, stem, options:[{key,text}], explanation, knowledge_point}], "retrieved": [{id,title,score}]}`。**响应不含 answer**（判分走服务端，答案不下发前端）。
 - 落盘：quiz_id、完整题目（含 answer）、course、difficulty、created_at、client_id、作答记录写 `data/quiz_runs.json`。
 
@@ -44,9 +46,9 @@
 
 - `server/quiz.py`（新）：出题 / 校验 / 缓存 / 判分 / 落盘，纯标准库。
 - `server/api_server.py`（改）：do_POST 加两个路由，安全闸复用 detect_crisis / check_detail / log_crisis / log_safety_hit。
-- `web/src/components/QuizPanel.vue`（新）：闯关 UI。
+- `web/src/components/QuizPanel.vue`（新）：闯关 UI；含难度/题数/题型选择 + 联网搜索开关（pill 切换，i18n `quizPage.webSearch*`）。
 - `web/src/components/ChatPage.vue`（改）：顶栏加入口按钮切换 ChatPanel/QuizPanel。
-- `web/src/api/client.js`（改）：`quizGenerate(course, difficulty, count)` / `quizGrade(quizId, questionId, selected)`。
+- `web/src/api/client.js`（改）：`quizGenerate(course, difficulty, count, types, webSearch)` / `quizGrade(quizId, questionId, selected)`。
 - `web/src/i18n/auto-zh.json` / `auto-en.json`（改）：`quizPage.*` 中英键。
 - `tests/run_quiz_regression.py`（新）：源检查 + 后端 runtime（mock LLM）。
 
@@ -57,7 +59,7 @@
 
 ## Testing Strategy
 
-- `tests/run_quiz_regression.py`（TDD 先红后绿）：源检查（路由存在、安全闸顺序、answer 不下发、client 方法、QuizPanel/ChatPage/i18n 接线）+ runtime（临时 data 目录注入假知识库 + mock llm.chat，验证弱命中拒绝、出题校验、判分、落盘）。
+- `tests/run_quiz_regression.py`（TDD 先红后绿）：源检查（路由存在、安全闸顺序、answer 不下发、client 方法、QuizPanel/ChatPage/i18n 接线、web_search 开关接线）+ runtime（临时 data 目录注入假知识库 + mock llm.chat，验证弱命中降级出题、联网开关关闭/失败降级、URL 无 key/失败拒绝、出题校验、判分、落盘）。
 - 既有四套回归必须全数保持。
 
 ## Boundaries
@@ -69,7 +71,7 @@
 ## Success Criteria
 
 1. 课程问答页可发起闯关：选难度 + 题数 → 出题 → 逐题作答即时对错讲解 → 结算。
-2. 弱命中课程明确拒绝并提示先导入材料，不出现编造题。
+2. 主题题（非 URL）知识库弱命中不再拒绝，降级为空上下文并基于通用知识严谨出题（不杜撰）；仅「丢链接出题」在无 key/失败时才拒绝。
 3. 答错题目出现在错题本，source=quiz。
 4. 通关后学伴经验 +N（logExp('答题闯关')）。
 5. 四套既有回归全过、新回归全绿。

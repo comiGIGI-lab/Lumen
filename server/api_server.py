@@ -1456,6 +1456,8 @@ class ApiHandler(BaseHTTPRequestHandler):
                     course,
                     difficulty=body.get("difficulty") or "medium",
                     count=body.get("count") or 5,
+                    types=body.get("types") or None,
+                    web_search=body.get("web_search", True),
                     client_id=self._client_id(),
                 )
                 return self._send_json(res)

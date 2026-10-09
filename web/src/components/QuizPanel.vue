@@ -22,6 +22,7 @@ const { logExp } = usePet()
 const difficulty = ref('medium')
 const count = ref(5)
 const qtype = ref('mixed') // single | multi | judge | mixed
+const webSearch = ref(true) // 联网搜索开关（默认开；关/无 key/失败均降级为空上下文出题）
 const busy = ref(false)
 const errorText = ref('')
 
@@ -89,7 +90,7 @@ async function start() {
   finished.value = false
   report.value = null
   try {
-    const res = await api.quizGenerate(course, difficulty.value, count.value, qtype.value)
+    const res = await api.quizGenerate(course, difficulty.value, count.value, qtype.value, webSearch.value)
     if (!res.ok) {
       errorText.value = res.error || t('quizPage.errGenerate')
       emit('notify', { type: 'warn', text: errorText.value })
@@ -264,6 +265,17 @@ function reset() {
             {{ tpLabel(tp.key) }}
           </button>
         </div>
+      </div>
+      <div class="field">
+        <span class="s-label">{{ t('quizPage.webSearch') }}</span>
+        <button
+          type="button"
+          class="pill"
+          :class="{ on: webSearch }"
+          @click="webSearch = !webSearch"
+        >
+          {{ webSearch ? t('quizPage.webSearchOn') : t('quizPage.webSearchOff') }}
+        </button>
       </div>
       <button type="button" class="btn btn-accent" :disabled="busy" @click="start">
         {{ busy ? t('quizPage.generating') : t('quizPage.start') }}

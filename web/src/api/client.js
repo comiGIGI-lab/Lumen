@@ -351,14 +351,14 @@ export const api = {
   // ---------------- 选择题闯关 ----------------
   
   /**
-   * 出题（Day5）：按课程 + 难度 + 题数生成单选题组。
+   * 出题（Day5+）：按课程 + 难度 + 题数 + 题型生成题组。
    * 响应不含 answer —— 判分走 quizGrade（服务端持标准答案）。
-   * 知识库弱命中时 ok=false，前端提示先导入材料，不出编造题。
+   * web_search：联网搜索开关（默认开）；关闭/无 key/失败时降级为空上下文、不拒绝。
    */
-  quizGenerate(course, difficulty = 'medium', count = 5, types = 'mixed') {
+  quizGenerate(course, difficulty = 'medium', count = 5, types = 'mixed', webSearch = true) {
     return request('/quiz/generate', {
       method: 'POST',
-      body: JSON.stringify({ course, difficulty, count, types }),
+      body: JSON.stringify({ course, difficulty, count, types, web_search: webSearch }),
     })
   },
 
