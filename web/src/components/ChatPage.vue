@@ -2,10 +2,12 @@
 /**
  * ChatPage —— 课程问答独立页
  * 同一份 ChatPanel 全页展示；课程页底部那块问答保留不动。
+ * Day5：顶栏加「闯关答题」切换，同一课程上下文喂 QuizPanel（选择题闯关）。
  */
-import { onMounted } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useI18n } from '@/i18n'
 import ChatPanel from './ChatPanel.vue'
+import QuizPanel from './QuizPanel.vue'
 import { usePet } from '@/composables/usePet'
 
 defineProps({
@@ -21,6 +23,9 @@ const { logExp } = usePet()
 onMounted(() => {
   logExp('课程问答', 0)
 })
+
+/** ask | quiz：问答 / 闯关两种模式共用课程上下文 */
+const tab = ref('ask')
 </script>
 
 <template>
@@ -31,11 +36,33 @@ onMounted(() => {
         <h2>{{ t('chatPage.1') }}</h2>
         <p class="lead">{{ t('chatPage.2') }}</p>
       </div>
-      <button type="button" class="ghost" @click="emit('go-course')">{{ t('chatPage.3') }}</button>
+      <div class="bar-right">
+        <div class="tabs">
+          <button
+            type="button"
+            class="tab"
+            :class="{ on: tab === 'ask' }"
+            @click="tab = 'ask'"
+          >{{ t('quizPage.tabAsk') }}</button>
+          <button
+            type="button"
+            class="tab"
+            :class="{ on: tab === 'quiz' }"
+            @click="tab = 'quiz'"
+          >{{ t('quizPage.tabQuiz') }}</button>
+        </div>
+        <button type="button" class="ghost" @click="emit('go-course')">{{ t('chatPage.3') }}</button>
+      </div>
     </div>
     <ChatPanel
+      v-if="tab === 'ask'"
       :course-context="courseContext"
       :mode="mode"
+      @notify="emit('notify', $event)"
+    />
+    <QuizPanel
+      v-else
+      :course-context="courseContext"
       @notify="emit('notify', $event)"
     />
   </div>
@@ -54,6 +81,29 @@ onMounted(() => {
   justify-content: space-between;
   gap: 12px;
   flex-wrap: wrap;
+}
+.bar-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.tabs {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: 1000px;
+  overflow: hidden;
+}
+.tab {
+  border: none;
+  background: var(--bg-card);
+  color: var(--text-primary);
+  padding: 7px 14px;
+  font-size: 12.5px;
+}
+.tab.on {
+  background: var(--accent);
+  color: #fff;
 }
 .eyebrow {
   font-family: var(--font-serif);

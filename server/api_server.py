@@ -66,6 +66,7 @@ from crisis import (                                                 # noqa: E40
 # 离线语音转写。asr 内部默认 Vosk（延迟 import），whisper.cpp 是可选侧车；
 # 引擎/模型缺失只让 /api/asr 返回明确的中文提示，不会拖垮整个服务。
 import asr as asr_mod                                               # noqa: E402
+import quiz as quiz_mod                                             # noqa: E402
 
 
 def _looks_like_source(path: str) -> bool:
@@ -1436,6 +1437,43 @@ class ApiHandler(BaseHTTPRequestHandler):
                     "degraded": res.get("degraded"),
                 })
 
+
+            if path == "/api/quiz/generate":
+                # 选择题闯关出题（Day5）：安全闸与 /api/chat 同一套。
+                # answer 只存服务端（data/quiz_runs.json），本响应不带答案。
+                course = (body.get("course") or "").strip()
+                if not course:
+                    return self._send_json({"ok": False, "error": "请先输入课程名"}, 400)
+                if detect_crisis(course):
+                    log_crisis("quiz", course, self._client_id())
+                    return self._send_json(_crisis_response_chat(course))
+                detail = check_detail(course)
+                if detail["action"] == "BLOCK":
+                    log_safety_hit("quiz", course, detail, self._client_id())
+                    return self._send_json(
+                        {"ok": False, "error": SAFETY_ERROR_MESSAGE}, 400)
+                res = quiz_mod.generate_quiz(
+                    course,
+                    difficulty=body.get("difficulty") or "medium",
+                    count=body.get("count") or 5,
+                    client_id=self._client_id(),
+                )
+                return self._send_json(res)
+
+            if path == "/api/quiz/grade":
+                # 服务端判分：correct/answer/explanation 从缓存的标准答案对照得出
+                quiz_id = (body.get("quiz_id") or "").strip()
+                question_id = (body.get("question_id") or "").strip()
+                selected = (body.get("selected") or "").strip()
+                if not quiz_id or not question_id:
+                    return self._send_json(
+                        {"ok": False, "error": "缺少 quiz_id 或 question_id"}, 400)
+                try:
+                    g = quiz_mod.grade_quiz(quiz_id, question_id, selected)
+                except KeyError:
+                    return self._send_json(
+                        {"ok": False, "error": "本局不存在或已过期，请重新出题"}, 404)
+                return self._send_json(g)
             if path == "/api/export":
                 course = (body.get("course") or "").strip()
                 fmt = (body.get("format") or "markdown").strip().lower()

@@ -23,6 +23,19 @@ export function clientId() {
   return id
 }
 
+
+/**
+ * 登录 token —— 管理员身份靠它带到后端（X-Auth-Token 头）。
+ * 存在 localStorage，刷新不掉线；校验由后端做，前端只负责携带。
+ */
+export function authToken() {
+  try {
+    return localStorage.getItem('zjxt.auth.token') || ''
+  } catch (_) {
+    return ''
+  }
+}
+
 async function request(path, options = {}) {
   const res = await fetch(`${BASE}${path}`, {
     ...options,
@@ -332,6 +345,29 @@ export const api = {
   /** 删除一道错题 */
   wrongBookDelete(id) {
     return request(`/wrongbook/${id}`, { method: 'DELETE' })
+  },
+
+
+  // ---------------- 选择题闯关 ----------------
+  
+  /**
+   * 出题（Day5）：按课程 + 难度 + 题数生成单选题组。
+   * 响应不含 answer —— 判分走 quizGrade（服务端持标准答案）。
+   * 知识库弱命中时 ok=false，前端提示先导入材料，不出编造题。
+   */
+  quizGenerate(course, difficulty = 'medium', count = 5) {
+    return request('/quiz/generate', {
+      method: 'POST',
+      body: JSON.stringify({ course, difficulty, count }),
+    })
+  },
+
+  /** 判分：selected 为用户选的选项 key（A/B/C/D） */
+  quizGrade(quizId, questionId, selected) {
+    return request('/quiz/grade', {
+      method: 'POST',
+      body: JSON.stringify({ quiz_id: quizId, question_id: questionId, selected }),
+    })
   },
 
   // ---------------- 思维导图 ----------------
