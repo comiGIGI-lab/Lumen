@@ -27,6 +27,7 @@
 - course 必填（非空，经 detect_crisis + check_detail 同 `/api/chat` 前置闸）。
 - difficulty 默认 `medium`；count 默认 5，钳制到 [3,8]。
 - 知识库检索（课程名为 query）弱命中 → `{"ok": false, "error": "知识库没有足够相关的材料…请先导入", "retrieved": []}`，HTTP 200（前端按 ok=false 提示，不瞎编题）。
+- 课程名以 `http(s)://` 开头视作「丢链接出题」：跳过知识库检索；若配置了 `STUDY_LIU_TAVILY_KEY`，走 `POST https://api.tavily.com/extract`（body `{"api_key", "urls":[<url>]}`，超时 8s），取 `results[0].raw_content` 截断至 8000 字符作素材，题目 `source:"web"`、`sources:[{title,url}]`；无 key 或 extract 失败/超时 → 回退上述 WEAK_HIT_ERROR 拒绝（不出编造题）。
 - 强命中 → LLM 出题，题目逐条校验：`id` 唯一（q1..qN）、`stem` 非空、`options` 恰好 4 个（key A–D、text 非空）、`answer` 恰好 1 个且 ∈ 选项 key、`explanation` 非空、`knowledge_point` 非空。校验失败丢弃该题；有效题 <3 → 报错不降级。
 - 成功：`{"ok": true, "quiz_id": "z-xxxx", "course": ..., "difficulty": ..., "count": N, "questions": [{id, stem, options:[{key,text}], explanation, knowledge_point}], "retrieved": [{id,title,score}]}`。**响应不含 answer**（判分走服务端，答案不下发前端）。
 - 落盘：quiz_id、完整题目（含 answer）、course、difficulty、created_at、client_id、作答记录写 `data/quiz_runs.json`。

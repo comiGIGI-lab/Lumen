@@ -183,6 +183,9 @@ def source_checks():
     check("quiz_has_types_plan", "_resolve_plan" in quiz_src and "_distribute_mixed" in quiz_src,
           "quiz.py must support types plan")
     check("quiz_has_report", "def quiz_report" in quiz_src, "quiz.py missing quiz_report")
+    check("quiz_has_tavily_extract",
+          "api.tavily.com/extract" in quiz_src and "raw_content" in quiz_src,
+          "quiz.py must implement Tavily extract path for URL direct-gen")
     check("client_has_quiz_report",
           re.search(r"quizReport\(|'/quiz/report'|\"/quiz/report\"", client) is not None,
           "client.js missing quizReport")
@@ -525,6 +528,48 @@ def runtime_day6():
               "no-key weak hit must refuse")
     except Exception as e:
         check("day6_tavily_no_crash", False, "tavily crashed: %r" % e)
+    finally:
+        teardown(tmp)
+
+    # ---- Tavily extract：URL 直出题；失败/超时/无 key 回退拒绝 ----
+    tmp = tempfile.mkdtemp(prefix="zjxt-quiz-ext-")
+    quiz_mod, llm_mod = setup(tmp)
+    if quiz_mod is None:
+        return
+    orig_extract = quiz_mod._tavily_extract
+    os.environ["STUDY_LIU_TAVILY_KEY"] = "tvly-test-dummy"
+    quiz_mod._tavily_extract = lambda url, k: (
+        "矩阵乘法满足结合律但不满足交换律。特征值刻画线性变换在特征向量方向上的伸缩比例。"
+        "行列式非零是可逆的充要条件。向量空间对加法与数乘封闭。")
+    llm_mod.chat = fake_single
+    quiz_mod._llm_chat = fake_single
+    try:
+        url = "https://example.com/linear-algebra-notes"
+        res = quiz_mod.generate_quiz(url, difficulty="easy", count=3)
+        check("extract_url_ok", res.get("ok") is True, "extract gen failed: %s" % res.get("error"))
+        if res.get("ok"):
+            check("extract_source_web", res.get("source") == "web",
+                  "source should be web: %s" % res.get("source"))
+            check("extract_questions_source_web",
+                  all(q.get("source") == "web" for q in (res.get("questions") or [])),
+                  "questions source should be web")
+            qsrc = (res.get("questions") or [{}])[0].get("sources") or []
+            check("extract_sources_carry_url",
+                  isinstance(qsrc, list) and any(s.get("url") == url for s in qsrc),
+                  "sources should carry the input url: %s" % qsrc)
+        # extract 抛异常 → 回退 WEAK_HIT_ERROR
+        quiz_mod._tavily_extract = lambda url, k: (_ for _ in ()).throw(RuntimeError("network down"))
+        failed = quiz_mod.generate_quiz(url, difficulty="easy", count=3)
+        check("extract_fail_fallback", failed.get("ok") is False and failed.get("retrieved") == [],
+              "extract failure must fall back to WEAK_HIT_ERROR")
+        # 无 key：extract 不会被调用，直接拒绝
+        quiz_mod._tavily_extract = orig_extract
+        os.environ.pop("STUDY_LIU_TAVILY_KEY", None)
+        nokey = quiz_mod.generate_quiz(url, difficulty="easy", count=3)
+        check("extract_no_key_rejected", nokey.get("ok") is False and nokey.get("retrieved") == [],
+              "url without key must refuse")
+    except Exception as e:
+        check("day6_extract_no_crash", False, "extract crashed: %r" % e)
     finally:
         teardown(tmp)
 

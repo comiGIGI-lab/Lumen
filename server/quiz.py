@@ -5,6 +5,9 @@
   1) 课程名按问答同一套 RAG 门槛检索知识库（RAG_MIN_SCORE/RAG_MIN_COVERAGE 不重调）；
   2) 弱命中时若配置了 STUDY_LIU_TAVILY_KEY，改走 Tavily 联网补题并标注来源，
      不再直接拒绝；无 key 或联网失败仍回退 WEAK_HIT_ERROR（不出编造题）；
+  2') 课程名以 http(s):// 开头视作「丢链接出题」：不经知识库，改用 Tavily extract
+      抓取该 URL 正文（截断 8000 字符）作素材，题目标 source:"web"、sources:[{title,url}]；
+      extract 失败/超时回退 WEAK_HIT_ERROR（不出编造题）。
   3) 强命中注入 prompt，LLM 产出结构化 JSON（支持 single/multi/judge），
      逐题严格校验，坏题丢弃；
   4) 标准答案只存在服务端（data/quiz_runs.json），generate 响应不带 answer；
@@ -46,6 +49,7 @@ MAX_RUNS_KEPT = 200
 # Tavily 联网兜底：key 只从环境变量注入，绝不入库 / 不落盘
 TAVILY_KEY_ENV = "STUDY_LIU_TAVILY_KEY"
 TAVILY_URL = "https://api.tavily.com/search"
+TAVILY_EXTRACT_URL = "https://api.tavily.com/extract"
 TAVILY_TIMEOUT = 8
 TAVILY_MAX_RESULTS = 3
 
@@ -163,6 +167,29 @@ def _tavily_search(query, api_key, max_results=TAVILY_MAX_RESULTS, timeout=TAVIL
             "content": (r.get("content") or "").strip(),
         })
     return out
+
+
+def _tavily_extract(url, api_key, timeout=TAVILY_TIMEOUT):
+    """URL 直出题：抓取正文（纯标准库 urllib）。失败抛异常，由调用方回退。
+
+    返回 results[0].raw_content 字符串；无结果返回 ""。
+    """
+    body = json.dumps(
+        {"api_key": api_key, "urls": [url]}
+    ).encode("utf-8")
+    req = urllib.request.Request(
+        TAVILY_EXTRACT_URL,
+        data=body,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        data = json.loads(resp.read().decode("utf-8"))
+    results = data.get("results") or []
+    if not results:
+        return ""
+    first = results[0] or {}
+    return (first.get("raw_content") or "").strip()
 
 
 def _web_blocks(web):
@@ -414,32 +441,48 @@ def generate_quiz(course, difficulty="medium", count=_COUNT_DEFAULT, types=None,
         return {"ok": False, "error": "请先输入课程名", "retrieved": []}
 
     plan = _resolve_plan(types, count)
-    hits = _retrieve(course)
 
-    web = []
-    if not hits:
+    # URL 直出题（「丢链接出题」）：跳过知识库，走 Tavily extract 抓取正文
+    if re.match(r"https?://", course, re.I):
         key = os.environ.get(TAVILY_KEY_ENV)
-        if key:
-            try:
-                web = _tavily_search(course, key)
-            except Exception:
-                web = []
-        if not web:
+        if not key:
             return {"ok": False, "error": WEAK_HIT_ERROR, "retrieved": []}
-
-    if hits:
-        ctx = _kb_blocks(hits)
-        citations = [
-            {"id": n.get("id"), "title": n.get("title", ""), "score": round(s, 2)}
-            for n, s, _ in hits
-        ]
-        src_kind = "kb"
-        src_list = []
-    else:
-        ctx = _web_blocks(web)
-        citations = [{"title": w["title"], "url": w["url"]} for w in web]
+        try:
+            raw_doc = _tavily_extract(course, key)
+        except Exception:
+            return {"ok": False, "error": WEAK_HIT_ERROR, "retrieved": []}
+        if not raw_doc:
+            return {"ok": False, "error": WEAK_HIT_ERROR, "retrieved": []}
+        ctx = "【在线文档】\n%s\n%s" % (course, raw_doc[:8000])
+        citations = [{"title": course, "url": course}]
         src_kind = "web"
-        src_list = [{"title": w["title"], "url": w["url"]} for w in web]
+        src_list = [{"title": course, "url": course}]
+    else:
+        hits = _retrieve(course)
+        web = []
+        if not hits:
+            key = os.environ.get(TAVILY_KEY_ENV)
+            if key:
+                try:
+                    web = _tavily_search(course, key)
+                except Exception:
+                    web = []
+            if not web:
+                return {"ok": False, "error": WEAK_HIT_ERROR, "retrieved": []}
+
+        if hits:
+            ctx = _kb_blocks(hits)
+            citations = [
+                {"id": n.get("id"), "title": n.get("title", ""), "score": round(s, 2)}
+                for n, s, _ in hits
+            ]
+            src_kind = "kb"
+            src_list = []
+        else:
+            ctx = _web_blocks(web)
+            citations = [{"title": w["title"], "url": w["url"]} for w in web]
+            src_kind = "web"
+            src_list = [{"title": w["title"], "url": w["url"]} for w in web]
 
     prompt = _build_prompt(course, difficulty, plan, ctx)
     raw = ""
