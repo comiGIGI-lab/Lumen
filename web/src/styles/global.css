@@ -605,7 +605,8 @@ textarea:focus-visible {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 5px 9px;
+  min-height: 44px;
+  padding: 0 4px 0 12px;
   background: var(--bg-soft);
   border-bottom: 1px solid var(--border);
 }
@@ -631,8 +632,8 @@ textarea:focus-visible {
 }
 
 .md-body .md-act {
-  width: 24px;
-  height: 24px;
+  width: 44px;
+  height: 44px;
   display: inline-grid;
   place-items: center;
   padding: 0;
