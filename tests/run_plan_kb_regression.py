@@ -279,9 +279,15 @@ def _runtime_plan_kb():
     if vendor not in sys.path:
         sys.path.insert(0, vendor)
     os.environ["LLM_PROVIDER"] = "mock"
-    if "requests" not in sys.modules:
+    # 只在**真的没装** requests 时才打桩。
+    # 原来是无条件打桩，会把已安装的 requests 也换成空模块；一旦有代码路径走到
+    # 真实请求（例如 settings.json 里 provider=llm 盖过了环境变量），就会炸成
+    # "module 'requests' has no attribute 'exceptions'" —— 把环境问题伪装成产品缺陷。
+    try:
+        import requests  # noqa: F401
+    except Exception:
         import types
-        sys.modules["requests"] = types.ModuleType("requests")
+        sys.modules.setdefault("requests", types.ModuleType("requests"))
 
     td = tempfile.mkdtemp(prefix="plan-kb-")
     kb_path = os.path.join(td, "knowledge.json")
@@ -290,6 +296,7 @@ def _runtime_plan_kb():
         json.dump([], f)
 
     try:
+        import core.config as cfg
         import tools.cache_store as cs
         import tools.knowledge_store as ks
         from core import agent_loop as al
@@ -297,10 +304,16 @@ def _runtime_plan_kb():
         orig_kb = ks._KNOWLEDGE_FILE
         orig_cache = cs._get_cache_path
         orig_seed = getattr(ks, "ensure_seed_file", None)
+        # ★ 必须把磁盘上的 settings.json 也屏蔽掉：它优先于环境变量
+        #   （core.config.get_provider: settings.provider > LLM_PROVIDER）。
+        #   服务器上 settings.json 配了 provider=llm，只设 LLM_PROVIDER=mock
+        #   根本拦不住，本用例会真的发起网络请求 —— 既不密闭又会假失败。
+        orig_load_settings = cfg.load_settings
 
         ks._KNOWLEDGE_FILE = kb_path
         ks.ensure_seed_file = lambda *a, **k: None
         cs._get_cache_path = lambda: cache_path
+        cfg.load_settings = lambda: {}
 
         # 空库：弱/无命中不得伪造引用
         empty_res = al.run_plan_pipeline("线性代数", use_cache=False)
@@ -340,6 +353,7 @@ def _runtime_plan_kb():
 
         ks._KNOWLEDGE_FILE = orig_kb
         cs._get_cache_path = orig_cache
+        cfg.load_settings = orig_load_settings
         if orig_seed is not None:
             ks.ensure_seed_file = orig_seed
     except Exception as exc:

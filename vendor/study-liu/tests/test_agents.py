@@ -15,6 +15,17 @@ from agents.writer import write_plan
 from agents.reviewer import review
 
 
+def _titles(outline):
+    """从大纲里取章节名。章节项是 {"title","points"} 对象，兼容旧的纯字符串项。"""
+    out = []
+    for ch in outline:
+        if isinstance(ch, dict):
+            out.append(ch.get("title") or ch.get("name") or "")
+        else:
+            out.append(str(ch))
+    return out
+
+
 class TestPlanner:
     """Planner Agent 测试。"""
 
@@ -28,16 +39,28 @@ class TestPlanner:
         result = plan_outline("Python")
         assert len(result) >= 3
 
-    def test_outline_items_are_str(self):
-        """大纲每项是字符串。"""
+    def test_outline_items_are_chapter_objects(self):
+        """大纲每项是章节对象：含 title 与至少 2 条非空要点（Reviewer 的门槛）。"""
         result = plan_outline("数据结构")
         for item in result:
-            assert isinstance(item, str)
+            assert isinstance(item, dict), "章节应是对象，实际：%r" % (type(item),)
+            assert isinstance(item.get("title"), str) and item["title"].strip()
+            points = item.get("points")
+            assert isinstance(points, list)
+            assert len(points) >= 2
+            assert all(isinstance(p, str) and p.strip() for p in points)
+
+    def test_outline_points_are_not_placeholder(self):
+        """要点不能是「要点待补充」这类空话。"""
+        result = plan_outline("操作系统")
+        joined = " ".join(p for item in result for p in item.get("points", []))
+        assert "要点待补充" not in joined
+        assert "暂无要点" not in joined
 
     def test_outline_contains_course_name(self):
-        """大纲包含课程名（兜底数据）。"""
+        """大纲包含课程名（兜底数据第一章带课程前缀）。"""
         result = plan_outline("操作系统")
-        combined = " ".join(result)
+        combined = " ".join(_titles(result))
         assert "操作系统" in combined
 
 

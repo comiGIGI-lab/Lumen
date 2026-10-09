@@ -199,11 +199,11 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ title, content, tags, scope, category }),
     })
-  }
+  },
 
   knowledgeCategories() {
     return request('/knowledge/categories')
-  }
+  },
 
   knowledgeCreateCategory(category) {
     return request('/knowledge/categories', {
