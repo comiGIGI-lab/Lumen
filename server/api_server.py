@@ -1210,7 +1210,16 @@ class ApiHandler(BaseHTTPRequestHandler):
                     top_k = max(1, min(50, int((query.get("top_k") or ["20"])[0])))
                 except ValueError:
                     top_k = 20
-                hits = store.retrieve_visible(q, username, top_k=top_k)
+                # 向量 RAG 切片：优先混合检索（0.6×向量+0.4×词法），
+                # 开关关闭 / chromadb 未装 / 任何异常时函数内部直接回退词法，
+                # 返回形状与 retrieve_visible 完全一致。retrieval_hybrid 惰性
+                # import，api_server 本体不触碰 chromadb（范围闸约束）。
+                try:
+                    import retrieval_hybrid
+                    hits = retrieval_hybrid.retrieve(
+                        q, store=store, username=username, top_k=top_k)
+                except Exception:
+                    hits = store.retrieve_visible(q, username, top_k=top_k)
                 items = []
                 for note, score, detail in hits:
                     it = dict(note)
@@ -1430,6 +1439,23 @@ class ApiHandler(BaseHTTPRequestHandler):
                     history=body.get("history") or [],
                     course_context=body.get("course_context") or None,
                 )
+                # Phase B（Agentic 检索）：弱命中联网补题。知识库没检索到
+                # （retrieved 空）时尝试 Tavily 检索回灌增强；任何失败保持原答案。
+                # web_tools 惰性 import：未装 langchain-tavily / 无 key 时秒退。
+                web_sources = []
+                if not (res.get("retrieved") or []):
+                    try:
+                        import web_tools
+                        enhanced = web_tools.enhance_chat(
+                            question, res.get("answer") or "",
+                            history=body.get("history") or [])
+                        if enhanced:
+                            res = {"answer": enhanced["answer"],
+                                   "source": enhanced["source"],
+                                   "retrieved": []}
+                            web_sources = enhanced.get("web_sources") or []
+                    except Exception:
+                        pass   # 联网补题是增强路径，绝不能打挂问答
                 return self._send_json({
                     "ok": True,
                     "type": "chat",
@@ -1442,6 +1468,8 @@ class ApiHandler(BaseHTTPRequestHandler):
                     # source 仍沿用 knowledge / llm 两值，前端标签不会落到兜底分支。
                     "retrieved": res.get("retrieved") or [],
                     "degraded": res.get("degraded"),
+                    # 联网补题来源（弱命中走 Tavily 时非空；新增字段，前端可忽略）
+                    "web_sources": web_sources,
                 })
 
 
@@ -1711,6 +1739,14 @@ class ApiHandler(BaseHTTPRequestHandler):
                     return self._send_json({"ok": False, "error": "只能删除自己的资料"}, 403)
                 if not store.delete(note_id):
                     return self._send_json({"ok": False, "error": "未找到该笔记"}, 404)
+                # 向量 RAG 切片：知识库删除成功后同步清理向量库。
+                # 惰性 import + 全包 try：未装 chromadb / 清理失败都不能影响删除结果
+                # （向量残块会被 retrieval_hybrid 按 store.visible 过滤掉，只是浪费一点空间）。
+                try:
+                    import vector_store
+                    vector_store.delete_note(note_id)
+                except Exception:
+                    pass
                 return self._send_json({
                     "ok": True, "id": note_id, "total": len(store.list_all()),
                 })

@@ -496,3 +496,54 @@ docling convert lecture.docx --to md --no-ocr --output /tmp/docling-out
 
 官方参考：<https://docling-project.github.io/docling/reference/cli/>。不要 `--pipeline vlm`，不要 GraniteDocling。缺 `docling` 时 `server/office_parse.py` 用 zipfile + xml 抽 OOXML 正文，服务仍能起。强制：`STUDY_LIU_OFFICE_ENGINE=docling|ooxml`。探测：`curl -s localhost:8000/api/knowledge/capabilities` 看 `document.office`。
 
+
+
+## 15. 向量 RAG + Agentic 联网检索（chromadb / 百炼 embedding / Tavily 弱命中补题）
+
+### 15.1 是什么
+
+知识库检索从纯词法升级为混合：`0.6×向量语义 + 0.4×词法`。口语化/换措辞提问显著改善。主问答在知识库**弱命中**（没检索到资料）时，走 Tavily 联网检索回灌 LLM 补题。
+
+### 15.2 安装（一次性）
+
+```bash
+# 1) chromadb（嵌入式向量库，约 200MB 依赖，不需要额外服务进程）
+pip3 install chromadb
+
+# 2) langchain-tavily（若此前 quiz 已装可跳过；见 server/requirements.txt）
+pip3 install langchain-tavily
+
+# 3) SQLite 版本核验：chromadb 需要 >= 3.35
+python3 -c "import sqlite3; print(sqlite3.sqlite_version)"
+```
+
+### 15.3 关键约束
+
+- **pm2 必须单实例**：Chroma 1.5.x 是嵌入式库，线程安全但**非进程安全**。pm2 里 my-api 保持单实例（不 cluster / 不多开），否则两个进程写同一个 `data/chroma/` 会损坏索引。
+- **Embedding 走百炼** `text-embedding-v4`（OpenAI 兼容接口），复用 settings.json 里同一把 API Key。若该 Key 无百炼权限，向量化自动失败 → 静默回退词法，**主流程不受影响**。缓存落 `data/embed_cache.json`（sha1 键），重复回填不重复计费。
+- 向量库落 `data/chroma/`，**不进 git**（`.gitignore` 已含 `data/`）。
+- **内存提醒**：chromadb 常驻约增加 150~250MB。服务器只有 1.6G 内存，若 `free -m` 里 available 低于 600MB，建议暂缓安装、保持 `STUDY_LIU_VECTOR=0` 纯词法（行为与改造前完全一致）。
+
+### 15.4 存量笔记回填（切换后执行一次）
+
+```bash
+python3 server/embed_backfill.py            # 预览（不动库）
+python3 server/embed_backfill.py --apply    # 实际写入
+```
+
+### 15.5 一键回退
+
+```bash
+# 任何问题（内存吃紧 / 检索异常 / 想回到纯词法）：
+# 在 pm2 环境变量加 STUDY_LIU_VECTOR=0 后 restart，或：
+STUDY_LIU_VECTOR=0 pm2 restart my-api
+```
+
+回退后行为与改造前**完全一致**（词法检索），向量库文件留着不动即可。
+
+### 15.6 体检
+
+```bash
+python3 tests/run_vector_rag_regression.py   # 41 条（chromadb 未装时向量用例 SKIP 不算失败）
+curl -s localhost:8000/api/knowledge?q=任意词  # 检索照常返回
+```

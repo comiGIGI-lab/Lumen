@@ -240,6 +240,40 @@ def cleanup_uploads(data_dir, keep_seconds=UPLOAD_KEEP_SECONDS):
 
 
 # ============================================================
+# 向量化挂钩（向量 RAG 切片，2026-10-10）
+# ============================================================
+def _vectorize_notes(notes, chunks, owner, scope, category):
+    """分块入库后把各块写入向量库。
+
+    设计要点：
+      1. 任何失败都不抛、不阻塞导入 —— 笔记已落 JSON，仅词法可检，
+         向量层可由 embed_backfill.py 事后补建；
+      2. 惰性 import（函数内），未装 chromadb / 无 key 时秒退；
+      3. 一个笔记一块（与当前入库结构一一对应），向量文本用「标题\\n正文」，
+         让标题信号也参与语义匹配（词法层标题权重 6.0，语义层同样受益）。
+    """
+    try:
+        if os.environ.get("STUDY_LIU_VECTOR", "1").strip() in ("0", "false", "no"):
+            return
+        import embeddings
+        import vector_store
+        if not vector_store.AVAILABLE:
+            return
+        texts = ["%s\\n%s" % (n.get("title") or "", ck)
+                 for n, ck in zip(notes, chunks)]
+        vecs = embeddings.embed_texts(texts)
+        if not vecs:
+            return   # 无 key / 断网：回退词法，不影响导入结果
+        for (note, _ck), vec in zip(zip(notes, chunks), vecs):
+            if vec:
+                vector_store.upsert_chunk(
+                    note["id"], 0, note.get("title", ""), vec,
+                    owner=owner, scope=scope, category=category)
+    except Exception:
+        pass   # 向量化是增强路径，绝不能把导入接口打挂
+
+
+# ============================================================
 # 主入口
 # ============================================================
 def ingest(path, filename, tags=None, store=None, data_dir=None, title=None,
@@ -397,6 +431,9 @@ def ingest(path, filename, tags=None, store=None, data_dir=None, title=None,
     out["ok"] = True
     out["chunks"] = total
     out["chars"] = len(text)
+
+    # ---- 5. 向量化（失败不阻塞：见 _vectorize_notes 注释）----
+    _vectorize_notes(out["notes"], chunks, owner, scope, category)
     return out
 
 
@@ -420,6 +457,7 @@ def ingest_text(text, title=None, tags=None, store=None,
     chunks = chunk_text(text)
     total = len(chunks)
     notes = []
+    chunks_kept = []
     for i, ck in enumerate(chunks, 1):
         t = title if total == 1 else "%s · %d/%d" % (title, i, total)
         notes.append({"id": store.add(
@@ -427,5 +465,8 @@ def ingest_text(text, title=None, tags=None, store=None,
                           tags=list(tags) if tags else ["#import", "#paste"],
                           owner=owner, scope=scope, category=category),
                       "title": t})
+        chunks_kept.append(ck)
+    # 向量化（失败不阻塞，同 ingest）
+    _vectorize_notes(notes, chunks_kept, owner, scope, category)
     return {"ok": True, "kind": "text", "notes": notes,
             "chunks": total, "chars": len(text), "error": None}
