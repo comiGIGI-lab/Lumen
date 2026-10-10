@@ -1,9 +1,10 @@
 /**
  * 学伴：网页右下角的学习伙伴，头脑的化身。
- * 形象 / 等级 / 经验 / 形态只存本地 localStorage（zjxt.pet），不上传、不登录；
- * zjxt.welcomed 归欢迎层，两边互不相干。
+ * 形象 / 等级 / 经验 / 形态只存本地 localStorage（按账号分档 zjxt.pet.<用户名|anon>），
+ * 不上传服务器；zjxt.welcomed 归欢迎层，两边互不相干。
  */
 import { computed, reactive, ref } from 'vue'
+import { keyedStorage } from '@/composables/ownerTag'
 
 export const PET_KEY = 'zjxt.pet'
 
@@ -26,8 +27,6 @@ export const XP_STUDY_DAILY_BONUS = 10
 export const XP_PLAN = 40
 /** 每天前几次方案生成给经验 */
 export const XP_PLAN_DAILY_CAP = 2
-export const XP_IMPORT_KB = 15
-export const XP_QUIZ_PER_Q = 2
 
 /** Lv5 起开放进阶形态；选「保持」后每次升级仍会再问 */
 export const EVOLVE_LEVEL = 5
@@ -148,9 +147,17 @@ const INFRINGE_IDS = [
 /** 旧侵权 id 命中标记：命中后要在 pet 初始化后立即把清空结果写回存储，让首屏引导页能重新出现 */
 let clearedInfringe = false
 
+function petKey() {
+  // 按账号分档：同一浏览器多账号不互相污染；anon 档兼容旧的 zjxt.pet
+  // （老数据只在 anon 身份下读得到，首次保存后落到新 key，旧 key 不再写）
+  return keyedStorage('zjxt.pet')
+}
+
 function loadPet() {
   try {
-    const raw = localStorage.getItem(PET_KEY)
+    const key = petKey()
+    let raw = localStorage.getItem(key)
+    if (!raw && key !== PET_KEY) raw = localStorage.getItem(PET_KEY) // 旧版未分档数据
     if (!raw) return null
     const data = JSON.parse(raw)
     if (!data || typeof data.id !== 'string') return null
@@ -263,7 +270,7 @@ function nextDayStr(s) {
 
 function persist() {
   try {
-    localStorage.setItem(PET_KEY, JSON.stringify({ ...pet }))
+    localStorage.setItem(petKey(), JSON.stringify({ ...pet }))
   } catch (_) {
     /* 存不上不阻塞 */
   }
@@ -460,8 +467,6 @@ export function usePet() {
     XP_STUDY_DAILY_BONUS,
     XP_PLAN,
     XP_PLAN_DAILY_CAP,
-    XP_IMPORT_KB,
-    XP_QUIZ_PER_Q,
     EVOLVE_LEVEL,
     EVOLVE2_LEVEL,
     STREAK_POOL_MAX,

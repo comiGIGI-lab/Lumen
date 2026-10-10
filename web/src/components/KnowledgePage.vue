@@ -17,9 +17,9 @@ const { t } = useI18n()
 
 const SCOPES = [
   { id: 'all', label: '全部可见' },
-  { id: 'private', label: '我的私有' },
+  { id: 'private', label: '我的个人库' },
   { id: 'shared', label: '团队共享' },
-  { id: 'public', label: '公共资料' },
+  { id: 'public', label: '官方资料库' },
 ]
 
 const TYPE_LABEL = { pdf: 'PDF', image: '图片', md: 'Markdown', txt: '文本', note: '笔记', docx: 'Word', pptx: 'PPT' }
@@ -259,9 +259,9 @@ onBeforeUnmount(() => {
       </select>
       <button type="button" class="ghost" @click="addCategory">新增分类</button>
       <select v-model="uploadScope" aria-label="上传空间">
-        <option value="private">上传到我的私有</option>
+        <option value="private">上传到我的个人库</option>
         <option value="shared">上传到团队共享</option>
-        <option value="public">上传到公共资料</option>
+        <option value="public">上传到官方资料库</option>
       </select>
       <select v-model="uploadCategory" aria-label="上传分类">
         <option value="">上传时不指定分类</option>

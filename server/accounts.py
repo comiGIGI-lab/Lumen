@@ -182,6 +182,17 @@ def set_password(username, new_password):
     return True, "已更新"
 
 
+def change_password(username, old_password, new_password):
+    """用户自助改密：必须先验证旧密码。返回 (ok, 说明)。
+
+    与管理员的 set_password 不同，这里多一道旧密码校验 ——
+    token 只是登录态，不能替代"本人知道原密码"的确认。
+    """
+    if not verify(username, old_password or ""):
+        return False, "原密码不正确"
+    return set_password(username, new_password or "")
+
+
 def set_role(username, role):
     """改角色（提拔/降级）。返回 (ok, 说明)。
 

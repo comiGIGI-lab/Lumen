@@ -224,6 +224,7 @@ from tools import wrong_book_store                                  # noqa: E402
 from tools import mindmap_store                                     # noqa: E402
 import error_text                                                    # noqa: E402
 import accounts                                                      # noqa: E402
+import data_scope                                                    # noqa: E402
 from tools import cache_store                                       # noqa: E402
 from tools.knowledge_store import KnowledgeStore                    # noqa: E402
 from core.paths import data_dir as _data_dir                        # noqa: E402
@@ -299,6 +300,76 @@ def client_courses(client_id: str) -> set:
     if not client_id:
         return set()
     return set(load_client_history().get(client_id, []))
+
+
+def client_courses_many(keys) -> set:
+    """聚合多个归属桶的课程（登录 = 用户名桶 + 绑定浏览器桶；匿名 = 单桶）。"""
+    out = set()
+    for k in keys or []:
+        out |= client_courses(k)
+    return out
+
+
+# ---------- 错题本 / 导图的多桶聚合读 ----------
+#
+# wrong_book_store / mindmap_store 按 client_id 过滤全局文件，这里把
+# 「登录用户名桶 + 绑定浏览器桶」的结果合并（错题按 id 去重，id 全局唯一）。
+
+def _wrongbook_items(keys, course=None, keyword=None, status=None):
+    items, seen = [], set()
+    for k in keys or []:
+        for it in wrong_book_store.list_items(
+                k, course=course, keyword=keyword, status=status):
+            iid = it.get("id")
+            if iid in seen:
+                continue
+            seen.add(iid)
+            items.append(it)
+    return items
+
+
+def _wrongbook_stats(items):
+    """与 wrong_book_store.stats() 同口径，但直接对聚合后的条目计算。"""
+    total = len(items)
+    mastered = sum(1 for it in items if it.get("mastered"))
+    by_course = {}
+    for it in items:
+        c = it.get("course") or "未归类"
+        slot = by_course.setdefault(c, {"course": c, "total": 0, "mastered": 0})
+        slot["total"] += 1
+        if it.get("mastered"):
+            slot["mastered"] += 1
+    due = sum(1 for it in items
+              if not it.get("mastered") and int(it.get("review_count") or 0) < 3)
+    return {
+        "total": total,
+        "mastered": mastered,
+        "unmastered": total - mastered,
+        "due": due,
+        "ratio": round(mastered / total, 4) if total else 0.0,
+        "by_course": sorted(by_course.values(), key=lambda x: -x["total"]),
+    }
+
+
+def _wrongbook_courses(items):
+    seen = []
+    for it in items:
+        c = it.get("course") or "未归类"
+        if c not in seen:
+            seen.append(c)
+    return seen
+
+
+def mindmap_store_list_many(keys):
+    out, seen = [], set()
+    for k in keys or []:
+        for entry in mindmap_store.list_maps(k):
+            course = entry.get("course")
+            if course in seen:
+                continue
+            seen.add(course)
+            out.append(entry)
+    return out
 
 
 # ============================================================
@@ -541,10 +612,16 @@ def mode_info() -> dict:
     }
 
 
-def bootstrap(client_id: str = "") -> dict:
-    """一次性返回前端启动所需的全部元信息。"""
-    profile = load_profile()
-    allowed = client_courses(client_id)
+def bootstrap(client_id: str = "", owner_keys=None, profile_file=None) -> dict:
+    """一次性返回前端启动所需的全部元信息。
+
+    owner_keys / profile_file 由调用方按登录态传入：
+    登录用户画像读 profiles/<用户名>.json、历史读「用户名桶 + 绑定浏览器桶」；
+    未登录两者都是 None/[client_id]，行为与旧版完全一致。
+    """
+    profile = load_profile(filepath=profile_file)
+    allowed = client_courses_many(owner_keys) if owner_keys is not None \
+        else client_courses(client_id)
     return {
         "app": "study-liu-web",
         "version": "1.0.0",
@@ -1014,6 +1091,55 @@ class ApiHandler(BaseHTTPRequestHandler):
             cid = (query.get("client_id") or [""])[0].strip()
         return cid[:64] or "anonymous"
 
+    # ---------- 登录态与数据归属 ----------
+    #
+    # 数据身份原本只有 client_id（随机浏览器 ID），登录账号与之无关：
+    # 换浏览器数据就"丢"了，同浏览器换账号数据混在一起。现在分两条轨道：
+    #   写（POST/DELETE）：登录 → 「u:<用户名>」桶（顺带把当前浏览器惰性绑定到
+    #                     账号）；匿名 → client_id 桶（旧行为完全不变）。
+    #   读（GET）：登录 → 用户名桶 + 该账号绑定过的所有浏览器桶的并集；
+    #             匿名 → 仅当前浏览器桶。
+
+    def _auth_any(self, query=None):
+        """登录态：优先 X-Auth-Token 头；SSE（EventSource 不能带自定义头）
+        回落 auth_token 查询参数。"""
+        token = (self.headers.get("X-Auth-Token") or "").strip()
+        if not token and query:
+            token = (query.get("auth_token") or [""])[0].strip()
+        return accounts.check_token(token or "")
+
+    def _owner_id(self, query=None) -> str:
+        """写路径的归属桶名。"""
+        user = self._auth_any(query)
+        if user:
+            try:
+                data_scope.bind_client(self._client_id(query), user["username"])
+            except Exception:
+                pass
+            return data_scope.owner_key(user["username"])
+        return self._client_id(query)
+
+    def _owner_keys(self, query=None) -> list:
+        """读路径的桶列表。"""
+        user = self._auth_any(query)
+        if user:
+            try:
+                return data_scope.owner_keys_for(user["username"], self._client_id(query))
+            except Exception:
+                return [data_scope.owner_key(user["username"])]
+        cid = self._client_id(query)
+        return [cid] if cid else ["anonymous"]
+
+    def _profile_file(self, query=None):
+        """按用户隔离的画像文件路径；未登录返回 None（走全局 profile.json 旧行为）。"""
+        user = self._auth_any(query)
+        if not user:
+            return None
+        try:
+            return data_scope.profile_path(DATA_DIR, user["username"])
+        except Exception:
+            return None
+
     # ---------- SSE ----------
     def _sse_open(self):
         self.send_response(200)
@@ -1080,7 +1206,11 @@ class ApiHandler(BaseHTTPRequestHandler):
                 })
 
             if path == "/api/bootstrap":
-                return self._send_json(bootstrap(self._client_id(query)))
+                return self._send_json(bootstrap(
+                    self._client_id(query),
+                    owner_keys=self._owner_keys(query),
+                    profile_file=self._profile_file(query),
+                ))
 
             if path == "/api/mode":
                 return self._send_json(mode_info())
@@ -1090,7 +1220,7 @@ class ApiHandler(BaseHTTPRequestHandler):
                 return self._send_json({"lines": tail_trace(limit)})
 
             if path == "/api/history":
-                allowed = client_courses(self._client_id(query))
+                allowed = client_courses_many(self._owner_keys(query))
                 courses = [
                     c for c in progress_store.list_courses()
                     if c.get("course") in allowed
@@ -1099,7 +1229,7 @@ class ApiHandler(BaseHTTPRequestHandler):
 
             if path.startswith("/api/history/"):
                 course = urllib.parse.unquote(path[len("/api/history/"):])
-                if course not in client_courses(self._client_id(query)):
+                if course not in client_courses_many(self._owner_keys(query)):
                     return self._send_json(
                         {"ok": False, "error": "该课程不在你的历史记录中"}, 404)
                 result = progress_store.load_result(course)
@@ -1110,9 +1240,10 @@ class ApiHandler(BaseHTTPRequestHandler):
                 return self._send_json(payload)
 
             if path == "/api/progress/overview":
-                # 学情面板：该浏览器名下所有课程的勾选完成度汇总。
-                # progress.json 全局共享，所以仍要按 client 过滤（同 /api/history）。
-                allowed = client_courses(self._client_id(query))
+                # 学情面板：该归属名下所有课程的勾选完成度汇总。
+                # progress.json 全局共享，所以仍要按归属过滤（登录 = 账号桶 +
+                # 绑定浏览器桶；匿名 = 浏览器桶，同 /api/history）。
+                allowed = client_courses_many(self._owner_keys(query))
                 rows = []
                 for c in progress_store.list_courses():
                     name = c.get("course")
@@ -1141,9 +1272,9 @@ class ApiHandler(BaseHTTPRequestHandler):
                 })
 
             if path == "/api/wrongbook":
-                cid = self._client_id(query)
-                items = wrong_book_store.list_items(
-                    cid,
+                keys = self._owner_keys(query)
+                items = _wrongbook_items(
+                    keys,
                     course=(query.get("course") or [""])[0].strip() or None,
                     keyword=(query.get("q") or [""])[0].strip() or None,
                     status=(query.get("status") or [""])[0].strip() or None,
@@ -1152,8 +1283,8 @@ class ApiHandler(BaseHTTPRequestHandler):
                     "ok": True,
                     "items": items,
                     "total": len(items),
-                    "stats": wrong_book_store.stats(cid),
-                    "courses": wrong_book_store.courses(cid),
+                    "stats": _wrongbook_stats(items),
+                    "courses": _wrongbook_courses(items),
                 })
 
             if path == "/api/asr":
@@ -1165,12 +1296,16 @@ class ApiHandler(BaseHTTPRequestHandler):
                 # 列表：只给「课程 / 更新时间 / 节点数」，不带节点，列表页够用
                 return self._send_json({
                     "ok": True,
-                    "items": mindmap_store.list_maps(self._client_id(query)),
+                    "items": mindmap_store_list_many(self._owner_keys(query)),
                 })
 
             if path.startswith("/api/mindmap/"):
                 course = urllib.parse.unquote(path[len("/api/mindmap/"):])
-                entry = mindmap_store.get_map(self._client_id(query), course)
+                entry = None
+                for k in self._owner_keys(query):
+                    entry = mindmap_store.get_map(k, course)
+                    if entry:
+                        break
                 if not entry:
                     return self._send_json({"ok": False, "error": "该课程还没有思维导图"}, 404)
                 out = dict(entry)
@@ -1285,6 +1420,21 @@ class ApiHandler(BaseHTTPRequestHandler):
                     "role": user["role"],
                 })
 
+            if path == "/api/password":
+                # 自助改密：登录态 + 旧密码校验（token 只证明登录，不证明本人）
+                user = self._auth()
+                if not user:
+                    return self._send_json(
+                        {"ok": False, "error": "请先登录后再修改密码"}, 401)
+                ok, msg = accounts.change_password(
+                    user["username"],
+                    body.get("old_password") or "",
+                    body.get("new_password") or "",
+                )
+                if not ok:
+                    return self._send_json({"ok": False, "error": msg}, 400)
+                return self._send_json({"ok": True, "message": msg})
+
             if path == "/api/accounts":
                 guard = self._require_admin()
                 if guard:
@@ -1372,14 +1522,17 @@ class ApiHandler(BaseHTTPRequestHandler):
                 return self._send_json(r, 200 if r.get("ok") else 400)
 
             if path == "/api/profile":
+                # 画像按用户隔离：登录写 profiles/<用户名>.json，未登录走全局
+                # profile.json（旧行为）。
+                pf = self._profile_file()
                 profile = {
                     "level": body.get("level", DEFAULT_PROFILE["level"]),
                     "daily_hours": body.get("daily_hours", DEFAULT_PROFILE["daily_hours"]),
                     "goal": body.get("goal", DEFAULT_PROFILE["goal"]),
                     "deadline": body.get("deadline", ""),
                 }
-                save_profile(profile)
-                saved = load_profile()
+                save_profile(profile, filepath=pf)
+                saved = load_profile(filepath=pf)
                 return self._send_json({
                     "ok": True,
                     "profile": saved,
@@ -1400,13 +1553,14 @@ class ApiHandler(BaseHTTPRequestHandler):
                     log_safety_hit("plan", course, detail, self._client_id())
                     return self._send_json(
                         {"ok": False, "error": SAFETY_ERROR_MESSAGE}, 400)
-                profile = body.get("profile") or load_profile()
+                profile = body.get("profile") or load_profile(
+                    filepath=self._profile_file())
                 use_cache = bool(body.get("use_cache", True))
                 t0 = time.time()
                 result = run_plan_pipeline(course, profile=profile, use_cache=use_cache)
                 try:
                     progress_store.save_result(course, result)
-                    record_client_course(self._client_id(), course)
+                    record_client_course(self._owner_id(), course)
                 except Exception:
                     pass
                 payload = build_payload(course, result, int((time.time() - t0) * 1000))
@@ -1620,7 +1774,7 @@ class ApiHandler(BaseHTTPRequestHandler):
                 # 整张图覆盖保存。前端负责布局与增删，后端只做结构校验：
                 # id 合法唯一、parent 存在、恰好一个根、无环（见 mindmap_store._clean_nodes）
                 entry, err = mindmap_store.save_map(
-                    self._client_id(),
+                    self._owner_id(),
                     (body.get("course") or "").strip(),
                     body.get("nodes"),
                 )
@@ -1629,7 +1783,7 @@ class ApiHandler(BaseHTTPRequestHandler):
                 return self._send_json({"ok": True, "map": entry})
 
             if path == "/api/wrongbook":
-                cid = self._client_id()
+                cid = self._owner_id()
                 try:
                     item = wrong_book_store.add_item(
                         cid,
@@ -1647,12 +1801,12 @@ class ApiHandler(BaseHTTPRequestHandler):
                     return self._send_json({"ok": False, "error": "题干不能为空"}, 400)
                 return self._send_json({
                     "ok": True, "item": item,
-                    "stats": wrong_book_store.stats(cid),
-                    "courses": wrong_book_store.courses(cid),
+                    "stats": _wrongbook_stats(_wrongbook_items(self._owner_keys())),
+                    "courses": _wrongbook_courses(_wrongbook_items(self._owner_keys())),
                 })
 
             if path.startswith("/api/wrongbook/"):
-                cid = self._client_id()
+                cid = self._owner_id()
                 raw_id = urllib.parse.unquote(path[len("/api/wrongbook/"):])
                 try:
                     item_id = int(raw_id)
@@ -1677,7 +1831,7 @@ class ApiHandler(BaseHTTPRequestHandler):
                         {"ok": False, "error": "未找到该错题（或题干被清空）"}, 404)
                 return self._send_json({
                     "ok": True, "item": item,
-                    "stats": wrong_book_store.stats(cid),
+                    "stats": _wrongbook_stats(_wrongbook_items(self._owner_keys())),
                 })
 
             if path == "/api/cache/clear":
@@ -1696,12 +1850,12 @@ class ApiHandler(BaseHTTPRequestHandler):
         try:
             if path.startswith("/api/mindmap/"):
                 course = urllib.parse.unquote(path[len("/api/mindmap/"):])
-                if not mindmap_store.delete_map(self._client_id(), course):
+                if not mindmap_store.delete_map(self._owner_id(), course):
                     return self._send_json({"ok": False, "error": "未找到该思维导图"}, 404)
                 return self._send_json({"ok": True, "course": course})
 
             if path.startswith("/api/wrongbook/"):
-                cid = self._client_id()
+                cid = self._owner_id()
                 raw_id = urllib.parse.unquote(path[len("/api/wrongbook/"):])
                 try:
                     item_id = int(raw_id)
@@ -1783,7 +1937,7 @@ class ApiHandler(BaseHTTPRequestHandler):
             return self._send_json(
                 {"ok": False, "error": SAFETY_ERROR_MESSAGE}, 400)
 
-        profile = load_profile()
+        profile = load_profile(filepath=self._profile_file(query))
         if query.get("level"):
             profile["level"] = query["level"][0]
         if query.get("daily_hours"):
@@ -1793,7 +1947,7 @@ class ApiHandler(BaseHTTPRequestHandler):
         if "deadline" in query:
             profile["deadline"] = query["deadline"][0]
         try:
-            save_profile(profile)
+            save_profile(profile, filepath=self._profile_file(query))
         except Exception:
             pass
 
@@ -1821,7 +1975,7 @@ class ApiHandler(BaseHTTPRequestHandler):
             })
             stream_pipeline(course, profile, use_cache, emit)
             try:
-                record_client_course(client_id, course)
+                record_client_course(self._owner_id(query), course)
             except Exception:
                 pass
             emit("done", {"ok": True, "duration_ms": int((time.time() - started) * 1000)})
