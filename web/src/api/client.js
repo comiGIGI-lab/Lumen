@@ -54,13 +54,28 @@ async function request(path, options = {}) {
   })
   if (!res.ok) {
     let msg = `请求失败（${res.status}）`
+    let code = ''
     try {
       const data = await res.json()
       if (data && data.error) msg = data.error
+      if (data && data.code) code = data.code
     } catch (_) {
       /* 忽略解析失败 */
     }
-    throw new Error(msg)
+    const err = new Error(msg)
+    err.code = code
+    // 匿名 LLM 限速命中（code: ANON_LIMIT_*）：通知全局弹「登录后不限次」引导（见 App.vue）。
+    // 后端限速是双闸（每浏览器 + 全局池），信息已在 msg 里说明，这里只负责把用户引到登录。
+    if (code === 'ANON_LIMIT_CLIENT' || code === 'ANON_LIMIT_GLOBAL') {
+      try {
+        window.dispatchEvent(
+          new CustomEvent('zjxt:anon-limit', { detail: { code, message: msg } })
+        )
+      } catch (_) {
+        /* 极端环境下 window 不可用也不影响主流程 */
+      }
+    }
+    throw err
   }
   return res.json()
 }

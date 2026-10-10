@@ -1,112 +1,43 @@
 # -*- coding: utf-8 -*-
-"""数据归属 —— 把「浏览器」与「账号」绑起来（零依赖，只用标准库）。
-
-## 为什么需要
-
-之前学习历史 / 进度 / 错题本 / 导图全部按 `X-Client-Id`（随机浏览器 ID）存取，
-和登录账号完全无关：换浏览器数据就"丢"了，同一浏览器换账号数据混在一起。
-
-本模块提供一张极小的绑定表：
-
-    client_id  →  username（一个浏览器同一时刻只归一个账号）
+"""数据归属 —— 把「浏览器」与「账号」绑起来（委托 storage_bindings）。
 
 读数据时（GET），登录用户看「自己名下历史桶」+「绑定过的浏览器桶」的并集；
-写数据时（POST），登录用户写 `u:<username>` 桶，匿名用户仍写 client_id 桶
-（旧行为完全不变）。
+写数据时（POST），登录用户写 `u:<username>` 桶，匿名用户仍写 client_id 桶。
 
-## 存储
-
-`<DATA_DIR>/client_bindings.json`：
-
-    {"bindings": {"c-1a2b3c": "alice", ...}}
-
-## 按用户画像
-
-`profile_path(data_dir, username)` 返回按用户隔离的画像文件路径
-（`<data_dir>/profiles/<username>.json`）。vendor 的
-`load_profile/save_profile` 本来就支持 `filepath` 参数，这里只负责给出
-**安全**的路径：用户名里出现路径分隔符等危险字符时改用哈希文件名，
-杜绝目录穿越。
+存储层已迁移到 MySQL（NFR-01 于 2026-10-11 经用户正式解除，仅限新存储模块）。
+绑定表读写委托 server/storage_bindings.py；owner_key / owner_keys_for / profile_path
+是本模块的纯逻辑 / 纯文件系统辅助，不触数据库。
 """
 
 import hashlib
-import json
 import os
 import re
 
-_BINDINGS_FILE = None
+import storage_bindings
 
 # 用户名允许直接当文件名的白名单（含 CJK）；不满足就走哈希，不报错
 _SAFE_NAME = re.compile(r"^[^\\/:*?\"<>|\x00-\x1f]{1,64}$")
 
 
 def configure(data_dir):
-    """绑定数据目录。api_server 启动时调一次。"""
-    global _BINDINGS_FILE
-    _BINDINGS_FILE = os.path.join(data_dir, "client_bindings.json")
-    os.makedirs(data_dir, exist_ok=True)
+    """绑定兜底数据目录（仅 MySQL 不可用时使用）。api_server 启动时调一次。"""
+    storage_bindings.configure(data_dir)
 
 
 # ------------------------------------------------------------
-# 文件读写
-# ------------------------------------------------------------
-
-def _read():
-    try:
-        with open(_BINDINGS_FILE, encoding="utf-8") as f:
-            data = json.load(f)
-    except (OSError, ValueError, TypeError):
-        data = {}
-    if not isinstance(data, dict):
-        data = {}
-    b = data.get("bindings")
-    return b if isinstance(b, dict) else {}
-
-
-def _write(bindings):
-    tmp = _BINDINGS_FILE + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump({"bindings": bindings}, f, ensure_ascii=False, indent=2)
-    os.replace(tmp, _BINDINGS_FILE)
-
-
-# ------------------------------------------------------------
-# 绑定
+# 绑定（委托 storage_bindings）
 # ------------------------------------------------------------
 
 def bind_client(client_id, username):
-    """把浏览器绑到账号名下（幂等；重复绑定 = 改绑）。
-
-    空参数直接忽略。登录态的每个请求都会调它（惰性绑定），
-    所以文件写入要足够便宜：只在映射真的变化时落盘。
-    """
-    if not _BINDINGS_FILE:
-        return
-    cid = (client_id or "").strip()[:64]
-    name = (username or "").strip()
-    if not cid or not name:
-        return
-    bindings = _read()
-    if bindings.get(cid) == name:
-        return
-    bindings[cid] = name
-    _write(bindings)
+    storage_bindings.bind_client(client_id, username)
 
 
 def client_ids_of(username):
-    """某账号名下绑定过的所有浏览器（按绑定先后）。"""
-    name = (username or "").strip()
-    if not name:
-        return []
-    return [cid for cid, u in _read().items() if u == name]
+    return storage_bindings.client_ids_of(username)
 
 
 def username_of(client_id):
-    """浏览器当前绑定的账号（没绑过返回空串）。"""
-    cid = (client_id or "").strip()[:64]
-    if not cid:
-        return ""
-    return _read().get(cid, "")
+    return storage_bindings.username_of(client_id)
 
 
 # ------------------------------------------------------------
@@ -133,7 +64,7 @@ def owner_keys_for(username, current_cid):
 
 
 # ------------------------------------------------------------
-# 按用户画像路径
+# 按用户画像路径（纯文件系统，保持目录穿越防护；供应商 profile 走 MySQL）
 # ------------------------------------------------------------
 
 def profile_path(data_dir, username):

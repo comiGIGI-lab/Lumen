@@ -219,9 +219,14 @@ from tools.user_profile import (                                    # noqa: E402
 )
 from tools.markdown_export import render_plan_markdown, suggest_filename   # noqa: E402
 from tools.docx_export import render_plan_docx, suggest_docx_filename      # noqa: E402
-from tools import progress_store                                    # noqa: E402
-from tools import wrong_book_store                                  # noqa: E402
-from tools import mindmap_store                                     # noqa: E402
+# 用户系统存储层（MySQL 主，JSON 兜底）：用同名别名替换 vendor store，
+# 使下方 _wrongbook_items / mindmap_store_list_many / 进度路由无需改动。
+import storage_progress as progress_store                           # noqa: E402
+import storage_wrongbook as wrong_book_store                        # noqa: E402
+import storage_mindmap as mindmap_store                             # noqa: E402
+import storage_profiles                                              # noqa: E402
+import storage_ratelimit                                              # noqa: E402
+import db                                                            # noqa: E402
 import error_text                                                    # noqa: E402
 import accounts                                                      # noqa: E402
 import data_scope                                                    # noqa: E402
@@ -247,6 +252,14 @@ DATA_DIR = _data_dir()
 
 # 账号体系：账号文件放 data/ 下（与其它运行数据一起，备份即整体搬走）。
 # 首次启动若一个管理员都没有，自动建 admin/admin123 —— 上线后请立刻改密。
+# 用户系统存储层：MySQL 初始化（连接参数来自 .env 的 STUDY_LIU_MYSQL_*，
+# 由 _load_dotenv_stdlib 在 import 前注入 os.environ）。MySQL 不可用时静默降级，
+# accounts / data_scope 会自动退回 JSON 兜底，服务仍可启动。
+db.configure()
+try:
+    db.ensure_schema()
+except Exception as _schema_err:  # 数据库不可用时不影响启动，仅记录
+    sys.stderr.write("[api] MySQL schema 初始化失败（将退回 JSON 兜底）：%s\n" % _schema_err)
 accounts.configure(DATA_DIR)
 _created_admin, _admin_msg = accounts.ensure_default_admin()
 # 内容安全命中明细的落盘位置（JSONL），与 client_history.json 同目录；
@@ -284,22 +297,20 @@ def save_client_history(d: dict) -> None:
 
 
 def record_client_course(client_id: str, course: str) -> None:
-    """生成方案成功后，把课程记到该客户端名下（置顶 + 去重 + 截断）。"""
-    if not client_id or not course:
-        return
-    d = load_client_history()
-    lst = d.get(client_id, [])
-    if course in lst:
-        lst.remove(course)
-    lst.insert(0, course)
-    d[client_id] = lst[:_MAX_CLIENT_COURSES]
-    save_client_history(d)
+    """生成方案成功后，把课程记到该归属桶名下（MySQL course_access）。"""
+    try:
+        progress_store.record_course(client_id, course)
+    except Exception:
+        pass
 
 
 def client_courses(client_id: str) -> set:
     if not client_id:
         return set()
-    return set(load_client_history().get(client_id, []))
+    try:
+        return progress_store.courses_of(client_id)
+    except Exception:
+        return set()
 
 
 def client_courses_many(keys) -> set:
@@ -1140,6 +1151,38 @@ class ApiHandler(BaseHTTPRequestHandler):
         except Exception:
             return None
 
+    # ---------- 匿名 LLM 调用限速（防团队 token 被刷完）----------
+    #
+    # 双闸：每浏览器每日上限 (anon:<client_id>) + 全局匿名每日池 (anon:global)。
+    # 仅对消耗 LLM token 的端点生效：/api/chat、/api/plan、/api/plan/stream、
+    # /api/quiz/generate。登录用户视为可信队友，直接放行。MySQL 异常时 fail-open。
+    def _enforce_anon_llm_quota(self, query=None):
+        """返回 True 表示已拦截（已发出 429），调用方应 return。"""
+        user = self._auth_any(query)
+        if user:
+            return False
+        cid = self._client_id(query)
+        day = storage_ratelimit._today()
+        # 1) 全局匿名池：最防「刷完」——所有匿名用户共享一个每日总上限
+        if not storage_ratelimit.check_and_incr(
+                "anon:global", day, storage_ratelimit.anon_global_limit()):
+            self._send_json({
+                "ok": False,
+                "error": "今日匿名体验额度已用完，登录后即可不限次使用全部 AI 功能。",
+                "code": "ANON_LIMIT_GLOBAL",
+            }, 429)
+            return True
+        # 2) 每浏览器每日：防单个匿名访客猛刷
+        if not storage_ratelimit.check_and_incr(
+                "anon:" + cid, day, storage_ratelimit.anon_per_browser_limit()):
+            self._send_json({
+                "ok": False,
+                "error": "今日该浏览器的匿名体验额度已用完，登录后即可不限次使用全部 AI 功能。",
+                "code": "ANON_LIMIT_CLIENT",
+            }, 429)
+            return True
+        return False
+
     # ---------- SSE ----------
     def _sse_open(self):
         self.send_response(200)
@@ -1522,17 +1565,28 @@ class ApiHandler(BaseHTTPRequestHandler):
                 return self._send_json(r, 200 if r.get("ok") else 400)
 
             if path == "/api/profile":
-                # 画像按用户隔离：登录写 profiles/<用户名>.json，未登录走全局
-                # profile.json（旧行为）。
-                pf = self._profile_file()
+                # 画像按用户隔离：登录用户走 MySQL（storage_profiles），未登录退回
+                # 全局 profile.json 旧行为（vendor user_profile）。
                 profile = {
                     "level": body.get("level", DEFAULT_PROFILE["level"]),
                     "daily_hours": body.get("daily_hours", DEFAULT_PROFILE["daily_hours"]),
                     "goal": body.get("goal", DEFAULT_PROFILE["goal"]),
                     "deadline": body.get("deadline", ""),
                 }
-                save_profile(profile, filepath=pf)
-                saved = load_profile(filepath=pf)
+                user = self._auth_any()
+                if user:
+                    try:
+                        storage_profiles.save(user["username"], profile)
+                        saved = storage_profiles.load(user["username"]) or profile
+                    except Exception:
+                        # MySQL 不可用时退回文件兜底
+                        pf = self._profile_file()
+                        save_profile(profile, filepath=pf)
+                        saved = load_profile(filepath=pf)
+                else:
+                    pf = self._profile_file()
+                    save_profile(profile, filepath=pf)
+                    saved = load_profile(filepath=pf)
                 return self._send_json({
                     "ok": True,
                     "profile": saved,
@@ -1557,6 +1611,9 @@ class ApiHandler(BaseHTTPRequestHandler):
                     filepath=self._profile_file())
                 use_cache = bool(body.get("use_cache", True))
                 t0 = time.time()
+                # 匿名 LLM 限速双闸
+                if self._enforce_anon_llm_quota():
+                    return
                 result = run_plan_pipeline(course, profile=profile, use_cache=use_cache)
                 try:
                     progress_store.save_result(course, result)
@@ -1588,6 +1645,9 @@ class ApiHandler(BaseHTTPRequestHandler):
                         "answer": "该输入看起来是「生成方案」请求，请点击「生成方案」。",
                         "source": "intent",
                     })
+                # 匿名 LLM 限速双闸（登录用户已在方法内直接放行）
+                if self._enforce_anon_llm_quota():
+                    return
                 res = run_chat_pipeline(
                     question,
                     history=body.get("history") or [],
@@ -1641,6 +1701,9 @@ class ApiHandler(BaseHTTPRequestHandler):
                     log_safety_hit("quiz", course, detail, self._client_id())
                     return self._send_json(
                         {"ok": False, "error": SAFETY_ERROR_MESSAGE}, 400)
+                # 匿名 LLM 限速双闸
+                if self._enforce_anon_llm_quota():
+                    return
                 res = quiz_mod.generate_quiz(
                     course,
                     difficulty=body.get("difficulty") or "medium",
@@ -1937,6 +2000,9 @@ class ApiHandler(BaseHTTPRequestHandler):
             return self._send_json(
                 {"ok": False, "error": SAFETY_ERROR_MESSAGE}, 400)
 
+        # 匿名 LLM 限速双闸（必须在 _sse_open 之前判定，否则已发流无法回 429）
+        if self._enforce_anon_llm_quota(query):
+            return
         profile = load_profile(filepath=self._profile_file(query))
         if query.get("level"):
             profile["level"] = query["level"][0]

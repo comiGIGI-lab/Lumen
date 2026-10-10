@@ -1,6 +1,6 @@
 # 变更提案：用户系统扩展（账号-数据打通 / 管理页 / 按用户画像与个性化）
 
-日期：2026-10-10 · 状态：已落地
+日期：2026-10-10 · 状态：功能已落地（文件存储）；存储层将迁移至 MySQL（NFR-01 零依赖约束已于 2026-10-11 经用户正式解除，待开工）
 
 ## 背景
 
@@ -19,19 +19,28 @@
 
 ## 决策
 
-- **学习数据上服务端、个性化小状态留浏览器**（用户确认的混合方案）：
-  历史/进度/错题本/导图/画像按账号隔离（纯文本 JSON，KB 级/用户，2G 服务器无压力）；
-  宠物、自习设置（音乐/音量/场景）按账号分档存 localStorage（零服务器成本）。
-- **vendor 不动**：按用户画像走 `load_profile/save_profile` 已有的 `filepath` 参数；
-  错题本/导图的多桶聚合读在 `api_server.py` 侧完成。
-- **未登录行为完全不变**：匿名仍走 client_id 桶（`anonymous` 兜底不变）。
-- **登录后浏览器自动绑定账号**（`data_scope.bind_client`，惰性）：
-  登录用户读「用户名桶 + 绑定过的浏览器桶」并集，原匿名历史归入账号；
+- **学习数据上服务端、个性化小状态留浏览器**（混合方案不变）：
+  账号、画像、历史、进度、错题本、导图等**关系型数据统一迁入 MySQL**（不再用纯文本 JSON 文件）；
+  宠物、自习设置（音乐/音量/场景）仍按账号分档存 localStorage（零服务器成本）。
+- **不用 SQLite，用 MySQL**：项目要长期保存大量关系型数据（错题、进度、导图、跨账号聚合查询），
+  服务端是多线程 `ThreadingHTTPServer`，并发读写频繁；MySQL 在并发写入、关系查询
+  （按课程/标签/掌握状态过滤、聚合统计）、横向扩展上明显优于 SQLite 的单写者锁模型。选用 **MySQL 8.x（utf8mb4）**。
+- **存储层抽离到 `server/` 新模块**：MySQL 访问集中在一个新建的 `server/db.py`（连接池 + 纯 Python 驱动）。
+  vendor 的 `tools/*.py` 文件存储**不再作为主存储**（保留为可选离线兜底，**不**再承载线上数据）；
+  按用户画像改为直接写 MySQL `profiles` 表（JSON 列），不再依赖 `load_profile/save_profile` 的 filepath 参数。
+  （注：此条推翻了初版"vendor 不动"的约定——那是纯文件存储前提下的取舍，MySQL 化必须改存储层。）
+- **未登录行为完全不变**：匿名仍按 `client_id` 存取（`anonymous` 兜底不变）。
+- **登录后浏览器自动绑定账号**（`client_bindings` 表，惰性）：
+  登录用户直接按 `用户名` 查询；原匿名历史在首次绑定时并入账号（一次性 `UPDATE ... SET owner_username`）；
   一个浏览器同一时刻只归一个账号（重复绑定 = 改绑）。
 
 ## 硬约束
 
-- server 保持纯标准库（`data_scope.py` 只用 stdlib）。
+- **DB 驱动例外（已确认解除 NFR-01「后端零第三方依赖」约束，2026-10-11）**：MySQL 不在标准库内，
+  允许引入纯 Python 的 `PyMySQL` 驱动（无编译依赖，用户指定）。除连接驱动外，业务代码仍尽量零重框架依赖。
+- **MySQL 访问隔离**：只允许在 `server/db.py` 与新建的存储模块中 import 数据库驱动；
+  `quiz.py`、向量 RAG 相关模块等既有范围闸保护的文件**不得** import `mysql`，
+  否则 `tests/run_quiz_regression.py` 的 `quiz_stdlib_only` 闸会失败（见风险项）。
 - 前端 auth 类接口软失败（返回 `{ok:false,error}`，不抛异常）。
 - 写路径权限校验全在服务端；前端只管显示。
 
@@ -40,3 +49,6 @@
 - `tests/run_user_system_regression.py`（新增，43 检查）：data_scope 绑定语义 /
   画像路径穿越安全 / change_password 旧密码校验 / 路由与前端源检查，全绿。
 - 全量回归（quiz/sidecar/safety/chat/plan + 用户系统）全绿；前端 vite build 通过。
+- **MySQL 迁移验收（方案设计确认后实施，暂未落地）**：表结构迁移脚本可重放；
+  JSON→MySQL 一次性迁移脚本可跑通且数据条数与文件一致；MySQL 后端下 6 套回归 + 用户系统回归全绿；
+  并发写压测无锁等待/连接泄漏；`quiz_stdlib_only` 闸不因 MySQL 引入而变红。
