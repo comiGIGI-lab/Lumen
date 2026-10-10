@@ -46,6 +46,12 @@ _KEY_OVERRIDE = ""
 def _api_key():
     if _KEY_OVERRIDE:
         return _KEY_OVERRIDE
+    # 独立 embedding key 优先（与对话 provider 解耦）：
+    # embedding 端点固定在 dashscope 兼容接口，若对话配 DeepSeek，
+    # 复用其 key 打 dashscope 会 401 → 静默回退词法。独立 key 可避免该耦合。
+    env_key = os.environ.get("STUDY_LIU_EMBED_KEY") or os.environ.get("DASHSCOPE_API_KEY")
+    if env_key:
+        return env_key
     try:
         from core.config import get_api_key
         return get_api_key() or ""

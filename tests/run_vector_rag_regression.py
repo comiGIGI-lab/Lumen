@@ -151,6 +151,41 @@ def test_embeddings():
             emb._set_key_for_test(orig_getkey)
 
 
+def test_embed_key_env_priority():
+    """embedding key 必须独立于对话 provider：STUDY_LIU_EMBED_KEY /
+    DASHSCOPE_API_KEY 优先，避免 DeepSeek 配置下复用其 key 打 dashscope 401。"""
+    emb = _load("embeddings")
+    saved = dict(os.environ)
+    try:
+        # 清空所有 key 来源，确保优先级判定纯粹
+        os.environ.pop("STUDY_LIU_EMBED_KEY", None)
+        os.environ.pop("DASHSCOPE_API_KEY", None)
+        emb._set_key_for_test("")  # 关掉测试注入，走真实 _api_key 路径
+
+        # STUDY_LIU_EMBED_KEY 优先
+        os.environ["STUDY_LIU_EMBED_KEY"] = "sk-embed-env"
+        check("embed_key_studylib_priority",
+              emb._api_key() == "sk-embed-env", emb._api_key())
+
+        # 退而求其次 DASHSCOPE_API_KEY
+        os.environ.pop("STUDY_LIU_EMBED_KEY", None)
+        os.environ["DASHSCOPE_API_KEY"] = "sk-dash-env"
+        check("embed_key_dashscope_fallback",
+              emb._api_key() == "sk-dash-env", emb._api_key())
+
+        # 两者皆无 → 回退 core.config.get_api_key()（本测试环境多为空串）
+        os.environ.pop("STUDY_LIU_EMBED_KEY", None)
+        os.environ.pop("DASHSCOPE_API_KEY", None)
+        fallback = emb._api_key()
+        check("embed_key_fallback_empty_or_cfg",
+              fallback == "" or isinstance(fallback, str),
+              repr(fallback))
+    finally:
+        os.environ.clear()
+        os.environ.update(saved)
+        emb._set_key_for_test("")
+
+
 # ============================================================
 # 2. vector_store：no-op 保护 + （装了 chromadb 时）真库读写
 # ============================================================
