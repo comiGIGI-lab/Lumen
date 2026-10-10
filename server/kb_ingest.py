@@ -75,6 +75,14 @@ def capabilities():
     except Exception:
         office = {"available": False, "engine": "", "fallback": "ooxml", "extensions": [".docx", ".pptx"], "note": "office_parse 模块不可用"}
 
+    # 兜底层：xlsx / xls / html / epub / zip / 音频 / 视频字幕——doc_parse+office_parse 不覆盖的格式。
+    # 进程级惰性 import（markitdown 缺包时静默 available=False，不让 api_server 起不来）。
+    try:
+        import markitdown_fallback
+        markitdown = markitdown_fallback.status()
+    except Exception:
+        markitdown = {"available": False, "forced_disabled": False, "error": "markitdown_fallback 模块不可用", "extras": {}}
+
     pdf_note = ""
     if not pdf_mod and not mineru.get("available"):
         pdf_note = "未安装 pypdf，PDF 暂不可解析（Markdown / txt 正常）"
@@ -87,13 +95,25 @@ def capabilities():
     else:
         pdf_note = (pdf_note + " Word / PPT 走 OOXML 标准库抽字。" if pdf_note else "Word / PPT 走 OOXML 标准库抽字。")
 
+    # markitdown 接管扩展名：当 markitdown 可用时，把它们并入 document.extensions 列表，
+    # 前端文件对话框即可放行这些格式（不动前端代码）。markitdown 不可用时只列 DOC_EXTS。
+    md_exts = []
+    if markitdown.get("available"):
+        try:
+            import markitdown_fallback as _mdf
+            md_exts = list(_mdf.SUPPORTED_EXTS)
+        except Exception:
+            md_exts = []
+    all_doc_exts = list(DOC_EXTS) + md_exts
+
     return {
         "document": {
-            "extensions": list(DOC_EXTS),
+            "extensions": all_doc_exts,
             "pdf": bool(pdf_mod) or bool(mineru.get("available")),
             "pdf_backend": ("mineru+" + (pdf_mod or "none")) if mineru.get("available") else (pdf_mod or ""),
             "mineru": mineru,
             "office": office,
+            "markitdown": markitdown,
             # 没有 pypdf 时 PDF 仍会尝试导入，但会明确报错，这里给出提示
             "note": pdf_note,
         },
@@ -172,6 +192,29 @@ def chunk_text(text, size=CHUNK_SIZE, overlap=CHUNK_OVERLAP, max_chunks=MAX_CHUN
         if tail_text:
             chunks.append(tail_text)
     return [c for c in chunks if c]
+
+
+def chunk_prefer_blocks(text, blocks, size=CHUNK_SIZE, overlap=CHUNK_OVERLAP, max_chunks=MAX_CHUNKS):
+    """有 heading 时按块边界切；无 heading 或切不出多段则回退 chunk_text。
+
+    blocks 不落库，只影响切分边界。
+    """
+    if not (text or "").strip():
+        return []
+    try:
+        import parse_blocks
+        secs = parse_blocks.section_texts(blocks or [])
+    except Exception:
+        secs = []
+    if len(secs) >= 2:
+        out = []
+        for sec in secs:
+            if len(out) >= max_chunks:
+                break
+            pieces = chunk_text(sec, size=size, overlap=overlap, max_chunks=max_chunks - len(out))
+            out.extend(pieces)
+        return out[:max_chunks] if out else chunk_text(text, size=size, overlap=overlap, max_chunks=max_chunks)
+    return chunk_text(text, size=size, overlap=overlap, max_chunks=max_chunks)
 
 
 # ============================================================
@@ -303,6 +346,7 @@ def ingest(path, filename, tags=None, store=None, data_dir=None, title=None,
 
     ext = os.path.splitext(filename)[1].lower()
     out = {"ok": False, "kind": "", "notes": [], "chunks": 0, "chars": 0, "error": None}
+    parse_blocks_list = []
 
     # ---- 1. 取出正文（文档直接读，图片先识图）----
     if ext in IMAGE_EXTS:
@@ -322,6 +366,7 @@ def ingest(path, filename, tags=None, store=None, data_dir=None, title=None,
     elif ext in DOC_EXTS:
         out["kind"] = "document"
         parse_engine = ""
+        parse_blocks_list = []
         if ext == ".pdf":
             # PDF 走 doc_parse：数字文本 pypdf，扫描件 / 复杂版式尝试 MinerU 侧车
             try:
@@ -333,6 +378,7 @@ def ingest(path, filename, tags=None, store=None, data_dir=None, title=None,
                 parsed = {"text": "", "engine": "", "error": "解析失败：%s" % e}
             text = (parsed.get("text") or "").strip()
             parse_engine = parsed.get("engine") or ""
+            parse_blocks_list = list(parsed.get("blocks") or [])
             if not text:
                 err = (parsed.get("error") or "").strip() or "文件里没有解析到任何文字"
                 low = err.lower()
@@ -358,6 +404,7 @@ def ingest(path, filename, tags=None, store=None, data_dir=None, title=None,
                 parsed = {"text": "", "engine": "", "error": "解析失败：%s" % e}
             text = (parsed.get("text") or "").strip()
             parse_engine = parsed.get("engine") or ""
+            parse_blocks_list = list(parsed.get("blocks") or [])
             if not text:
                 err = (parsed.get("error") or "").strip() or "文件里没有解析到任何文字"
                 out["error"] = err if ("失败" in err or "没有解析" in err or "不支持" in err) else ("解析失败：%s" % err)
@@ -370,6 +417,14 @@ def ingest(path, filename, tags=None, store=None, data_dir=None, title=None,
                 return out
             try:
                 text = (read_text(path) or "").strip()
+                try:
+                    import parse_blocks as _pb
+                    if ext in (".md", ".markdown"):
+                        parse_blocks_list = _pb.markdown_to_blocks(text)
+                    else:
+                        parse_blocks_list = _pb.plaintext_to_blocks(text)
+                except Exception:
+                    parse_blocks_list = []
             except ImportError as e:
                 out["error"] = "解析失败：%s" % e
                 return out
@@ -382,9 +437,31 @@ def ingest(path, filename, tags=None, store=None, data_dir=None, title=None,
             default_tags.append("#%s" % parse_engine)
         out["engine"] = parse_engine
     else:
-        out["error"] = "不支持的文件类型：%s（支持 %s）" % (
-            ext or "无扩展名", " / ".join(supported_extensions()))
-        return out
+        # 兜底层：xlsx / xls / html / epub / zip / 音频 等 doc_parse+office_parse 不覆盖的格式走 markitdown。
+        # 它是补盲，不替换任何现网解析器；缺包时静默回落到 unsupported 提示。
+        out["kind"] = "document"
+        parse_engine = ""
+        parse_blocks_list = []
+        try:
+            import markitdown_fallback
+            if markitdown_fallback.supports(ext):
+                parsed = markitdown_fallback.convert(path)
+                if parsed.get("text"):
+                    text = parsed["text"]
+                    parse_engine = parsed.get("engine") or "markitdown"
+                elif parsed.get("error"):
+                    out["error"] = parsed["error"]
+                    return out
+            else:
+                out["error"] = "不支持的文件类型：%s（支持 %s）" % (
+                    ext or "无扩展名", " / ".join(supported_extensions()))
+                return out
+        except Exception as e:
+            out["error"] = "markitdown 兜底层不可用：%s" % e
+            return out
+        base_title = os.path.splitext(os.path.basename(filename))[0] or "导入的笔记"
+        default_tags = ["#import", "#%s" % (ext.lstrip(".") or "file"), "#markitdown"]
+        out["engine"] = parse_engine
 
     if not text:
         out["error"] = "文件里没有解析到任何文字"
@@ -404,8 +481,10 @@ def ingest(path, filename, tags=None, store=None, data_dir=None, title=None,
     if len(text) > MAX_TEXT_CHARS:
         text = text[:MAX_TEXT_CHARS]
 
-    # ---- 3. 分块 ----
-    chunks = chunk_text(text)
+    # ---- 3. 分块（有 heading 时按 Block 边界切，不落库）----
+    if ext in IMAGE_EXTS:
+        parse_blocks_list = []
+    chunks = chunk_prefer_blocks(text, parse_blocks_list if ext in DOC_EXTS else [])
     if not chunks:
         out["error"] = "分块后没有内容"
         return out
@@ -454,7 +533,12 @@ def ingest_text(text, title=None, tags=None, store=None,
                 "chars": 0, "error": reject}
 
     title = (title or "").strip() or ("粘贴笔记 %s" % time.strftime("%m-%d %H:%M"))
-    chunks = chunk_text(text)
+    try:
+        import parse_blocks as _pb
+        paste_blocks = _pb.plaintext_to_blocks(text)
+    except Exception:
+        paste_blocks = []
+    chunks = chunk_prefer_blocks(text, paste_blocks)
     total = len(chunks)
     notes = []
     chunks_kept = []

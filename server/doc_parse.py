@@ -226,10 +226,25 @@ def parse_with_mineru(path, timeout=None):
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def _pdf_blocks(text, engine):
+    """给 PDF 正文补 blocks。失败返回 []，不抛。"""
+    text = (text or "").strip()
+    if not text:
+        return []
+    try:
+        import parse_blocks
+        if engine == "mineru":
+            return parse_blocks.markdown_to_blocks(text)
+        return parse_blocks.plaintext_to_blocks(text)
+    except Exception:
+        return []
+
+
 def extract_pdf_text(path):
     """PDF → 正文。自动在 MinerU 侧车与 pypdf 之间选择。
 
-    返回：{text, engine, error}。engine 为 mineru / pypdf / 空串。
+    返回：{text, engine, error, blocks}。engine 为 mineru / pypdf / 空串。
+    blocks 为 additive，失败路径也给 []。
     """
     native = ""
     native_err = ""
@@ -242,21 +257,24 @@ def extract_pdf_text(path):
     if _should_use_mineru(native, path, mineru_ok):
         r = parse_with_mineru(path)
         if (r.get("text") or "").strip():
-            return {"text": r["text"].strip(), "engine": "mineru", "error": ""}
+            t = r["text"].strip()
+            return {"text": t, "engine": "mineru", "error": "", "blocks": _pdf_blocks(t, "mineru")}
         if native:
-            return {"text": native, "engine": "pypdf", "error": ""}
+            return {"text": native, "engine": "pypdf", "error": "", "blocks": _pdf_blocks(native, "pypdf")}
         return {
             "text": "",
             "engine": "",
             "error": r.get("error") or native_err or mineru_reason or "PDF 解析失败",
+            "blocks": [],
         }
 
     if native:
-        return {"text": native, "engine": "pypdf", "error": ""}
+        return {"text": native, "engine": "pypdf", "error": "", "blocks": _pdf_blocks(native, "pypdf")}
     return {
         "text": "",
         "engine": "",
         "error": native_err or (mineru_reason if not mineru_ok else "") or "文件里没有解析到任何文字",
+        "blocks": [],
     }
 
 

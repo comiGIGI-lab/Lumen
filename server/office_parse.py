@@ -214,14 +214,53 @@ def parse_with_docling(path, timeout=None):
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def _office_blocks(text, engine, path=""):
+    """给 Office 正文补 blocks。OOXML 优先用段落/幻灯单元，失败回退 plaintext。"""
+    try:
+        import parse_blocks
+        if engine == "docling":
+            return parse_blocks.markdown_to_blocks(text or "")
+        if engine == "ooxml" and path:
+            units = _ooxml_units(path)
+            if units:
+                return parse_blocks.ooxml_to_blocks(units)
+        return parse_blocks.plaintext_to_blocks(text or "")
+    except Exception:
+        return []
+
+
+def _ooxml_units(path):
+    """抽出 OOXML 段落/幻灯文本单元，供 ooxml_to_blocks。失败返回 []。"""
+    ext = os.path.splitext(path)[1].lower()
+    try:
+        with zipfile.ZipFile(path, "r") as z:
+            names = z.namelist()
+            if ext == ".docx":
+                target = "word/document.xml"
+                if target not in names:
+                    return []
+                return _paragraphs_docx(z.read(target))
+            slides = sorted(
+                n for n in names
+                if n.startswith("ppt/slides/slide") and n.endswith(".xml")
+            )
+            units = []
+            for n in slides:
+                units.extend(_slide_texts(z.read(n)))
+            return units
+    except (OSError, zipfile.BadZipFile, KeyError):
+        return []
+
+
 def extract_office_text(path):
-    """docx/pptx → 正文。返回 {text, engine, error}。engine 为 docling / ooxml / 空串。"""
+    """docx/pptx → 正文。返回 {text, engine, error, blocks}。engine 为 docling / ooxml / 空串。"""
     ext = os.path.splitext(path)[1].lower()
     if ext not in OFFICE_EXTS:
         return {
             "text": "",
             "engine": "",
             "error": "office_parse 不支持 %s。PDF 走 pypdf / MinerU。" % (ext or "无扩展名"),
+            "blocks": [],
         }
 
     force = (os.environ.get("STUDY_LIU_OFFICE_ENGINE") or "").strip().lower()
@@ -232,19 +271,22 @@ def extract_office_text(path):
     if use_cli:
         r = parse_with_docling(path)
         if (r.get("text") or "").strip():
-            return {"text": r["text"].strip(), "engine": "docling", "error": ""}
+            t = r["text"].strip()
+            return {"text": t, "engine": "docling", "error": "", "blocks": _office_blocks(t, "docling", path)}
         if native:
-            return {"text": native, "engine": "ooxml", "error": ""}
+            return {"text": native, "engine": "ooxml", "error": "", "blocks": _office_blocks(native, "ooxml", path)}
         return {
             "text": "",
             "engine": "",
             "error": r.get("error") or cli_reason or "Office 解析失败",
+            "blocks": [],
         }
 
     if native:
-        return {"text": native, "engine": "ooxml", "error": ""}
+        return {"text": native, "engine": "ooxml", "error": "", "blocks": _office_blocks(native, "ooxml", path)}
     return {
         "text": "",
         "engine": "",
         "error": "文件里没有解析到任何文字" if not cli_ok else (cli_reason or "Office 解析失败"),
+        "blocks": [],
     }
