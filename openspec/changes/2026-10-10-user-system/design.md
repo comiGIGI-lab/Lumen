@@ -1,12 +1,12 @@
 # 用户系统方案设计（存储层 MySQL 化）
 
-日期：2026-10-11 · 状态：方案设计稿（核心约束已确认，细节待定，未开工）
+日期：2026-10-11 · 状态：已按本方案落地（master `64a4d48`）。下文保留设计依据；实施差异见文末「落地记录」。
 
 > 本文件是《用户系统需求分析（`proposal.md`）》的配套方案设计。需求分析中的用户系统功能
-> （账号体系、按用户数据隔离、管理员页、自改密码、个性化本地持久化）**已在 master（`dc590c5`）以
-> 纯文件 JSON + 标准库方式落地**。本方案设计的目标，是把其中"关系型数据"的存储后端
+> （账号体系、按用户数据隔离、管理员页、自改密码、个性化本地持久化）曾在 `dc590c5` 以
+> 纯文件 JSON + 标准库方式落地。本方案把其中"关系型数据"的存储后端
 > **从纯文件 JSON 改造为 MySQL**，其余功能语义（隔离、绑定、权限）保持不变。
-> 文档仅在确认后实施，当前不改动任何代码。
+> 2026-10-11 已实施并快进推送；MySQL 不可用时存储模块 fail-open 回退 JSON，避免数据库抖动挡全站。
 
 ---
 
@@ -235,7 +235,7 @@ api_server.py  (BaseHTTPRequestHandler，鉴权/权限校验不变)
 
 ## 8. 数据迁移方案
 
-一次性迁移脚本 `tools/migrate_json_to_mysql.py`（确认后编写，本阶段不写）：
+一次性迁移脚本 `vendor/study-liu/tools/migrate_json_to_mysql.py`（已编写，支持 `--dry-run`）：
 
 1. 先 `db.ensure_schema()` 建表（`CREATE TABLE IF NOT EXISTS`，可重放、幂等）。
 2. 逐源读取现有 JSON，写入对应表：
@@ -246,7 +246,7 @@ api_server.py  (BaseHTTPRequestHandler，鉴权/权限校验不变)
 3. 幂等：按唯一键跳过已存在行；迁移后保留 JSON 文件作备份（可压缩归档），不改名删除。
 4. 切换：迁移跑通、核对条数一致后，把 api_server 接线切到新存储模块（见第 7 节）。
 
-**迁移策略**（待确认）：推荐**停机 cutover**（迁移→切换→旧 JSON 只读兜底），不推荐双写（实现复杂、易不一致）。
+**迁移策略**：采用**停机 cutover**（迁移→切换→旧 JSON 只读兜底），不采用双写。
 
 ---
 
@@ -265,7 +265,8 @@ STUDY_LIU_TOKEN_SECRET=<32+ 位随机串>   # token 签名密钥，建议走 env
 
 - 部署文档 `docs/DEPLOY.md` 追加一节：安装纯 Python 驱动（`pip install mysql-connector-python` 或 `pymysql`）、
   建库建用户、`utf8mb4`、首次启动自动 `ensure_schema()`。
-- 启动自检：连不上 MySQL 时服务端应**降级报错并提示配置**，而非静默用文件存储（避免"以为上了 MySQL 其实没上"）。
+- 启动与读写：连不上 MySQL 时存储模块抛 `DbUnavailable` 并 **fail-open 回退 JSON**（限速闸同样放行），
+  避免数据库抖动把全站挡在门外；部署文档要求 cutover 前用 `.env` 指向真实库并核对 `ensure_schema()`。
 - Chroma（向量 RAG）的 SQLite 依赖与此无关，部署不变。
 
 ---
@@ -274,7 +275,8 @@ STUDY_LIU_TOKEN_SECRET=<32+ 位随机串>   # token 签名密钥，建议走 env
 
 - `db.ensure_schema()` 可重复执行（幂等），表/索引与第 4 节一致。
 - 迁移脚本可跑通，且各表行数与源 JSON 数据条数一致（核对报告）。
-- MySQL 后端下，既有 6 套回归（quiz/sidecar/safety/chat/plan + 用户系统）+ `run_user_system_regression.py`（43 检查）全绿。
+- MySQL 后端下，既有回归（quiz/sidecar/safety/chat/plan + 用户系统）+ `run_user_system_regression.py` 全绿
+  （含 MySQL 驱动隔离与匿名限速源检查，不再以「纯标准库」为通过条件）。
 - 并发写压测（多线程同时写错题/进度）无锁等待异常、无连接泄漏。
 - `tests/run_quiz_regression.py` 的 `quiz_stdlib_only` 闸**不因** MySQL 引入而变红（MySQL 访问未渗入 `quiz.py` 等受闸文件）。
 - 前端 vite build 通过；登录/隔离/管理员/改密/个性化行为无回归。
@@ -294,4 +296,15 @@ STUDY_LIU_TOKEN_SECRET=<32+ 位随机串>   # token 签名密钥，建议走 env
 7. **当前 master 文件版用户系统实现**：MySQL 化后旧 JSON 路径不再写入，是否保留为只读兜底 / 直接下线。
 8. **画像 `profiles` 用 JSON 列**（推荐，结构灵活）vs 拆成关系列——当前画像结构不稳定，推荐 JSON 列。
 
-> 以上均不影响方案主体；确认后据此微调并开工。本阶段**未改动任何代码**，等待人工确认。
+## 12. 落地记录（2026-10-11，`64a4d48`）
+
+第 11 节 1、2、6 已由用户确认并实施。其余项按下列方式落地，不再阻塞：
+
+- token 签名密钥走环境变量 `STUDY_LIU_TOKEN_SECRET`，不入库。
+- `course_access` 保留，行为差异最小。
+- 迁移策略为停机 cutover；`migrate_json_to_mysql.py` 已可 `--dry-run`。
+- MySQL 不可用时 JSON 只读/读写兜底（fail-open），不是静默假装已连上 MySQL。
+- `profiles` 使用 JSON 列。
+- 匿名 LLM 限速不在原方案范围内，作为同一提交的增量：`rate_limits` 表 + `storage_ratelimit.py`，
+  每浏览器每日默认 10、全局匿名池默认 200，登录不限；前端 `zjxt:anon-limit` 引导登录。
+- 生产 cutover 仍须在目标环境填写真实 `.env` 后执行 dry-run 与正式迁移；开发库测试数据不得带入生产。

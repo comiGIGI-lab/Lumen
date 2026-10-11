@@ -1,6 +1,6 @@
 # 变更提案：用户系统扩展（账号-数据打通 / 管理页 / 按用户画像与个性化）
 
-日期：2026-10-10 · 状态：功能已落地（文件存储）；存储层将迁移至 MySQL（NFR-01 零依赖约束已于 2026-10-11 经用户正式解除，待开工）
+日期：2026-10-10 · 状态：功能已落地；存储层已于 2026-10-11 迁入 MySQL（`64a4d48`，NFR-01 零依赖约束经用户正式解除）。匿名 LLM 调用双闸限速同期落地。
 
 ## 背景
 
@@ -46,9 +46,15 @@
 
 ## 验收
 
-- `tests/run_user_system_regression.py`（新增，43 检查）：data_scope 绑定语义 /
-  画像路径穿越安全 / change_password 旧密码校验 / 路由与前端源检查，全绿。
+- `tests/run_user_system_regression.py`：data_scope 绑定语义 /
+  画像路径穿越安全 / change_password 旧密码校验 / 路由与前端源检查，以及 MySQL 驱动隔离、
+  匿名限速闸（`storage_ratelimit` + `ANON_LIMIT_*` + 前端 `zjxt:anon-limit`），全绿。
 - 全量回归（quiz/sidecar/safety/chat/plan + 用户系统）全绿；前端 vite build 通过。
-- **MySQL 迁移验收（方案设计确认后实施，暂未落地）**：表结构迁移脚本可重放；
-  JSON→MySQL 一次性迁移脚本可跑通且数据条数与文件一致；MySQL 后端下 6 套回归 + 用户系统回归全绿；
-  并发写压测无锁等待/连接泄漏；`quiz_stdlib_only` 闸不因 MySQL 引入而变红。
+- **MySQL 迁移验收（2026-10-11 已落地）**：`db/schema.sql` 可重放；
+  `vendor/study-liu/tools/migrate_json_to_mysql.py` 可 `--dry-run` / 正式迁移且幂等；
+  MySQL 访问只出现在 `server/db.py`、`server/storage_*.py` 与该迁移脚本；
+  `quiz_stdlib_only` 闸不因 MySQL 引入而变红。
+- **匿名限速验收**：未登录仍可体验功能；`/api/chat`、`/api/plan`、`/api/quiz/generate`、
+  `/api/plan/stream` 在匿名态叠加「每浏览器每日」与「全局匿名每日池」两道闸，
+  超限返回 429 + `ANON_LIMIT_CLIENT` / `ANON_LIMIT_GLOBAL`；登录用户不受限；
+  数据库异常 fail-open。前端收到该 code 后 toast 并打开登录框。

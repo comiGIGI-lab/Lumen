@@ -10,10 +10,11 @@
     前端 client.js 必须提供 me/login/register/accountsList/accountAction/changePassword，
     request() 默认带 X-Auth-Token，planStreamUrl 带 auth_token 参数。
 
-硬约束：
-    - server 保持纯标准库（data_scope / accounts 只用 stdlib）
-    - vendor 不改动：按用户画像走 load_profile/save_profile 已有的 filepath 参数
-    - 未登录行为完全不变（匿名仍走 client_id）
+硬约束（2026-10-11 存储层 MySQL 化之后）：
+    - PyMySQL 只允许出现在 server/db.py、server/storage_*.py、迁移脚本 migrate_json_to_mysql.py
+    - accounts.py / data_scope.py / api_server.py / quiz.py 不得 import pymysql|mysql|fastapi|…
+    - 未登录仍可走匿名路径；消耗 LLM token 的端点有匿名双闸限速
+      （storage_ratelimit + 429 ANON_LIMIT_* + 前端 zjxt:anon-limit）
 
 用法（仓库根目录）：
 
@@ -89,15 +90,20 @@ def source_checks():
     # SSE token
     check("sse_accepts_auth_token", "auth_token" in api)
 
-    # 后端保持纯标准库（accounts / data_scope）
-    for name, path in (("accounts_stdlib_only", ACCOUNTS), ("data_scope_stdlib_only", DATA_SCOPE)):
-        if os.path.exists(path):
-            src = read(path)
-            bad = re.search(r"^\s*(import|from)\s+(fastapi|langchain|langgraph|chromadb|requests|flask)",
-                            src, re.M)
-            check(name, not bad, bad.group(0) if bad else "")
-        else:
-            check(name, False, "文件不存在")
+    # accounts / data_scope / api_server 不得直接 import 数据库驱动或重框架
+    # （MySQL 只许出现在 server/db.py 与 server/storage_*.py）
+    driver_re = re.compile(
+        r"^\s*(import|from)\s+(pymysql|mysql|fastapi|langchain|langgraph|chromadb|flask)\b",
+        re.M,
+    )
+    for name, path in (
+        ("accounts_no_db_driver", ACCOUNTS),
+        ("data_scope_no_db_driver", DATA_SCOPE),
+        ("api_server_no_db_driver", API),
+    ):
+        src = read(path)
+        bad = driver_re.search(src)
+        check(name, not bad, bad.group(0) if bad else "")
 
     print("\n[2] 源检查：前端鉴权层")
     cli = read(CLIENT)
@@ -131,6 +137,61 @@ def source_checks():
     kb = read(KNOWLEDGE)
     check("knowledge_official_personal_views",
           ("官方" in kb) and ("个人" in kb or "private" in kb))
+
+    print("\n[3b] 源检查：MySQL 隔离 + 匿名 LLM 限速")
+    db_py = os.path.join(SERVER, "db.py")
+    rl = os.path.join(SERVER, "storage_ratelimit.py")
+    schema = os.path.join(REPO_ROOT, "db", "schema.sql")
+    migrate = os.path.join(VENDOR, "tools", "migrate_json_to_mysql.py")
+    app_vue = os.path.join(REPO_ROOT, "web", "src", "App.vue")
+    quiz_py = os.path.join(SERVER, "quiz.py")
+    check("db_module_exists", os.path.exists(db_py))
+    check("schema_rate_limits_table",
+          os.path.exists(schema) and "CREATE TABLE IF NOT EXISTS rate_limits" in read(schema))
+    check("migrate_script_exists", os.path.exists(migrate))
+    check("ratelimit_module_exists", os.path.exists(rl))
+    if os.path.exists(rl):
+        rls = read(rl)
+        check("ratelimit_atomic_update", "count < %s" in rls and "UPDATE rate_limits" in rls)
+        check("ratelimit_fail_open", "return True" in rls and "DbUnavailable" in rls)
+        check("ratelimit_env_defaults",
+              "STUDY_LIU_ANON_DAILY_LIMIT" in rls and "STUDY_LIU_ANON_GLOBAL_DAILY_LIMIT" in rls)
+    check("api_enforces_anon_quota", "_enforce_anon_llm_quota" in api
+          and "ANON_LIMIT_CLIENT" in api and "ANON_LIMIT_GLOBAL" in api)
+    # 四个消耗 token 的入口都挂了闸（定义 1 次 + 至少 4 处调用）
+    check("api_quota_on_llm_endpoints", api.count("_enforce_anon_llm_quota") >= 5)
+    check("client_dispatches_anon_limit", "zjxt:anon-limit" in cli and "ANON_LIMIT_CLIENT" in cli)
+    check("app_opens_login_on_anon_limit",
+          "zjxt:anon-limit" in read(app_vue) and "showLogin" in read(app_vue))
+    if os.path.exists(quiz_py):
+        qsrc = read(quiz_py)
+        bad = re.search(r"^\s*(import|from)\s+(pymysql|mysql)\b", qsrc, re.M)
+        check("quiz_no_mysql", not bad, bad.group(0) if bad else "")
+    else:
+        check("quiz_no_mysql", False, "quiz.py missing")
+    # pymysql 只许出现在 db.py / storage_*.py / 迁移脚本
+    allowed = {
+        os.path.normcase(os.path.abspath(db_py)),
+        os.path.normcase(os.path.abspath(migrate)),
+    }
+    leak = []
+    for root, dirs, files in os.walk(REPO_ROOT):
+        dirs[:] = [d for d in dirs if d not in (
+            "node_modules", ".git", "__pycache__", "dist", ".venv", "venv")]
+        for fn in files:
+            if not fn.endswith(".py"):
+                continue
+            path = os.path.join(root, fn)
+            norm = os.path.normcase(os.path.abspath(path))
+            if norm in allowed:
+                continue
+            rel_norm = os.path.relpath(path, REPO_ROOT).replace("\\", "/")
+            if rel_norm.startswith("server/storage_") and rel_norm.endswith(".py"):
+                continue
+            text = read(path)
+            if re.search(r"^\s*(import|from)\s+pymysql\b", text, re.M):
+                leak.append(rel_norm)
+    check("pymysql_import_isolated", not leak, ",".join(leak))
 
 
 def runtime_checks(tmp):

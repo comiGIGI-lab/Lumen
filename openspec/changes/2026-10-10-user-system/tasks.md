@@ -19,3 +19,9 @@
       宠物数据分档 `zjxt.pet.<用户名|anon>`（旧 key 兼容读取，`usePet.js`）；
       知识库页「官方资料库 / 我的个人库」双视图措辞（`KnowledgePage.vue`）
 - [x] Task 8 验收：6 套回归全绿 + vite build 通过；快进推送 master
+- [x] Task 9 存储层 MySQL 化：`server/db.py` + `server/storage_*.py` + `db/schema.sql` +
+      `migrate_json_to_mysql.py`；PyMySQL 不进入 quiz.py / 向量模块 / accounts / data_scope / api_server
+- [x] Task 10 匿名 LLM 双闸：`storage_ratelimit.py`（每浏览器默认 10 + 全局池默认 200）；
+      chat / plan / quiz/generate / plan/stream 在匿名态 429 + ANON_LIMIT_*；登录不限；fail-open
+- [x] Task 11 前端限速引导：`client.js` 派发 `zjxt:anon-limit`；`App.vue` toast + 打开 LoginDialog
+- [x] Task 12 回归更新：`run_user_system_regression.py` 增加驱动隔离与限速源检查；openspec 状态改为已落地
