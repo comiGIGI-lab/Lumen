@@ -25,3 +25,5 @@
       chat / plan / quiz/generate / plan/stream 在匿名态 429 + ANON_LIMIT_*；登录不限；fail-open
 - [x] Task 11 前端限速引导：`client.js` 派发 `zjxt:anon-limit`；`App.vue` toast + 打开 LoginDialog
 - [x] Task 12 回归更新：`run_user_system_regression.py` 增加驱动隔离与限速源检查；openspec 状态改为已落地
+- [x] Task 13 开放待确认项按推荐收口（2026-10-11）：token 密钥走环境变量；保留 `course_access`；
+      停机 cutover、不做双写；JSON 仅作 MySQL 不可用兜底；画像保持 JSON 列。实现已符合，只更新 design.md 第 11 节。
