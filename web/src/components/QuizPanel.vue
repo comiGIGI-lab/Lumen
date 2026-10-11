@@ -7,7 +7,7 @@
  * → 答错写错题本（source: 'quiz'）→ 通关后 api.quizReport 复盘
  * → logExp 结算经验。全程 {{ }} 插值，不用 v-html。
  */
-import { computed, onBeforeUnmount, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from '@/i18n'
 import { api, quizStreamUrl } from '@/api/client'
 import { usePet } from '@/composables/usePet'
@@ -40,6 +40,33 @@ const streamDone = ref(true)
 let es = null
 
 const current = computed(() => (run.value ? run.value.questions[index.value] : null))
+const pastWrong = ref([])
+
+function normStem(text) {
+  return String(text || '').replace(/\s+/g, '').slice(0, 24)
+}
+
+async function loadPastWrong() {
+  const course = String(props.courseContext || '').trim()
+  if (!course) {
+    pastWrong.value = []
+    return
+  }
+  try {
+    const data = await api.wrongBookList({ course, status: 'unmastered' })
+    pastWrong.value = (data.items || []).map((item) => normStem(item.question)).filter(Boolean)
+  } catch (_) {
+    pastWrong.value = []
+  }
+}
+
+function seenBefore(stem) {
+  const key = normStem(stem)
+  if (key.length < 6) return false
+  return pastWrong.value.some((item) => item.includes(key) || key.includes(item))
+}
+
+onMounted(loadPastWrong)
 const waitingNext = computed(() => (
   !!run.value && !finished.value && index.value >= run.value.questions.length && !streamDone.value
 ))
@@ -232,21 +259,19 @@ async function submit() {
     const g = await api.quizGrade(run.value.quiz_id, current.value.id, sel)
     judged.value = g
     results.value.push({ id: current.value.id, correct: g.correct, knowledge_point: g.knowledge_point })
-    // 答错入错题本：题干 + 我的答案 + 正解讲解，复用现有 /api/wrongbook
+    // 答错入错题本：回传**结构化题目**，渲染与「我的答案」格式化交给后端
+    // wrongbook_quiz 统一处理——三种题型的答案编码不同（["A"] / ["A","C"] /
+    // int 0-1），历史上前端自己拼字符串时多选只剩第一个选项的文字。
     if (!g.correct) {
       try {
-        await api.wrongBookAdd({
+        await api.wrongBookAddFromQuiz({
           course: props.courseContext || '',
-          question: `[${current.value.stem}] 选项：${current.value.options
-            .map((o) => `${o.key}. ${o.text}`)
-            .join('　')}`,
-          my_answer: `${Array.isArray(sel) ? sel.join('') : sel}. ${
-            (current.value.options.find((o) => o.key === (Array.isArray(sel) ? sel[0] : sel)) || {}).text || ''
-          }`,
-          answer: `正确答案 ${fmtAnswer(g.answer, g.type)}。${g.explanation}`,
-          reason: `知识点：${g.knowledge_point}`,
+          question: current.value,
+          selected: sel,
+          answer: g.answer,
+          explanation: g.explanation,
+          knowledge_point: g.knowledge_point,
           tags: [g.knowledge_point, '闯关'],
-          source: 'quiz',
         })
       } catch (_) {
         /* 错题本写失败不阻塞闯关 */
@@ -402,6 +427,7 @@ function reset() {
         <span v-if="current && current.source === 'web'" class="badge-web">
           {{ t('quizPage.webSource') }}
         </span>
+        <span v-if="current && seenBefore(current.stem)" class="badge-past">曾经的错题</span>
       </div>
       <p v-if="waitingNext" class="muted">{{ t('quizPage.moreComing') }}</p>
       <p v-else-if="current" class="q-stem">{{ current.stem }}</p>
@@ -491,6 +517,7 @@ function reset() {
           >
             <p class="r-stem">{{ i + 1 }}. {{ it.stem }}
               <span class="badge-web" v-if="it.source === 'web'">{{ t('quizPage.webSource') }}</span>
+              <span v-if="seenBefore(it.stem)" class="badge-past">曾经的错题</span>
             </p>
             <p class="r-line">
               <span :class="it.correct ? 'good' : 'bad'">{{ it.correct ? t('quizPage.right') : t('quizPage.wrong') }}</span>
@@ -580,6 +607,14 @@ function reset() {
   background: rgba(33, 118, 209, 0.12);
   color: #2176d1;
   border: 1px solid rgba(33, 118, 209, 0.4);
+  border-radius: 6px;
+  padding: 1px 8px;
+  font-size: 11.5px;
+}
+.badge-past {
+  background: rgba(198, 40, 40, 0.1);
+  color: #c62828;
+  border: 1px solid rgba(198, 40, 40, 0.35);
   border-radius: 6px;
   padding: 1px 8px;
   font-size: 11.5px;

@@ -345,12 +345,16 @@ export const api = {
 
   // ---------------- 错题本 ----------------
 
-  /** 错题列表。course / q / status 都可选（status: unmastered | mastered） */
-  wrongBookList({ course = '', q = '', status = '' } = {}) {
+  /** 错题列表。course / q / status / source / type 都可选
+   *  source: quiz | manual —— 只看闯关来的 / 只看手工加的
+   *  type:   single | multi | judge —— 题型，由服务端从 tags 解出来 */
+  wrongBookList({ course = '', q = '', status = '', source = '', type = '' } = {}) {
     const qs = new URLSearchParams()
     if (course) qs.set('course', course)
     if (q) qs.set('q', q)
     if (status) qs.set('status', status)
+    if (source) qs.set('source', source)
+    if (type) qs.set('type', type)
     const tail = qs.toString()
     return request(`/wrongbook${tail ? '?' + tail : ''}`)
   },
@@ -358,6 +362,17 @@ export const api = {
   /** 新增一道错题 */
   wrongBookAdd(payload) {
     return request('/wrongbook', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    })
+  },
+
+  /** 一道闯关错题入错题本。
+   *  回传**结构化题目**（type/stem/options）而不是拼好的字符串——
+   *  三种题型的答案编码不同（["A"] / ["A","C"] / int 0-1），
+   *  渲染与选型格式化统一由后端 wrongbook_quiz 做，前端不再自己拼。 */
+  wrongBookAddFromQuiz(payload) {
+    return request('/wrongbook/from-quiz', {
       method: 'POST',
       body: JSON.stringify(payload),
     })

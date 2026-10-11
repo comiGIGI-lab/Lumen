@@ -3,13 +3,21 @@
  * WrongBookPage —— 独立错题本
  *
  * 数据全部走 /api/wrongbook（按浏览器隔离，落盘见 tools/wrong_book_store.py）。
- * 支持：按课程 / 关键词 / 掌握状态筛选，新增、编辑、标记掌握、记一次复习、删除。
+ * 支持：按课程 / 关键词 / 掌握状态 / 来源 / 题型筛选，
+ * 新增、编辑、标记掌握、记一次复习、删除。
+ *
+ * 题型（single / multi / judge）与来源（quiz / manual）不落库——wrong_book_store
+ * 的存储契约是封闭的，题型由 tags 里的 "题型:多选" 派生，服务端每次读的时候
+ * 挂在 item.qtype / item.qtype_label 上返回，前端只负责显示与筛选。
  */
 import { computed, onMounted, ref } from 'vue'
 import { api } from '@/api/client'
 import { useI18n } from '@/i18n'
 
 const emit = defineEmits(['back', 'go-course', 'notify'])
+defineProps({
+  embedded: { type: Boolean, default: false },
+})
 const { t } = useI18n()
 
 const loading = ref(false)
@@ -22,6 +30,22 @@ const stats = ref({
 const keyword = ref('')
 const courseFilter = ref('')
 const statusFilter = ref('')
+/** '' 全部；'quiz' 只看学习闯关带来的；'manual' 只看手工加的 */
+const sourceFilter = ref('')
+/** '' 全部；single | multi | judge */
+const typeFilter = ref('')
+
+const QTYPE_KEYS = {
+  single: 'wrongBookQuiz.single',
+  multi: 'wrongBookQuiz.multi',
+  judge: 'wrongBookQuiz.judge',
+}
+
+/** 题型徽标文案。认不出来的题型（老数据没带标签）直接不显示，不留裸 key */
+function qtypeLabel(q) {
+  const k = QTYPE_KEYS[q]
+  return k ? t(k) : ''
+}
 
 /** null = 表单关闭；有值 = 打开（id 为 null 表示新增） */
 const form = ref(null)
@@ -45,6 +69,9 @@ const activeHint = computed(() => {
   if (courseFilter.value) parts.push(`课程「${courseFilter.value}」`)
   if (statusFilter.value === 'unmastered') parts.push('未掌握')
   if (statusFilter.value === 'mastered') parts.push('已掌握')
+  if (typeFilter.value) parts.push(qtypeLabel(typeFilter.value))
+  if (sourceFilter.value === 'quiz') parts.push(t('wrongBookQuiz.fromQuiz'))
+  if (sourceFilter.value === 'manual') parts.push(t('wrongBookQuiz.manual'))
   if (keyword.value.trim()) parts.push(`含「${keyword.value.trim()}」`)
   return parts.join(' · ')
 })
@@ -56,6 +83,8 @@ async function load() {
       course: courseFilter.value,
       q: keyword.value.trim(),
       status: statusFilter.value,
+      source: sourceFilter.value,
+      type: typeFilter.value,
     })
     items.value = data.items || []
     if (data.stats) stats.value = data.stats
@@ -159,13 +188,15 @@ function resetFilter() {
   keyword.value = ''
   courseFilter.value = ''
   statusFilter.value = ''
+  sourceFilter.value = ''
+  typeFilter.value = ''
   load()
 }
 </script>
 
 <template>
   <section class="wb">
-    <header class="wb-head">
+    <header v-if="!embedded" class="wb-head">
       <div>
         <p class="kicker">Wrong book</p>
         <h1>{{ t('page.wrongbookTitle') }}</h1>
@@ -173,7 +204,7 @@ function resetFilter() {
       </div>
       <div class="head-actions">
         <button type="button" class="btn btn-primary" @click="openAdd">{{ t('wrongBookPage.10') }}</button>
-        <button type="button" class="btn btn-ghost" @click="emit('back')">{{ t('wrongBookPage.11') }}</button>
+        <button v-if="!embedded" type="button" class="btn btn-ghost" @click="emit('back')">{{ t('wrongBookPage.11') }}</button>
       </div>
     </header>
 
@@ -216,6 +247,17 @@ function resetFilter() {
         <option value="">{{ t('wrongBookPage.16') }}</option>
         <option v-for="c in courses" :key="c" :value="c">{{ c }}</option>
       </select>
+      <select v-model="sourceFilter" class="f-select" @change="load">
+        <option value="">{{ t('wrongBookQuiz.allSource') }}</option>
+        <option value="quiz">{{ t('wrongBookQuiz.fromQuiz') }}</option>
+        <option value="manual">{{ t('wrongBookQuiz.manual') }}</option>
+      </select>
+      <select v-model="typeFilter" class="f-select" @change="load">
+        <option value="">{{ t('wrongBookQuiz.allType') }}</option>
+        <option value="single">{{ t('wrongBookQuiz.single') }}</option>
+        <option value="multi">{{ t('wrongBookQuiz.multi') }}</option>
+        <option value="judge">{{ t('wrongBookQuiz.judge') }}</option>
+      </select>
       <div class="seg">
         <button
           type="button"
@@ -255,6 +297,8 @@ function resetFilter() {
     <ul v-else class="list">
       <li v-for="it in items" :key="it.id" class="card" :class="{ mastered: it.mastered }">
         <div class="c-top">
+          <span v-if="it.qtype" class="chip chip-type">{{ qtypeLabel(it.qtype) }}</span>
+          <span v-if="it.source === 'quiz'" class="chip chip-quiz">{{ t('wrongBookQuiz.fromQuiz') }}</span>
           <span v-if="it.course" class="chip">{{ it.course }}</span>
           <span class="chip" :class="it.mastered ? 'chip-success' : 'chip-warn'">
             {{ it.mastered ? t('wrongBookPageX.5') : t('wrongBookPageX.6') }}
@@ -555,6 +599,18 @@ function resetFilter() {
 
 .spacer {
   flex: 1;
+}
+
+/* 题型徽标：闯关题三种题型用不同底色区分，扫一眼就知道哪类错得多 */
+.chip-type {
+  background: var(--primary-soft);
+  color: var(--primary-dark);
+  font-weight: 600;
+}
+
+.chip-quiz {
+  background: #eef2ff;
+  color: #3730a3;
 }
 
 .tag {

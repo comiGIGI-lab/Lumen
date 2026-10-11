@@ -159,7 +159,8 @@ if SOURCE_DIR not in sys.path:
 # 必须放在 sys.path.insert 之后，否则 `python server/api_server.py` 直接崩
 # `ModuleNotFoundError: No module named 'core'`（回归 #rLRaaT 修复）。
 import quiz as quiz_mod                                             # noqa: E402
-
+# 闯关错题 → 错题本的题型适配（纯转换，无 IO）。同样依赖 SOURCE_DIR 已在 path 里。
+import wrongbook_quiz as wrongbook_quiz_mod                         # noqa: E402
 
 # ------------------------------------------------------------
 # 1.5 用标准库加载 .env（必须在 import core.config 之前）
@@ -1171,10 +1172,27 @@ class ApiHandler(BaseHTTPRequestHandler):
                     keyword=(query.get("q") or [""])[0].strip() or None,
                     status=(query.get("status") or [""])[0].strip() or None,
                 )
+                # 来源 / 题型两个维度只能在**读的时候**过滤：store 的 list_items
+                # 不认这两个过滤条件，而 add_item 又是封闭契约（不能加字段存题型），
+                # 所以题型只能由 tags 里的 "题型:多选" 现解出来。
+                want_source = (query.get("source") or [""])[0].strip()
+                want_type = (query.get("type") or [""])[0].strip()
+                enriched = []
+                for it in items:
+                    if want_source and str(it.get("source") or "") != want_source:
+                        continue
+                    qtype = wrongbook_quiz_mod.parse_qtype(it)
+                    if want_type and qtype != want_type:
+                        continue
+                    row = dict(it)
+                    row["qtype"] = qtype or ""
+                    row["qtype_label"] = (
+                        wrongbook_quiz_mod.qtype_label(qtype) if qtype else "")
+                    enriched.append(row)
                 return self._send_json({
                     "ok": True,
-                    "items": items,
-                    "total": len(items),
+                    "items": enriched,
+                    "total": len(enriched),
                     "stats": wrong_book_store.stats(cid),
                     "courses": wrong_book_store.courses(cid),
                 })
@@ -1736,6 +1754,46 @@ class ApiHandler(BaseHTTPRequestHandler):
                     return self._send_json({"ok": False, "error": "题干不能为空"}, 400)
                 return self._send_json({
                     "ok": True, "item": item,
+                    "stats": wrong_book_store.stats(cid),
+                    "courses": wrong_book_store.courses(cid),
+                })
+
+            if path == "/api/wrongbook/from-quiz":
+                # 闯关错题入错题本。前端只回传**结构化题目**，渲染与选型格式化
+                # 全在 wrongbook_quiz 里做——否则三种题型的答案编码
+                # （["A"] / ["A","C"] / int 0-1）要在 TypeScript 里重写一遍，
+                # 多选大概率又变成「只显示第一个选项的文字」。
+                # 课程名已经过 /api/quiz/generate 的安全闸，这里不再拦一次。
+                guard = self._require_user()
+                if guard:
+                    return self._send_json(guard[0], guard[1])
+                cid = self._client_id()
+                q = body.get("question")
+                q = q if isinstance(q, dict) else {}
+                if not str(q.get("stem") or "").strip():
+                    return self._send_json(
+                        {"ok": False, "error": "题干不能为空"}, 400)
+                try:
+                    built = wrongbook_quiz_mod.build_quiz_wrong(
+                        course=body.get("course") or "",
+                        question=q,
+                        selected=body.get("selected"),
+                        answer=body.get("answer"),
+                        explanation=body.get("explanation") or "",
+                        knowledge_point=body.get("knowledge_point") or "",
+                        extra_tags=body.get("tags"),
+                    )
+                    item = wrong_book_store.add_item(cid, **built)
+                except ValueError as e:
+                    # 错题本满 500 条时 store 抛的，文案直接透给用户
+                    return self._send_json({"ok": False, "error": str(e)}, 400)
+                if not item:
+                    return self._send_json(
+                        {"ok": False, "error": "题干不能为空"}, 400)
+                return self._send_json({
+                    "ok": True,
+                    "item": dict(item,
+                                 qtype=wrongbook_quiz_mod.parse_qtype(item) or ""),
                     "stats": wrong_book_store.stats(cid),
                     "courses": wrong_book_store.courses(cid),
                 })
