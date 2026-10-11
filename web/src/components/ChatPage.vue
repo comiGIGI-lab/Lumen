@@ -36,23 +36,25 @@ const tab = ref('ask')
         <h2>{{ t('chatPage.1') }}</h2>
         <p class="lead">{{ t('chatPage.2') }}</p>
       </div>
-      <div class="bar-right">
-        <div class="tabs">
-          <button
-            type="button"
-            class="tab"
-            :class="{ on: tab === 'ask' }"
-            @click="tab = 'ask'"
-          >{{ t('quizPage.tabAsk') }}</button>
-          <button
-            type="button"
-            class="tab"
-            :class="{ on: tab === 'quiz' }"
-            @click="tab = 'quiz'"
-          >{{ t('quizPage.tabQuiz') }}</button>
-        </div>
-        <button type="button" class="ghost" @click="emit('go-course')">{{ t('chatPage.3') }}</button>
-      </div>
+      <button type="button" class="ghost" @click="emit('go-course')">{{ t('chatPage.3') }}</button>
+    </div>
+    <div class="tabs" role="tablist" aria-label="问答与闯关">
+      <button
+        type="button"
+        role="tab"
+        class="tab"
+        :class="{ on: tab === 'ask' }"
+        :aria-selected="tab === 'ask'"
+        @click="tab = 'ask'"
+      >{{ t('nav.chat') }}</button>
+      <button
+        type="button"
+        role="tab"
+        class="tab"
+        :class="{ on: tab === 'quiz' }"
+        :aria-selected="tab === 'quiz'"
+        @click="tab = 'quiz'"
+      >{{ t('quizPage.tabQuiz') }}</button>
     </div>
     <ChatPanel
       v-if="tab === 'ask'"
@@ -82,29 +84,24 @@ const tab = ref('ask')
   gap: 12px;
   flex-wrap: wrap;
 }
-.bar-right {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
 .tabs {
   display: flex;
-  border: 1px solid var(--border);
-  border-radius: 1000px;
-  overflow: hidden;
+  gap: 0;
+  width: fit-content;
+  border-bottom: 1px solid var(--border);
 }
 .tab {
-  min-height: 44px;
-  border: none;
-  background: var(--bg-card);
-  color: var(--text-primary);
-  padding: 7px 14px;
-  font-size: 12.5px;
+  min-height: 36px;
+  padding: 0 14px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 14px;
 }
 .tab.on {
-  background: var(--accent);
-  color: #fff;
+  color: var(--text);
+  border-bottom-color: var(--accent);
 }
 .eyebrow {
   font-family: var(--font-serif);

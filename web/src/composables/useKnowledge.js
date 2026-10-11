@@ -119,6 +119,8 @@ function groupEntries(items) {
       id: g.key,
       title: g.base,
       tag: guessTag(`${g.base} ${g.items.map((e) => e.tags.join(' ')).join(' ')}`),
+      scope: first.scope || 'public',
+      category: first.category || '',
       created,
       updated: created,
       remark: '',
@@ -238,7 +240,7 @@ export function useKnowledge() {
         scope: options.scope || 'private',
         category: options.category || '',
       })
-      await refresh(lastQuery.value)
+      await refresh(lastQuery.value, options.list || {})
       pickNote(`src:${name}`) // 若已存在同名来源会被并到同一组
       return res.id
     } catch (e) {

@@ -12,6 +12,9 @@ import { computed, onMounted, ref } from 'vue'
 import { api } from '@/api/client'
 import { useI18n } from '@/i18n'
 
+const props = defineProps({
+  embedded: { type: Boolean, default: false },
+})
 const emit = defineEmits(['back', 'notify'])
 const { t } = useI18n()
 
@@ -285,8 +288,8 @@ const selectedNode = computed(() => nodes.value.find((n) => n.id === selected.va
 </script>
 
 <template>
-  <section class="mm">
-    <header class="mm-head">
+  <section class="mm" :class="{ embedded }">
+    <header v-if="!embedded" class="mm-head">
       <div>
         <p class="kicker">Mind map</p>
         <h1>{{ t('page.mindmapTitle') }}</h1>

@@ -27,38 +27,38 @@ const emit = defineEmits([
   'open-mindmap',
   'open-study',
   'open-progress',
+  'open-manual',
   'open-settings',
   'open-history',
   'open-trace',
   'go-home',
 ])
-const { t } = useI18n()
+const { t, isEn } = useI18n()
 const showPrivacy = ref(false)
 const activeCard = ref(0)
 
-// 01→02→03→04 是一条完整链路：两种输入（图文 / 语音）→ 结构化 → 答疑。
-// 语音那一张刻意排在「图文解析」之后、结构抽取之前，别挪到最后，
-// 否则读起来像三个阶段的流水线后面挂了个附件。
+// 与顶栏一致的三项：学习方案、知识库、课程问答闯关。
 const cards = [
   {
     num: '01',
-    title: '图文素材智能解析',
-    body: '课件 PDF、Markdown 讲义与板书照片统一导入，PDF 抽文本层、图片走多模态模型识图，切成可检索的内容块',
+    title: '学习方案生成',
+    enTitle: 'Study plan',
+    body: '输入课程名，选好水平和每日时长。系统给出课程大纲、推荐资源和可以勾选的每日计划。',
+    enBody: 'Enter a course name, then choose your level and daily time. You get an outline, recommended resources, and a day-by-day plan you can check off.',
   },
   {
     num: '02',
-    title: '语音离线转写',
-    body: '讲课录音、语音笔记直接转成文字。识别用离线中文模型跑在自己的服务器上，音频不经过任何第三方接口，转完可一键存进知识库参与后续问答',
+    title: '知识库',
+    enTitle: 'Knowledge base',
+    body: '笔记、导入的资料、语音转写和思维导图都收在这里。之后的提问和闯关先从这些内容里找依据。',
+    enBody: 'Notes, imported files, transcripts, and mind maps stay here. Later questions and quizzes look in this material first.',
   },
   {
     num: '03',
-    title: '知识点结构化抽取',
-    body: '从解析结果中抽取知识点，整理为课程大纲与知识结构，并标注薄弱环节',
-  },
-  {
-    num: '04',
-    title: '交互式答疑辅导',
-    body: '先在你的材料里做相关性检索，再把命中的片段交给模型作答，答案标注出处，可以继续追问与逐条核对',
+    title: '课程问答闯关',
+    enTitle: 'Q&A and quiz',
+    body: '围绕当前课程提问，回答会标出参考资料。闯关按题判分，答错记进错题本。',
+    enBody: 'Ask about the current course and see which material the answer used. Quizzes are scored question by question, and misses go to the wrong-answer book.',
   },
 ]
 
@@ -99,6 +99,7 @@ function cardStyle(i) {
           @open-mindmap="emit('open-mindmap')"
           @open-study="emit('open-study')"
           @open-progress="emit('open-progress')"
+          @open-manual="emit('open-manual')"
           @open-settings="emit('open-settings')"
           @open-history="emit('open-history')"
           @open-trace="emit('open-trace')"
@@ -119,8 +120,7 @@ function cardStyle(i) {
         <div class="wl-actions">
           <button class="wl-btn wl-btn-light" type="button" @click="onStart">{{ t('welcomeScreen.6') }}</button>
           <button class="wl-btn wl-btn-light" type="button" @click="emit('open-knowledge')">{{ t('welcomeScreen.7') }}</button>
-          <button class="wl-btn wl-btn-light" type="button" @click="emit('open-import')">{{ t('welcomeScreen.8') }}</button>
-          <button class="wl-btn wl-btn-light" type="button" @click="emit('open-transcribe')">{{ t('nav.transcribe') }}</button>
+          <button class="wl-btn wl-btn-light" type="button" @click="emit('open-chat')">{{ t('welcomeScreen.8') }}</button>
         </div>
       </div>
     </section>
@@ -147,8 +147,8 @@ function cardStyle(i) {
               tabindex="0"
             >
               <div class="wl-num">{{ card.num }}</div>
-              <h3>{{ card.title }}</h3>
-              <p>{{ card.body }}</p>
+              <h3>{{ isEn ? card.enTitle : card.title }}</h3>
+              <p>{{ isEn ? card.enBody : card.body }}</p>
             </article>
           </div>
         </div>
@@ -159,7 +159,7 @@ function cardStyle(i) {
             type="button"
             class="wl-dot"
             :class="{ on: activeCard === i }"
-            :aria-label="card.title"
+            :aria-label="isEn ? card.enTitle : card.title"
             @click="activeCard = i"
           />
         </div>
@@ -174,8 +174,7 @@ function cardStyle(i) {
         <div class="wl-actions">
           <button class="wl-btn" type="button" @click="onStart">{{ t('welcomeScreen.13') }}</button>
           <button class="wl-btn" type="button" @click="emit('open-knowledge')">{{ t('welcomeScreen.14') }}</button>
-          <button class="wl-btn" type="button" @click="emit('open-import')">{{ t('welcomeScreen.15') }}</button>
-          <button class="wl-btn" type="button" @click="emit('open-transcribe')">{{ t('nav.transcribe') }}</button>
+          <button class="wl-btn" type="button" @click="emit('open-chat')">{{ t('welcomeScreen.15') }}</button>
         </div>
       </div>
     </section>

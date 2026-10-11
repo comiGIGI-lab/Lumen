@@ -4,6 +4,7 @@
 
 import json
 import os
+import secrets
 import threading
 from datetime import datetime
 
@@ -13,6 +14,8 @@ from core.paths import ensure_seed_file
 # 知识库文件路径（打包兼容，见 core/paths.py）
 _DATA_DIR = _resolve_data_dir()
 _KNOWLEDGE_FILE = os.path.join(_DATA_DIR, "knowledge.json")
+_SHARE_FILE = os.path.join(_DATA_DIR, "knowledge_shares.json")
+_SHARE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 
 
 class KnowledgeStore:
@@ -185,3 +188,101 @@ class KnowledgeStore:
                 return False
             self._save(new_data)
             return True
+
+    def _share_path(self):
+        return os.path.join(os.path.dirname(self.filepath), "knowledge_shares.json")
+
+    def _load_shares(self):
+        path = self._share_path()
+        if not os.path.exists(path):
+            return {}
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            return data if isinstance(data, dict) else {}
+        except (json.JSONDecodeError, IOError):
+            return {}
+
+    def _save_shares(self, data):
+        path = self._share_path()
+        dir_path = os.path.dirname(path)
+        if dir_path and not os.path.exists(dir_path):
+            os.makedirs(dir_path, exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+
+    def issue_share(self, note_ids, owner):
+        """给一组条目发一个口令。接收方兑换时复制到自己的私有笔记。"""
+        owner = str(owner or "").strip()
+        ids = []
+        for raw in note_ids or []:
+            try:
+                ids.append(int(raw))
+            except (TypeError, ValueError):
+                continue
+        if not owner or not ids:
+            return ""
+        with self._lock:
+            owned = {
+                item.get("id")
+                for item in self._load()
+                if str(item.get("owner") or "").strip() == owner
+            }
+            ids = [note_id for note_id in ids if note_id in owned]
+            if not ids:
+                return ""
+            shares = self._load_shares()
+            for _ in range(8):
+                code = "".join(secrets.choice(_SHARE_ALPHABET) for _ in range(8))
+                if code not in shares:
+                    break
+            else:
+                return ""
+            shares[code] = {
+                "ids": ids,
+                "owner": owner,
+                "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            }
+            self._save_shares(shares)
+            return code
+
+    def redeem_share(self, code, username):
+        """把口令对应的条目复制成接收方的私有笔记。返回新 id 列表。"""
+        code = str(code or "").strip().upper()
+        username = str(username or "").strip()
+        if not code or not username:
+            return []
+        with self._lock:
+            shares = self._load_shares()
+            ticket = shares.get(code)
+            if not ticket:
+                return []
+            wanted = set(ticket.get("ids") or [])
+            sources = [
+                self.normalize(item)
+                for item in self._load()
+                if item.get("id") in wanted
+                and str(item.get("owner") or "").strip() == ticket.get("owner")
+            ]
+            if not sources:
+                return []
+            data = self._load()
+            next_id = max([item["id"] for item in data], default=0) + 1
+            created = []
+            now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            for source in sources:
+                note = {
+                    "id": next_id,
+                    "title": source.get("title") or "分享笔记",
+                    "content": source.get("content") or "",
+                    "tags": list(source.get("tags") or []),
+                    "owner": username,
+                    "scope": "private",
+                    "category": source.get("category") or "",
+                    "created_at": now,
+                }
+                data.append(note)
+                created.append(next_id)
+                next_id += 1
+            self._save(data)
+            return created

@@ -1,6 +1,7 @@
 <script setup>
 /**
- * TopNav —— 右上常驻横排：学习方案生成 / 知识库 / 文档导入 / 课程问答 / 自习空间 / 更多
+ * TopNav —— 右上常驻横排：学习方案生成 / 知识库 / 课程问答 / 自习空间 / 更多
+ * 文档导入、语音转写、思维导图都从知识库页进入。
  * 欢迎层与工具页共用。更多：个人空间、AI 模型设置、历史、日志。
  * 不恢复「原型」。
  */
@@ -26,6 +27,7 @@ const emit = defineEmits([
   'open-mindmap',
   'open-study',
   'open-progress',
+  'open-manual',
   'open-settings',
   'open-history',
   'open-trace',
@@ -34,7 +36,7 @@ const emit = defineEmits([
 const openMore = ref(false)
 const { panelOpen } = useSpace()
 const { isDark, toggle: toggleTheme } = useTheme()
-const { t } = useI18n()
+const { t, isEn, toggle: toggleLang } = useI18n()
 // 更多菜单里的登录入口：登录后显示退出，未登录显示登录
 const { user, isLoggedIn, logout } = useAuth()
 
@@ -86,19 +88,7 @@ onBeforeUnmount(() => {
       :class="{ on: current === 'knowledge' }"
       @click="emit('open-knowledge')"
     >{{ t('nav.knowledge') }}</button>
-    <button
-      type="button"
-      class="nav-link"
-      :class="{ on: current === 'import' }"
-      @click="emit('open-import')"
-    >{{ t('nav.import') }}</button>
-    <!-- 与「文档导入」并列：都是「把外部材料弄进来」，一个走文件、一个走音频 -->
-    <button
-      type="button"
-      class="nav-link"
-      :class="{ on: current === 'transcribe' }"
-      @click="emit('open-transcribe')"
-    >{{ t('nav.transcribe') }}</button>
+    <!-- 文档导入、语音转写、思维导图不单列：都在知识库页内切换。 -->
     <button
       type="button"
       class="nav-link"
@@ -151,9 +141,9 @@ onBeforeUnmount(() => {
           {{ t('nav.settings') }}
           <em v-if="needsKey">{{ t('nav.needKey') }}</em>
         </button>
-        <button type="button" role="menuitem" @click="pick('open-mindmap')">{{ t('nav.mindmap') }}</button>
         <button type="button" role="menuitem" @click="pick('open-progress')">{{ t('nav.progress') }}</button>
         <button type="button" role="menuitem" @click="pick('open-history')">{{ t('nav.history') }}</button>
+        <button type="button" role="menuitem" @click="pick('open-manual')">{{ t('nav.manual') }}</button>
         <button type="button" role="menuitem" @click="pick('open-trace')">{{ t('topNav.4') }}</button>
       </div>
     </div>

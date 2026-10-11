@@ -25,6 +25,9 @@ import {
   probeDuration,
 } from '@/utils/audio'
 
+const props = defineProps({
+  embedded: { type: Boolean, default: false },
+})
 const emit = defineEmits(['back', 'open-knowledge', 'go-course'])
 const { t } = useI18n()
 
@@ -278,14 +281,12 @@ onBeforeUnmount(reset)
 </script>
 
 <template>
-  <div class="tr">
-    <p class="crumb">
+  <div class="tr" :class="{ embedded }">
+    <p v-if="!embedded" class="crumb">
       <button type="button" class="link" @click="emit('back')">{{ t('page.transcribeBack') }}</button>
       <span>/</span>
       <em>{{ t('page.transcribeTitle') }}</em>
     </p>
-    <p class="eyebrow">Speech · Offline ASR</p>
-    <h2>{{ t('page.transcribeTitle') }}</h2>
     <p class="lead">{{ t('trPage.lead') }}</p>
 
     <!-- 引擎不可用：直接把原因和修法说清楚，别让用户白录一遍 -->

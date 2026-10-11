@@ -109,10 +109,11 @@ function defaultWin(id, vw, layout) {
         todo: compact ? 52 : 300,
         date: compact ? 104 : 560,
       }
-      // 手机上（compact）三块窗默认都收成竖签 → 「自习空间」页会是一片空白：
+      // 窄屏竖排时三块窗默认都收成竖签 → 「自习空间」页会是一片空白：
       // StudySpacePage 本身只有背景，这一页的全部内容就是自习坞这块窗。
-      // 所以 compact 时把自习坞展开，并让开左侧那列竖签（x=0..36）。
-      const expandStudy = compact && id === 'study'
+      // 原来只在 compact（≤430）展开。本地窗口缩不到 430，500 也进了这条竖排，
+      // 坞却还收着。竖排（≤860）一律展开自习坞，并让开左侧那列竖签（x=0..36）。
+      const expandStudy = id === 'study'
       return {
         on: true,
         collapsed: !expandStudy,
@@ -124,7 +125,8 @@ function defaultWin(id, vw, layout) {
     const leftW = Math.round(total * 1.1 / 2)
     const rightX = padX + leftW + gap
     if (id === 'study') {
-      return { on: true, collapsed: true, size: 2, x: padX, y: padY }
+      // 电脑端进自习空间也展开自习坞。待办和日期仍收成边签。
+      return { on: true, collapsed: false, size: 2, x: padX, y: padY }
     }
     if (id === 'todo') {
       return { on: true, collapsed: true, size: 2, x: rightX, y: padY }

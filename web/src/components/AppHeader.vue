@@ -29,6 +29,7 @@ const emit = defineEmits([
   'open-mindmap',
   'open-study',
   'open-progress',
+  'open-manual',
   'go-course',
   'go-home',
 ])
@@ -59,6 +60,7 @@ const { user, isLoggedIn, isAdmin } = useAuth()
         @open-mindmap="emit('open-mindmap')"
         @open-study="emit('open-study')"
         @open-progress="emit('open-progress')"
+        @open-manual="emit('open-manual')"
         @open-settings="emit('open-settings')"
         @open-history="emit('open-history')"
         @open-trace="emit('open-trace')"

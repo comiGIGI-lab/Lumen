@@ -412,32 +412,31 @@ const interaction = usePetInteraction({
   getPetName: () => displayName.value,
   onAction(action, exp) {
     if (typeof logExp === 'function') {
-      logExp(`学伴互动·${action.name}`, exp)
+      logExp(`学伴互动·${action.id}`, exp)
     } else if (typeof grantExp === 'function') {
       grantExp(exp)
     }
-    showBubble(action.bubble, 'action')
-    showCenterToast(`学伴互动 +${exp} 经验`, 1800)
+    showBubble(t(action.bubbleKey), 'action')
+    showCenterToast(t('pet.toast.exp', { n: exp }), 1800)
   },
   onCozyBubble(name) {
-    showCenterToast(`${name} 蹭了蹭你的手指`, 3000)
+    showCenterToast(t('pet.toast.cozy', { name }), 3000)
   },
   onIdleBubble() {
-    const bubbles = [
-      '要不要去自习一会儿？我陪你。',
-      '学习累了吗？来做几道「选择题闯关」放松下吧！',
-      '记得把最新的课程资料传给我，我才能帮你出好题哦！',
-      '无聊的话，可以双击我玩耍一下~'
-    ]
-    const text = bubbles[Math.floor(Math.random() * bubbles.length)]
+    const keys = ['pet.idle.1', 'pet.idle.2', 'pet.idle.3', 'pet.idle.4']
+    const text = t(keys[Math.floor(Math.random() * keys.length)])
     showCenterToast(text, 4000)
   },
 })
 
+function actionLabel(action) {
+  return t(action.nameKey)
+}
+
 function handleMenuAction(action) {
   const res = interaction.runAction(action)
   if (!res.success) {
-    showCenterToast(`「${action.name}」冷却中，${res.remaining}s 后再试`, 1500)
+    showCenterToast(t('pet.toast.cooldown', { name: actionLabel(action), s: res.remaining }), 1500)
   }
 }
 </script>
@@ -482,16 +481,16 @@ function handleMenuAction(action) {
       >
         <PetSprite :pet-id="pet.id" :form="pet.form" :size="spriteSize" />
       </div>
-      <p v-if="showTuckHint && !dock" class="tuck-hint" role="status">拖到左右缘可收成探头。浮窗点 − 、空间钮点 ‹ 收到边签。</p>
+      <p v-if="showTuckHint && !dock" class="tuck-hint" role="status">{{ t('pet.tuck') }}</p>
       <!-- 双击互动菜单：摸摸 / 喂食 / 玩耍 -->
       <div
         v-if="!dock && showActionMenu"
         class="interaction-menu"
         role="menu"
-        aria-label="学伴互动"
+        :aria-label="t('pet.menu.label')"
       >
         <div class="menu-head">
-          <span class="menu-title">互动 · {{ displayName }}</span>
+          <span class="menu-title">{{ t('pet.menu.title', { name: displayName }) }}</span>
           <button type="button" class="menu-x" @click.stop="showActionMenu = false">×</button>
         </div>
         <div class="menu-list">
@@ -503,7 +502,7 @@ function handleMenuAction(action) {
             :class="{ disabled: !interaction.canRun(act.id) }"
             @click.stop="handleMenuAction(act)"
           >
-            <span class="item-name">{{ act.name }}</span>
+            <span class="item-name">{{ actionLabel(act) }}</span>
             <span class="item-exp">+{{ act.exp }} exp</span>
             <span v-if="!interaction.canRun(act.id)" class="item-cd">
               {{ interaction.getRemainingCooldown(act.id) }}s

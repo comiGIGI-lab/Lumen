@@ -158,5 +158,12 @@ const { t } = useI18n()
   .right .pill:not(.cache) {
     display: none;
   }
+  .motto {
+    display: none;
+  }
+  .status {
+    min-height: 28px;
+    padding: 4px 12px;
+  }
 }
 </style>
