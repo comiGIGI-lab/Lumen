@@ -36,7 +36,8 @@ const { t, isEn } = useI18n()
 const showPrivacy = ref(false)
 const activeCard = ref(0)
 
-// 与顶栏主入口一致：学习方案、知识库、课程问答闯关、自习空间。const cards = [
+// 与顶栏主入口一致：学习方案、知识库、课程问答闯关、自习空间。
+const cards = [
   {
     num: '01',
     title: '学习方案生成',
@@ -63,7 +64,8 @@ const activeCard = ref(0)
     title: '自习空间',
     enTitle: 'Study space',
     body: '进来就展开自习坞。电脑端场景和专注设置左右并排，窄屏上下排列。完整计时结束才计入经验。',
-    enBody: 'The study dock opens when you enter. On a computer, scenes and focus settings sit side by side; on a narrow screen they stack. Only a finished timer counts toward experience.',  },
+    enBody: 'The study dock opens when you enter. On a computer, scenes and focus settings sit side by side; on a narrow screen they stack. Only a finished timer counts toward experience.',
+  },
 ]
 
 function onStart() {
@@ -89,7 +91,16 @@ function cardStyle(i) {
 
 <template>
   <div class="welcome" role="dialog" :aria-label="t('welcomeScreen.1')">
-    <!-- 顶栏由 App.vue 的那一份负责。欢迎层自己再挂一份会盖住首页按钮，点了进不去。 -->    <!-- ① HERO：全幅书桌摄影 + 遮罩 + LUMEN 刊名 -->
+    <!-- 右上角关闭：直接进入主界面（顶栏由 App.vue 那一份负责，不在此重复挂载） -->
+    <button
+      type="button"
+      class="wl-close"
+      :aria-label="t('welcomeScreen.24')"
+      :title="t('welcomeScreen.24')"
+      @click="emit('start')"
+    >×</button>
+    <!-- 顶栏由 App.vue 的那一份负责。欢迎层自己再挂一份会盖住首页按钮，点了进不去。 -->
+    <!-- ① HERO：全幅书桌摄影 + 遮罩 + LUMEN 刊名 -->
     <section class="wl-hero">
       <div class="wl-hero-photo" aria-hidden="true">
         <img src="/hero-desk.jpg" alt="" />
@@ -104,7 +115,8 @@ function cardStyle(i) {
           <button class="wl-btn wl-btn-light" type="button" @click="onStart">{{ t('welcomeScreen.6') }}</button>
           <button class="wl-btn wl-btn-light" type="button" @click="emit('open-knowledge')">{{ t('welcomeScreen.7') }}</button>
           <button class="wl-btn wl-btn-light" type="button" @click="emit('open-chat')">{{ t('welcomeScreen.8') }}</button>
-          <button class="wl-btn wl-btn-light" type="button" @click="emit('open-study')">{{ t('nav.study') }}</button>        </div>
+          <button class="wl-btn wl-btn-light" type="button" @click="emit('open-study')">{{ t('nav.study') }}</button>
+        </div>
       </div>
     </section>
 
@@ -158,7 +170,8 @@ function cardStyle(i) {
           <button class="wl-btn" type="button" @click="onStart">{{ t('welcomeScreen.13') }}</button>
           <button class="wl-btn" type="button" @click="emit('open-knowledge')">{{ t('welcomeScreen.14') }}</button>
           <button class="wl-btn" type="button" @click="emit('open-chat')">{{ t('welcomeScreen.15') }}</button>
-          <button class="wl-btn" type="button" @click="emit('open-study')">{{ t('nav.study') }}</button>        </div>
+          <button class="wl-btn" type="button" @click="emit('open-study')">{{ t('nav.study') }}</button>
+        </div>
       </div>
     </section>
 
@@ -226,6 +239,29 @@ function cardStyle(i) {
 .wl-inner {
   max-width: 720px;
   margin: 0 auto;
+}
+
+/* 右上角关闭按钮：浮在 hero 上，点一下直接进入主界面 */
+.wl-close {
+  position: fixed;
+  top: 18px;
+  right: 20px;
+  z-index: 100;
+  width: 40px;
+  height: 40px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 50%;
+  background: rgba(20, 20, 20, 0.35);
+  color: #f7f2ea;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  backdrop-filter: blur(6px);
+  transition: background 0.15s ease, transform 0.15s ease;
+}
+.wl-close:hover {
+  background: rgba(20, 20, 20, 0.55);
+  transform: scale(1.05);
 }
 
 .wl-hero {

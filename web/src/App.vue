@@ -9,7 +9,7 @@
  * 所有业务逻辑都在后端（复用 study-liu 桌面版的 core / agents / tools），
  * 前端只做展示与交互。
  */
-import { computed, defineAsyncComponent, onMounted, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from '@/i18n'
 const { t } = useI18n()
 import AppHeader from './components/AppHeader.vue'
@@ -45,7 +45,6 @@ import PetGuide from './components/PetGuide.vue'
 import PetCompanion from './components/PetCompanion.vue'
 import PetProfileDialog from './components/PetProfileDialog.vue'
 import TourDialog from './components/TourDialog.vue'
-import TourBubble from './components/TourBubble.vue'
 
 // ---------- 基础状态 ----------
 const booted = ref(false)
@@ -199,73 +198,41 @@ registerSessionComplete((minutes) => {
   grantStudyExp(minutes)
 })
 
-// ---------- 单界面气泡：六个功能位首次进入时延迟 800ms 浮起 ----------
-// 与 TourDialog 总览互不冲突：总览只首访一次；气泡按 storage_key 各自独立。
-// storage_key 一旦写过 'true' 就再也不会弹；切换 appView / showSettings / panelOpen 时由 watch 触发。
-const bubble = ref({ open: false, title: '', body: '', storageKey: '' })
-const bubbleTimers = { plan: 0, kb: 0, chat: 0, study: 0, space: 0, settings: 0 }
-let bubbleTimer = 0
-function closeBubble() {
-  bubble.value.open = false
-  if (bubbleTimer) {
-    clearTimeout(bubbleTimer)
-    bubbleTimer = 0
-  }
+// 各功能第一次进入时，由学伴身上的气泡说一句。完整说明在使用手册，这里不另弹卡片。
+const TIP_KEYS = {
+  plan: 'zjxt.tip_plan',
+  kb: 'zjxt.tip_kb',
+  chat: 'zjxt.tip_chat',
+  study: 'zjxt.tip_study',
+  space: 'zjxt.tip_space',
+  settings: 'zjxt.tip_settings',
 }
-function onBubbleDismiss() {
-  // storage_key 已在 TourBubble.onDismiss 里写过 true，这里只收尾
-  bubble.value.open = false
-  if (bubbleTimer) {
-    clearTimeout(bubbleTimer)
-    bubbleTimer = 0
-  }
+const tipTimers = { plan: 0, kb: 0, chat: 0, study: 0, space: 0, settings: 0 }
+const pendingTips = []
+function sayTip(text) {
+  window.dispatchEvent(new CustomEvent('zjxt:pet-say', { detail: { text } }))
 }
-function maybeShowBubble(viewId, title, body, storageKey) {
+function flushTips() {
+  const queued = pendingTips.splice(0)
+  queued.forEach((text) => sayTip(text))
+}
+if (typeof window !== 'undefined') {
+  window.addEventListener('zjxt:pet-ready', flushTips)
+}
+function maybeTip(id, text) {
+  const key = TIP_KEYS[id]
   try {
-    if (localStorage.getItem(storageKey) === 'true') return
+    if (localStorage.getItem(key) === 'true') return
+    localStorage.setItem(key, 'true')
   } catch (_) {
-    /* 取不到就当没看过，照弹 */
+    /* 存不上也不挡住这一次 */
   }
-  if (bubble.value.open) return // 同时只浮一个
-  clearTimeout(bubbleTimers[viewId])
-  bubbleTimers[viewId] = setTimeout(() => {
-    bubble.value = { open: true, title, body, storageKey }
-    bubbleTimer = bubbleTimers[viewId]
-    bubbleTimers[viewId] = 0
+  clearTimeout(tipTimers[id])
+  tipTimers[id] = setTimeout(() => {
+    if (!document.querySelector('.buddy')) pendingTips.push(text)
+    else sayTip(text)
+    tipTimers[id] = 0
   }, 800)
-}
-// 六个气泡对应文案 + storage_key（首次进入各功能界面时浮一次）
-const BUBBLES = {
-  plan: {
-    title: '学习方案',
-    body: '把课件、板书和笔记交给这里，Agent 流水线会生成大纲、资源和学习计划。入门 / 进阶 / 冲刺 三档画像匹配时长和深度。',
-    storageKey: 'zjxt.tour_plan',
-  },
-  kb: {
-    title: '知识库',
-    body: '先在导入页把文档拖进来，这里就能搜到。问答会引用来源段落，不用担心它瞎编。',
-    storageKey: 'zjxt.tour_kb',
-  },
-  chat: {
-    title: '课程问答',
-    body: '对刚生成的方案追问、或者新开一个会话都行。回答会带上引用来源，点一下就能跳回去。',
-    storageKey: 'zjxt.tour_chat',
-  },
-  study: {
-    title: '自习空间',
-    body: '视频为主体，三扇固定窗：场景、计时、控件。时长按入门 / 进阶 / 冲刺三档，完整跑完才计经验。',
-    storageKey: 'zjxt.tour_study',
-  },
-  space: {
-    title: '个人空间',
-    body: '这里看当前化身、性格与学习类型、升级进度。要换化身走下方「更换学伴宠物」。',
-    storageKey: 'zjxt.tour_space',
-  },
-  settings: {
-    title: '设置',
-    body: 'base_url 两种填法：调 LLM 时填官方 / 中转地址；本地 Key 加密存盘。provider 列表自动从后端拉。',
-    storageKey: 'zjxt.tour_settings',
-  },
 }
 
 const appView = ref('course')
@@ -303,7 +270,7 @@ function openLogs() {
 
 function goKnowledge(section) {
   if (showWelcome.value) onWelcomeDone()
-  knowledgeSection.value = section === 'speech' || section === 'map' ? section : 'notes'
+  knowledgeSection.value = ['speech', 'map', 'wrong'].includes(section) ? section : 'notes'
   appView.value = 'knowledge'
 }
 
@@ -327,8 +294,7 @@ function goStudy() {
 }
 
 function goWrongBook() {
-  if (showWelcome.value) onWelcomeDone()
-  appView.value = 'wrongbook'
+  goKnowledge('wrong')
 }
 
 function goProgress() {
@@ -401,38 +367,18 @@ watch(activeScene, (s) => {
 // appView 切换触发：course / knowledge / import / chat / study 各自对应气泡
 watch(appView, (v) => {
   if (showGuide.value || showWelcome.value) return
-  if (v === 'course') {
-    maybeShowBubble('plan', BUBBLES.plan.title, BUBBLES.plan.body, BUBBLES.plan.storageKey)
-  } else if (v === 'knowledge' || v === 'import') {
-    maybeShowBubble('kb', BUBBLES.kb.title, BUBBLES.kb.body, BUBBLES.kb.storageKey)
-  } else if (v === 'chat') {
-    maybeShowBubble('chat', BUBBLES.chat.title, BUBBLES.chat.body, BUBBLES.chat.storageKey)
-  } else if (v === 'study') {
-    maybeShowBubble('study', BUBBLES.study.title, BUBBLES.study.body, BUBBLES.study.storageKey)
-  }
+  if (v === 'course') maybeTip('plan', t('tip.plan'))
+  else if (v === 'knowledge' || v === 'import') maybeTip('kb', t('tip.kb'))
+  else if (v === 'chat') maybeTip('chat', t('tip.chat'))
+  else if (v === 'study') maybeTip('study', t('tip.study'))
 })
-// 设置弹窗打开时浮一次气泡（首次进入）
 watch(showSettings, (v) => {
-  if (!v) return
-  if (showGuide.value || showWelcome.value) return
-  if (settingsOnboarding.value) return
-  maybeShowBubble(
-    'settings',
-    BUBBLES.settings.title,
-    BUBBLES.settings.body,
-    BUBBLES.settings.storageKey,
-  )
+  if (!v || showGuide.value || showWelcome.value || settingsOnboarding.value) return
+  maybeTip('settings', t('tip.settings'))
 })
-// 个人空间（SpacePanel）打开时浮一次气泡（首次进入）
 watch(spacePanelOpen, (v) => {
-  if (!v) return
-  if (showGuide.value || showWelcome.value) return
-  maybeShowBubble(
-    'space',
-    BUBBLES.space.title,
-    BUBBLES.space.body,
-    BUBBLES.space.storageKey,
-  )
+  if (!v || showGuide.value || showWelcome.value) return
+  maybeTip('space', t('tip.space'))
 })
 
 // ---------- 状态栏 ----------
@@ -522,7 +468,12 @@ async function loadBootstrap() {
     suggestedDays.value = data.suggested_days || 7
     sourceDir.value = data.source_dir || ''
     traceFile.value = data.trace_file || ''
-    statusText.value = t('status.readyDetail', { label: data.mode?.label || '' })
+    // label 由前端按语言出（后端返回的 label 固定中文），避免英文状态栏出现「Mock 模式」
+    const m = data.mode || {}
+    const modeLabel = m.mode === 'llm'
+      ? t('status.llmLabel', { m: m.model || '' })
+      : t('status.mockLabel')
+    statusText.value = t('status.readyDetail', { label: modeLabel })
     // LLM 模式却没 Key：不主动提示的话，用户只能看着「LLM 模式」角标
     // 却不知道去哪儿填自己的 API Key（之前就是这样，体验很差）
     needsKey.value = !!data.mode && data.mode.mode !== 'mock' && !data.mode.has_key
@@ -781,6 +732,18 @@ const isMockMode = computed(() => mode.value?.mode === 'mock')
  * - Mock 模式：本来就是内置数据，用中性提示即可，不要吓用户；
  * - LLM 模式：大模型调用失败走了模板，必须橙色告警，明确说明「这不是大模型生成的」。
  */
+function onPetGo(e) {
+  const target = e.detail && e.detail.target
+  if (target === 'study') goStudy()
+  else if (target === 'chat') goChat()
+  else if (target === 'knowledge') goKnowledge('notes')
+  else if (target === 'wrong') goKnowledge('wrong')
+}
+if (typeof window !== 'undefined') window.addEventListener('zjxt:go', onPetGo)
+onBeforeUnmount(() => {
+  if (typeof window !== 'undefined') window.removeEventListener('zjxt:go', onPetGo)
+})
+
 const degradedBanner = computed(() => {
   const d = result.value?.degraded
   if (!d) return null
@@ -1007,15 +970,6 @@ const degradedBanner = computed(() => {
     />
 
     <!-- 单界面气泡：六个功能位首次进入时延迟 800ms 浮起，无遮罩，z-index 150 -->
-    <TourBubble
-      :open="bubble.open"
-      :title="bubble.title"
-      :body="bubble.body"
-      :storage-key="bubble.storageKey"
-      @close="closeBubble"
-      @dismiss="onBubbleDismiss"
-    />
-
     <!-- 宠物档案弹层：点击宠物本体触发，z-index 155（高于悬浮窗 140 不盖总览 160） -->
     <PetProfileDialog
       :open="showProfile"

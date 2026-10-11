@@ -11,8 +11,9 @@ import { useI18n } from '@/i18n'
 import SnakeBar from './SnakeBar.vue'
 import TranscribePage from './TranscribePage.vue'
 import MindMapPage from './MindMapPage.vue'
+import WrongBookPage from './WrongBookPage.vue'
 import { api } from '@/api/client'
-import { TAG_LABEL, useKnowledge } from '@/composables/useKnowledge'
+import { useKnowledge } from '@/composables/useKnowledge'
 
 const emit = defineEmits(['back', 'open-import', 'go-course', 'notify'])
 const props = defineProps({
@@ -20,14 +21,18 @@ const props = defineProps({
 })
 const { t } = useI18n()
 
-const SCOPES = [
-  { id: 'all', label: '全部笔记' },
-  { id: 'private', label: '我的私有' },
-  { id: 'public', label: '公共资料' },
-]
+const SCOPES = computed(() => [
+  { id: 'all', label: t('kb.scopeAll') },
+  { id: 'private', label: t('kb.scopePrivate') },
+  { id: 'public', label: t('kb.scopePublic') },
+])
 
-const TYPE_LABEL = { pdf: 'PDF', image: '图片', md: 'Markdown', txt: '文本', note: '笔记', docx: 'Word', pptx: 'PPT' }
-const STATUS_LABEL = { ready: '已入库', parsing: '解析中', queue: '排队中', failed: '失败' }
+function typeLabel(type) {
+  return { pdf: 'PDF', image: t('kb.typeImage'), md: 'Markdown', txt: t('kb.typeText'), note: t('kb.typeNote'), docx: 'Word', pptx: 'PPT' }[type] || type
+}
+function statusLabel(status) {
+  return { ready: t('kb.stReady'), parsing: t('kb.stParsing'), queue: t('kb.stQueue'), failed: t('kb.stFailed') }[status] || status
+}
 
 const ACCEPT = '.pdf,.md,.markdown,.txt,.text,.docx,.pptx,.png,.jpg,.jpeg,.webp,.bmp,.gif'
 const MAX_FILES = 10
@@ -53,12 +58,14 @@ const {
 
 ensureLoaded()
 
-const section = ref(props.section === 'speech' || props.section === 'map' ? props.section : 'notes')
-const SECTIONS = [
-  { id: 'notes', label: '笔记' },
-  { id: 'speech', label: '语音转写' },
-  { id: 'map', label: '思维导图' },
-]
+const KB_SECTIONS = ['speech', 'map', 'wrong']
+const section = ref(KB_SECTIONS.includes(props.section) ? props.section : 'notes')
+const SECTIONS = computed(() => [
+  { id: 'notes', label: t('kb.sNotes') },
+  { id: 'speech', label: t('kb.sSpeech') },
+  { id: 'map', label: t('kb.sMap') },
+  { id: 'wrong', label: t('kb.sWrong') },
+])
 
 const scope = ref('all')
 const category = ref('')
@@ -95,15 +102,20 @@ async function loadCategories() {
 }
 
 const CATEGORY_LABEL = {
-  '#import': '导入资料',
-  '#test': '测试笔记',
-  '#t': '未命名分类',
+  '#import': 'kb.catImport',
+  '#test': 'kb.catTest',
+  '#t': 'kb.catUnnamed',
 }
 
 function categoryLabel(raw) {
   const name = String(raw || '').trim()
-  if (CATEGORY_LABEL[name]) return CATEGORY_LABEL[name]
-  return name.replace(/^#/, '') || '未命名分类'
+  if (CATEGORY_LABEL[name]) return t(CATEGORY_LABEL[name])
+  return name.replace(/^#/, '') || t('kb.catUnnamed')
+}
+
+function tagLabel(tag) {
+  const map = { 'high-math': 'kb.tagHighMath', english: 'kb.tagEnglish', mistakes: 'kb.tagMistakes', others: 'kb.tagOthers' }
+  return map[tag] ? t(map[tag]) : (tag || t('kb.tagOthers'))
 }
 
 function listOptions() {
@@ -114,7 +126,7 @@ function listOptions() {
 }
 
 watch(() => props.section, (next) => {
-  section.value = next === 'speech' || next === 'map' ? next : 'notes'
+  section.value = KB_SECTIONS.includes(next) ? next : 'notes'
 })
 
 watch(keyword, (q) => {
@@ -125,8 +137,9 @@ watch([scope, category], () => refresh(keyword.value.trim(), listOptions()))
 loadCategories()
 
 const sectionLead = computed(() => {
-  if (section.value === 'speech') return '上传讲课录音或一段语音，转成可修改的文字，再存进笔记。'
-  if (section.value === 'map') return '用已有学习方案生成导图，或从空白开始。单击选中，双击改字。'
+  if (section.value === 'speech') return t('kb.leadSpeech')
+  if (section.value === 'map') return t('kb.leadMap')
+  if (section.value === 'wrong') return t('kb.leadWrong')
   return t('knowledgePage.6')
 })
 
@@ -158,7 +171,7 @@ function downloadNote() {
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
   link.href = url
-  link.download = `${current.value.title || '笔记'}.txt`
+  link.download = `${current.value.title || t('kb.sNotes')}.txt`
   link.click()
   URL.revokeObjectURL(url)
 }
@@ -170,7 +183,7 @@ async function makeShare() {
   try {
     const res = await api.knowledgeShare(ids)
     shareCode.value = res.code || ''
-    shareNote.value = '对方登录后兑换，会复制进对方的私有笔记。'
+    shareNote.value = t('kb.shareMade')
   } catch (e) {
     shareNote.value = e.message || String(e)
   }
@@ -183,7 +196,7 @@ async function redeemShare() {
   try {
     const res = await api.knowledgeRedeem(code)
     redeemCode.value = ''
-    shareNote.value = `已收入 ${res.count || 0} 条到你的私有笔记。`
+    shareNote.value = t('kb.redeemed', { n: res.count || 0 })
     scope.value = 'private'
     await refresh('', listOptions())
   } catch (e) {
@@ -194,11 +207,11 @@ async function redeemShare() {
 async function copyCode() {
   if (!shareCode.value || !navigator.clipboard) return
   await navigator.clipboard.writeText(shareCode.value)
-  shareNote.value = '口令已复制。'
+  shareNote.value = t('kb.copied')
 }
 
 async function addCategory() {
-  const name = window.prompt('新分类名称', '')
+  const name = window.prompt(t('kb.newCatPh'), '')
   if (name === null) return
   const categoryName = name.trim()
   if (!categoryName) return
@@ -208,9 +221,9 @@ async function addCategory() {
 }
 
 function newNote() {
-  const title = window.prompt('新笔记标题', '未命名笔记')
+  const title = window.prompt(t('kb.newNotePh'), t('kb.newNoteDefault'))
   if (title === null) return
-  createNote(title.trim() || '未命名笔记', {
+  createNote(title.trim() || t('kb.newNoteDefault'), {
     scope: uploadScope.value,
     category: uploadCategory.value,
     list: listOptions(),
@@ -229,7 +242,7 @@ function saveRemark() {
 
 async function deleteDoc(doc) {
   if (!current.value || !doc) return
-  if (!window.confirm(`删除「${doc.name}」及其全部 ${doc.chunks} 个分块？`)) return
+  if (!window.confirm(t('kb.deleteDoc', { name: doc.name, n: doc.chunks }))) return
   await removeDoc(current.value.id, doc.id)
 }
 
@@ -258,7 +271,7 @@ function addFiles(fileList) {
   const list = Array.from(fileList || []).slice(0, Math.max(0, room))
   list.forEach((file) => {
     if (file.size > MAX_BYTES) {
-      importNote.value = `已跳过「${file.name}」：${fmtSize(file.size)} 超过 16 MB`
+      importNote.value = t('kb.skipBig', { name: file.name, size: fmtSize(file.size) })
       return
     }
     picked.value.push({
@@ -292,7 +305,7 @@ function onDrop(e) {
 async function startUpload() {
   if (running.value || !picked.value.length) return
   running.value = true
-  importNote.value = '正在上传解析…'
+  importNote.value = t('kb.uploading')
   let ok = 0
   for (const row of picked.value) {
     row.status = 'uploading'
@@ -309,7 +322,7 @@ async function startUpload() {
         ok += 1
       } else {
         row.status = 'failed'
-        row.error = r.error || '导入失败'
+        row.error = r.error || t('kb.importFail')
       }
     } catch (e) {
       row.status = 'failed'
@@ -320,8 +333,8 @@ async function startUpload() {
   keyword.value = ''
   running.value = false
   importNote.value = ok
-    ? `已入库 ${ok} 个文件${picked.value.length - ok ? `，${picked.value.length - ok} 个失败` : ''}。`
-    : '全部失败，请看每行的原因。'
+    ? `${t('kb.imported', { ok })}${picked.value.length - ok ? `，${picked.value.length - ok} ${t('kb.stFailed')}` : ''}。`
+    : t('kb.importFailedAll')
 }
 
 onBeforeUnmount(() => {
@@ -347,7 +360,7 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
-    <div class="kb-sections" role="tablist" aria-label="知识库内容">
+    <div class="kb-sections" role="tablist" :aria-label="t('knowledgePage.5')">
       <button
         v-for="item in SECTIONS"
         :key="item.id"
@@ -371,12 +384,19 @@ onBeforeUnmount(() => {
       @back="section = 'notes'"
       @notify="emit('notify', $event)"
     />
+    <WrongBookPage
+      v-else-if="section === 'wrong'"
+      embedded
+      @back="section = 'notes'"
+      @go-course="emit('go-course')"
+      @notify="emit('notify', $event)"
+    />
 
     <template v-else>
     <div class="kb-groups">
       <div class="kb-group">
-        <span class="kb-group-name">范围</span>
-        <div class="seg" role="group" aria-label="资料范围">
+        <span class="kb-group-name">{{ t('kb.range') }}</span>
+        <div class="seg" role="group" :aria-label="t('kb.range')">
           <button
             v-for="item in SCOPES"
             :key="item.id"
@@ -388,9 +408,9 @@ onBeforeUnmount(() => {
         </div>
       </div>
       <div class="kb-group">
-        <span class="kb-group-name">分类</span>
-        <div class="cats" role="group" aria-label="资料分类">
-          <button type="button" :class="{ on: category === '' }" @click="category = ''">全部分类</button>
+        <span class="kb-group-name">{{ t('kb.cat') }}</span>
+        <div class="cats" role="group" :aria-label="t('kb.cat')">
+          <button type="button" :class="{ on: category === '' }" @click="category = ''">{{ t('kb.catAll') }}</button>
           <button
             v-for="item in categories"
             :key="item"
@@ -399,17 +419,17 @@ onBeforeUnmount(() => {
             :title="item"
             @click="category = item"
           >{{ categoryLabel(item) }}</button>
-          <button type="button" class="ghost" @click="addCategory">新增分类</button>
+          <button type="button" class="ghost" @click="addCategory">{{ t('kb.catNew') }}</button>
         </div>
       </div>
       <div class="kb-group">
-        <span class="kb-group-name">新建</span>
-        <select v-model="uploadScope" aria-label="新建笔记的可见范围">
-          <option value="private">私有笔记</option>
-          <option value="public">公共资料</option>
+        <span class="kb-group-name">{{ t('kb.new') }}</span>
+        <select v-model="uploadScope" :aria-label="t('kb.new')">
+          <option value="private">{{ t('kb.scopePrivate') }}</option>
+          <option value="public">{{ t('kb.scopePublic') }}</option>
         </select>
-        <select v-model="uploadCategory" aria-label="新建笔记的分类">
-          <option value="">不指定分类</option>
+        <select v-model="uploadCategory" :aria-label="t('kb.cat')">
+          <option value="">{{ t('kb.catNone') }}</option>
           <option v-for="item in categories" :key="`upload-${item}`" :value="item">{{ categoryLabel(item) }}</option>
         </select>
       </div>
@@ -417,11 +437,11 @@ onBeforeUnmount(() => {
 
     <div class="kb-search">
       <input v-model="keyword" type="search" :placeholder="t('knowledgePage.1')" />
-      <button type="button" class="ghost" @click="showShare = true">分享 / 兑换</button>
-      <button v-if="keyword" type="button" class="ghost" @click="keyword = ''">清除搜索</button>
+      <button type="button" class="ghost" @click="showShare = true">{{ t('kb.share') }}</button>
+      <button v-if="keyword" type="button" class="ghost" @click="keyword = ''">{{ t('kb.clearSearch') }}</button>
       <span v-if="loading" class="kb-state">{{ t('knowledgePage.10') }}</span>
       <span v-else-if="error" class="kb-state err">{{ error }}</span>
-      <span v-else-if="lastQuery" class="kb-state">正在显示「{{ lastQuery }}」的检索结果</span>
+      <span v-else-if="lastQuery" class="kb-state">{{ t('kb.showing', { q: lastQuery }) }}</span>
     </div>
 
     <div v-if="empty" class="empty">
@@ -435,8 +455,8 @@ onBeforeUnmount(() => {
       <div class="empty-btns">
         <button type="button" class="ok" @click="openImport">{{ t('knowledgePage.19') }}</button>
         <button type="button" class="ghost" @click="emit('open-import')">{{ t('knowledgePage.20') }}</button>
-        <button type="button" class="ghost" @click="section = 'speech'">语音转写</button>
-        <button type="button" class="ghost" @click="section = 'map'">思维导图</button>
+        <button type="button" class="ghost" @click="section = 'speech'">{{ t('kb.sSpeech') }}</button>
+        <button type="button" class="ghost" @click="section = 'map'">{{ t('kb.sMap') }}</button>
         <button type="button" class="ghost" @click="emit('go-course')">{{ t('knowledgePage.21') }}</button>
       </div>
     </div>
@@ -458,12 +478,12 @@ onBeforeUnmount(() => {
             @click="pickNote(n.id)"
           >
             <span class="note-t">{{ n.title }}</span>
-            <span class="chip">{{ TAG_LABEL[n.tag] }}</span>
+            <span class="chip">{{ tagLabel(n.tag) }}</span>
             <span class="note-d">{{ n.updated }}</span>
           </button>
           <p v-if="!filtered.length" class="none">
           {{ t('knowledgePage.24') }}
-          <button type="button" class="ghost small" @click="clearBrowse">返回全部笔记</button>
+          <button type="button" class="ghost small" @click="clearBrowse">{{ t('kb.returnAll') }}</button>
         </p>
         </div>
         <button type="button" class="ghost new" @click="newNote">{{ t('knowledgePage.25') }}</button>
@@ -471,10 +491,10 @@ onBeforeUnmount(() => {
 
       <section v-if="current" class="detail">
         <div class="note-facts">
-          <span>{{ current.scope === 'private' ? '私有' : '公共' }}</span>
+          <span>{{ current.scope === 'private' ? t('kb.private') : t('kb.public') }}</span>
           <span v-if="current.category">{{ categoryLabel(current.category) }}</span>
-          <button type="button" class="ghost small" @click="showShare = true">分享这条笔记</button>
-          <button type="button" class="ghost small" @click="downloadNote">下载文本</button>
+          <button type="button" class="ghost small" @click="showShare = true">{{ t('kb.shareNote') }}</button>
+          <button type="button" class="ghost small" @click="downloadNote">{{ t('kb.download') }}</button>
         </div>
 
         <label class="title-lab">
@@ -485,8 +505,8 @@ onBeforeUnmount(() => {
         <dl class="meta">
           <div><dt>{{ t('knowledgePage.27') }}</dt><dd>{{ current.created }}</dd></div>
           <div><dt>{{ t('knowledgePage.28') }}</dt><dd>{{ current.updated }}</dd></div>
-          <div><dt>{{ t('knowledgePage.29') }}</dt><dd>{{ TAG_LABEL[current.tag] }}</dd></div>
-          <div><dt>{{ t('knowledgePage.30') }}</dt><dd>{{ currentDocs.length }} 个</dd></div>
+          <div><dt>{{ t('knowledgePage.29') }}</dt><dd>{{ tagLabel(current.tag) }}</dd></div>
+          <div><dt>{{ t('knowledgePage.30') }}</dt><dd>{{ currentDocs.length }}</dd></div>
         </dl>
 
         <div class="table-wrap">
@@ -506,9 +526,9 @@ onBeforeUnmount(() => {
               </tr>
               <tr v-for="d in currentDocs" :key="d.id" :class="{ fail: d.status === 'failed' }">
                 <td>{{ d.name }}</td>
-                <td>{{ TYPE_LABEL[d.type] }}</td>
+                <td>{{ typeLabel(d.type) }}</td>
                 <td>
-                  <span class="st" :class="d.status">{{ STATUS_LABEL[d.status] }}</span>
+                  <span class="st" :class="d.status">{{ statusLabel(d.status) }}</span>
                   <span v-if="d.status === 'parsing'" class="pct">{{ d.progress }}%</span>
                   <SnakeBar v-if="d.status === 'parsing'" :progress="d.progress" status="parsing" />
                 </td>
@@ -548,26 +568,26 @@ onBeforeUnmount(() => {
 
     <Teleport to="body">
       <div v-if="showShare" class="mask" @click.self="showShare = false">
-        <div class="modal" role="dialog" aria-label="分享笔记">
+        <div class="modal" role="dialog" :aria-label="t('kb.shareNote')">
           <header>
-            <h3>分享「{{ current?.title || '笔记' }}」</h3>
+            <h3>{{ t('kb.shareTitle', { title: current?.title || t('kb.sNotes') }) }}</h3>
             <button type="button" class="x" @click="showShare = false">×</button>
           </header>
-          <p class="modal-hint">口令会把这份笔记复制到对方的私有笔记，不进入团队空间。也可以直接下载文本。</p>
+          <p class="modal-hint">{{ t('kb.shareHint') }}</p>
           <div class="share-row">
-            <button type="button" class="ok" @click="makeShare">生成口令</button>
+            <button type="button" class="ok" @click="makeShare">{{ t('kb.makeShare') }}</button>
             <strong v-if="shareCode">{{ shareCode }}</strong>
-            <button v-if="shareCode" type="button" class="ghost" @click="copyCode">复制</button>
-            <button type="button" class="ghost" @click="downloadNote">下载文本</button>
+            <button v-if="shareCode" type="button" class="ghost" @click="copyCode">{{ t('kb.copy') }}</button>
+            <button type="button" class="ghost" @click="downloadNote">{{ t('kb.download') }}</button>
           </div>
           <label class="redeem">
-            <span>兑换别人的口令</span>
-            <input v-model="redeemCode" type="text" maxlength="12" placeholder="输入 8 位口令" />
+            <span>{{ t('kb.redeemLabel') }}</span>
+            <input v-model="redeemCode" type="text" maxlength="12" :placeholder="t('kb.redeemPh')" />
           </label>
           <p v-if="shareNote" class="demo-note">{{ shareNote }}</p>
           <footer>
-            <button type="button" class="ghost" @click="showShare = false">关闭</button>
-            <button type="button" class="ok" @click="redeemShare">兑换到我的私有笔记</button>
+            <button type="button" class="ghost" @click="showShare = false">{{ t('knowledgePage.51') }}</button>
+            <button type="button" class="ok" @click="redeemShare">{{ t('kb.redeemBtn') }}</button>
           </footer>
         </div>
       </div>
@@ -597,12 +617,12 @@ onBeforeUnmount(() => {
               @change="onFileChange"
             />
           </div>
-          <p class="modal-hint">导入的材料会归入当前笔记「{{ current?.title || t('knowledgePageX.1') }}」。</p>
+          <p class="modal-hint">{{ t('kb.importHint', { title: current?.title || t('knowledgePageX.1') }) }}</p>
           <div v-if="picked.length" class="up">
             <div v-for="row in picked" :key="row.id" class="up-row">
               <div class="up-meta">
                 <span>{{ row.name }}</span>
-                <em v-if="row.status === 'ready'">已入库 {{ row.chunks }} 块</em>
+                <em v-if="row.status === 'ready'">{{ t('kb.chunksDone', { n: row.chunks }) }}</em>
                 <em v-else-if="row.status === 'failed'" class="err">{{ row.error }}</em>
                 <em v-else>{{ row.status === 'uploading' ? t('knowledgePageX.2') : t('knowledgePageX.3') }}</em>
               </div>
@@ -633,11 +653,14 @@ onBeforeUnmount(() => {
   display: flex;
   gap: 0;
   width: fit-content;
+  max-width: 100%;
+  overflow-x: auto;
   border-bottom: 1px solid var(--border);
 }
 .kb-sections button {
   min-height: 36px;
   padding: 0 14px;
+  white-space: nowrap;
   border: 0;
   border-bottom: 2px solid transparent;
   background: transparent;

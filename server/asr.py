@@ -41,8 +41,10 @@ SAMPLE_RATE = 16000
 
 # 单次请求的 PCM 上限。16k*16bit*单声道 = 32000 字节/秒，15MB ≈ 8.2 分钟。
 # 卡在 15MB 是为了给 nginx 的 client_max_body_size（20m）留出余量。
+# 业务时长上限单独取整到 8 分钟（480 秒），与前端文案「单次最长 8 分钟」一致；
+# 491 秒（15MB 的整除结果）显示成 8:11 会和文案打架。
 MAX_PCM_BYTES = 15 * 1024 * 1024
-MAX_SECONDS = MAX_PCM_BYTES // (SAMPLE_RATE * 2)
+MAX_SECONDS = 480
 
 # 线上固定位置。放在仓库外，因为模型 66MB 不能进 git（Gitee 会拒）。
 _SERVER_LIBS = "/home/admin/asr/libs"

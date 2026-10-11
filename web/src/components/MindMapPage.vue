@@ -52,7 +52,7 @@ const tree = computed(() => {
   let root = null
   map.forEach((n) => {
     if (n.parent && map.has(n.parent)) map.get(n.parent).children.push(n)
-    else root = n
+    else if (!n.parent) root = n
   })
   return { root, map }
 })
@@ -96,10 +96,10 @@ const links = computed(() => {
     if (!n.parent) return
     const p = byId.get(n.parent)
     if (!p) return
-    const x1 = p._x + NODE_W
-    const y1 = p._y + NODE_H / 2
-    const x2 = n._x
-    const y2 = n._y + NODE_H / 2
+    const x1 = p._x + PAD + NODE_W
+    const y1 = p._y + PAD + NODE_H / 2
+    const x2 = n._x + PAD
+    const y2 = n._y + PAD + NODE_H / 2
     const mx = (x1 + x2) / 2
     out.push({ id: `${p.id}-${n.id}`, d: `M ${x1} ${y1} C ${mx} ${y1}, ${mx} ${y2}, ${x2} ${y2}` })
   })

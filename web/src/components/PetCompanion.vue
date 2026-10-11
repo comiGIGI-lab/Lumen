@@ -318,18 +318,25 @@ function onResize() {
 let tapTimer = null
 const showActionMenu = ref(false)
 
+function onPetSay(e) {
+  const text = e?.detail?.text
+  if (!text) return
+  showBubble(text, e?.detail?.kind || 'thought')
+}
+
 onMounted(() => {
   syncNarrow()
   // 刷新不恢复上次拖动 / 贴边；会话内拖动仍走 savePos，导航和「恢复默认位置」靠事件清掉。
   window.addEventListener('resize', onResize)
   window.addEventListener('zjxt:reset-layout', onSpaceReset)
-  interaction.startIdleWatcher()
+  window.addEventListener('zjxt:pet-say', onPetSay)
+  window.dispatchEvent(new CustomEvent('zjxt:pet-ready'))
   maybeShowTuckHint()
 })
 onBeforeUnmount(() => {
   window.removeEventListener('resize', onResize)
   window.removeEventListener('zjxt:reset-layout', onSpaceReset)
-  interaction.stopIdleWatcher()
+  window.removeEventListener('zjxt:pet-say', onPetSay)
   clearTimeout(bubbleTimer)
   if (hudTimer) clearTimeout(hudTimer)
   if (tapTimer) clearTimeout(tapTimer)
@@ -384,16 +391,65 @@ const hudOn = computed(() => !dock.value && hudVisible.value)
 
 // ---------- 互动层（双击 / 长按 / 闲置） ----------
 const bubbleText = ref('')
-const bubbleKind = ref('') // 'action' | 'cozy' | 'idle' | 'cooldown'
+const bubbleKind = ref('') // talk | shout | thought
+const LINK_LABELS = [
+  ['自习', 'study'],
+  ['闯关', 'chat'],
+  ['知识库', 'knowledge'],
+  ['错题', 'wrong'],
+  ['study', 'study'],
+  ['quiz', 'chat'],
+  ['notes', 'knowledge'],
+]
 let bubbleTimer = 0
-function showBubble(text, kind = 'action', ttl = 1800) {
+
+function bubbleVoice(kind) {
+  if (kind === 'shout' || kind === 'action') return 'shout'
+  if (kind === 'talk' || kind === 'cooldown') return 'talk'
+  return 'thought'
+}
+
+function bubbleParts(text) {
+  const src = String(text || '')
+  const marks = []
+  LINK_LABELS.forEach(([label, target]) => {
+    const at = src.toLowerCase().indexOf(label.toLowerCase())
+    if (at < 0) return
+    if (marks.some((item) => at < item.end && at + label.length > item.start)) return
+    marks.push({ start: at, end: at + label.length, label: src.slice(at, at + label.length), target })
+  })
+  marks.sort((a, b) => a.start - b.start)
+  const out = []
+  let cursor = 0
+  marks.forEach((item) => {
+    if (item.start < cursor) return
+    if (item.start > cursor) out.push({ text: src.slice(cursor, item.start) })
+    out.push({ text: item.label, target: item.target })
+    cursor = item.end
+  })
+  if (cursor < src.length) out.push({ text: src.slice(cursor) })
+  return out.length ? out : [{ text: src }]
+}
+
+const bubbleBits = computed(() => bubbleParts(bubbleText.value))
+
+function showBubble(text, kind = 'talk', ttl = 0) {
   bubbleText.value = text
-  bubbleKind.value = kind
+  bubbleKind.value = bubbleVoice(kind)
   clearTimeout(bubbleTimer)
-  bubbleTimer = setTimeout(() => {
-    bubbleText.value = ''
-    bubbleKind.value = ''
-  }, ttl)
+  bubbleTimer = 0
+}
+
+function dismissBubble() {
+  bubbleText.value = ''
+  bubbleKind.value = ''
+  clearTimeout(bubbleTimer)
+  bubbleTimer = 0
+}
+
+function followBubble(target) {
+  window.dispatchEvent(new CustomEvent('zjxt:go', { detail: { target } }))
+  dismissBubble()
 }
 
 const interaction = usePetInteraction({
@@ -408,11 +464,8 @@ const interaction = usePetInteraction({
     showBubble(t('pet.toast.exp', { n: exp }), 'action', 1800)
   },
   onCozyBubble(name) {
-    showBubble(t('pet.toast.cozy', { name }), 'cozy', 3000)  },
-  onIdleBubble() {
-    const keys = ['pet.idle.1', 'pet.idle.2', 'pet.idle.3', 'pet.idle.4']
-    const text = t(keys[Math.floor(Math.random() * keys.length)])
-    showBubble(text, 'idle', 4000)  },
+    showBubble(t('pet.toast.cozy', { name }), 'cozy', 3000)
+  },
 })
 
 function actionLabel(action) {
@@ -422,7 +475,8 @@ function actionLabel(action) {
 function handleMenuAction(action) {
   const res = interaction.runAction(action)
   if (!res.success) {
-    showBubble(t('pet.toast.cooldown', { name: actionLabel(action), s: res.remaining }), 'cooldown', 1500)  }
+    showBubble(t('pet.toast.cooldown', { name: actionLabel(action), s: res.remaining }), 'cooldown', 1500)
+  }
 }
 </script>
 
@@ -502,7 +556,21 @@ function handleMenuAction(action) {
         :class="['bubble-' + bubbleKind, dock ? 'bubble-dock' : '']"
         role="status"
         aria-live="polite"
-      >{{ bubbleText }}</div>
+      >
+        <span class="bubble-text">
+          <template v-for="(bit, i) in bubbleBits" :key="i">
+            <button
+              v-if="bit.target"
+              type="button"
+              class="bubble-link"
+              @pointerdown.stop
+              @click.stop="followBubble(bit.target)"
+            >{{ bit.text }}</button>
+            <span v-else>{{ bit.text }}</span>
+          </template>
+        </span>
+        <button type="button" class="bubble-x" aria-label="关闭" @pointerdown.stop @click.stop="dismissBubble">×</button>
+      </div>
     </aside>
 
     <div
@@ -660,44 +728,120 @@ function handleMenuAction(action) {
   transition: width 0.4s ease;
 }
 
-/* ---------- 互动气泡（双击/长按/闲置） ----------
-   放在宠物本体上方，米底卡片、深色文字、左侧 2px 红色条与品牌色一致；
-   出现时由下往上轻微浮入（不用 transform: scale 那种大动作，免得遮 HUD）。 */
+/* 漫画气泡：普通对话是圆框带尖角，喊话是爆开的星形，想法是云朵。
+   尖角指向立绘。字号仍是 14px，框内边距只留一圈，文字占大部分。 */
 .bubble {
-  pointer-events: none;
+  pointer-events: auto;
   position: absolute;
-  right: calc(100% + 4px);
-  bottom: 0;
+  right: calc(100% - 8px);
+  bottom: 8px;
   width: max-content;
   max-width: min(220px, calc(100vw - 96px));
   margin: 0;
-  padding: 1px 3px;
-  background: rgba(var(--bg-app-rgb), 0.96);
-  border: 1px solid var(--border);
-  border-left: 2px solid #e51520;
-  border-radius: 3px;
-  color: var(--text-primary);
+  padding: 7px 16px 7px 9px;
+  background: #fffdf8;
+  border: 2px solid #191919;
+  border-radius: 16px;
+  color: #191919;
   font-size: 14px;
   font-weight: 500;
   line-height: 1.25;
   white-space: normal;
-  word-break: break-all;
-  box-shadow: 0 2px 6px rgba(25, 25, 25, 0.08);
   animation: bubble-in 0.18s ease-out;
+}
+.bubble::after {
+  content: '';
+  position: absolute;
+  right: -9px;
+  bottom: 10px;
+  width: 12px;
+  height: 12px;
+  background: #fffdf8;
+  border-right: 2px solid #191919;
+  border-bottom: 2px solid #191919;
+  transform: rotate(-45deg);
+}
+.bubble-text {
+  display: inline;
+}
+.bubble-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #9d1c24;
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.bubble-x {
+  position: absolute;
+  top: -7px;
+  right: -7px;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 1.5px solid #191919;
+  border-radius: 50%;
+  background: #fffdf8;
+  color: #191919;
+  font-size: 12px;
+  line-height: 12px;
+  cursor: pointer;
+}
+.bubble-shout {
+  border-radius: 4px;
+  background:
+    radial-gradient(circle at 12% 20%, transparent 8px, #191919 8.5px, #191919 10px, #fffdf8 10.5px) 0 0 / 22px 20px,
+    #fffdf8;
+  clip-path: polygon(8% 14%, 18% 0, 32% 12%, 48% 0, 60% 14%, 78% 2%, 86% 16%, 100% 10%, 94% 28%, 100% 46%, 92% 58%, 100% 76%, 86% 84%, 90% 100%, 70% 88%, 54% 100%, 40% 86%, 24% 100%, 16% 82%, 0 90%, 8% 70%, 0 52%, 8% 34%);
+  padding: 14px 20px 14px 14px;
+}
+.bubble-shout::after {
+  display: none;
+}
+.bubble-thought {
+  border-radius: 22px;
+  border-style: dashed;
+}
+.bubble-thought::after,
+.bubble-thought::before {
+  border: 1.5px solid #191919;
+  border-radius: 50%;
+  background: #fffdf8;
+  transform: none;
+}
+.bubble-thought::after {
+  width: 7px;
+  height: 7px;
+  right: -12px;
+  bottom: 8px;
+}
+.bubble-thought::before {
+  content: '';
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  right: -18px;
+  bottom: 3px;
 }
 /* 贴左缘时翻到右侧，否则气泡会伸到屏幕外面。贴右缘沿用左侧默认位置。 */
 .buddy.dock-left .bubble.bubble-dock {
   right: auto;
-  left: calc(100% + 4px);
+  left: calc(100% - 8px);
 }
-.bubble-cozy {
-  border-left-color: #d36b7a; /* 撒娇用粉，避免每次都是红 */
+.buddy.dock-left .bubble.bubble-dock::after {
+  right: auto;
+  left: -9px;
+  transform: rotate(135deg);
 }
-.bubble-idle {
-  border-left-color: #4f9a5c; /* 闲置提醒用草绿 */
+.buddy.dock-left .bubble-thought.bubble-dock::after {
+  left: -12px;
+  transform: none;
 }
-.bubble-cooldown {
-  border-left-color: #8a8a8a; /* 冷却中灰 */
+.buddy.dock-left .bubble-thought.bubble-dock::before {
+  left: -18px;
+  right: auto;
 }
 @keyframes bubble-in {
   from {

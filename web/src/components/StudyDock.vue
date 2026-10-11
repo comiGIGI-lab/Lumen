@@ -4,10 +4,11 @@
  * 场景只换背景；声音在「专注设置」里叠加。
  * 定时器开始才播当前组合，暂停静音，再开始接着响。
  */
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useI18n } from '@/i18n'
 import { SCENES } from '@/study/catalog'
 import { useStudyTimer } from '@/composables/useStudyTimer'
+import { useSpace } from '@/composables/useSpace'
 
 const emit = defineEmits(['scene-change'])
 const { t } = useI18n()
@@ -35,11 +36,27 @@ const {
   pickMusic,
   onMusicVolume,
 } = useStudyTimer()
+const { layoutMode, viewW } = useSpace()
 
-// 进自习空间时场景和专注设置都展开。两者互不收起，点按钮只关自己那一块。
-const sceneOpen = ref(true)
-const focusOpen = ref(true)
+// 横向并列只给自习空间页的电脑端（>860，与自习坞竖排同一断点）。
+// 其它页面保持竖排，场景和专注设置互斥，进页不自动展开。
+const sideBySide = computed(() => layoutMode.value === 'study' && viewW.value > 860)
+const sceneOpen = ref(false)
+const focusOpen = ref(false)
 const customDraft = ref(String(customMin.value))
+
+watch(
+  sideBySide,
+  (on) => {
+    if (on) {
+      sceneOpen.value = true
+      focusOpen.value = true
+      return
+    }
+    if (sceneOpen.value && focusOpen.value) focusOpen.value = false
+  },
+  { immediate: true },
+)
 
 watch(
   scene,
@@ -54,8 +71,18 @@ function onPickScene(id) {
 }
 
 function togglePanel(name) {
-  if (name === 'scene') sceneOpen.value = !sceneOpen.value
-  else if (name === 'focus') focusOpen.value = !focusOpen.value
+  const open = name === 'scene' ? sceneOpen : focusOpen
+  const other = name === 'scene' ? focusOpen : sceneOpen
+  if (sideBySide.value) {
+    open.value = !open.value
+    return
+  }
+  if (open.value) {
+    open.value = false
+    return
+  }
+  other.value = false
+  open.value = true
 }
 
 function onCustomInput(e) {
@@ -74,7 +101,7 @@ function commitCustom() {
 </script>
 
 <template>
-  <div class="study">
+  <div class="study" :class="{ wide: sideBySide }">
     <div class="top">
       <span class="clock" :class="{ on: running }">{{ clock }}</span>
       <button type="button" class="act" :class="{ run: running }" @click="toggle">
@@ -113,14 +140,10 @@ function commitCustom() {
       />
     </label>
 
-    <div class="row-btns">
-      <button type="button" class="chip" :class="{ on: sceneOpen || !!sceneId }" :aria-expanded="sceneOpen" @click="togglePanel('scene')">{{ t('studyDock.5') }}</button>
-      <button type="button" class="chip" :class="{ on: focusOpen }" :aria-expanded="focusOpen" @click="togglePanel('focus')">{{ t('studyDock.6') }}<em v-if="mixCount">{{ mixCount }}</em>
-      </button>
-    </div>
-
     <div class="panels">
-    <div v-if="sceneOpen" class="grid">
+    <div class="panel">
+      <button type="button" class="chip panel-name" :class="{ on: sceneOpen || !!sceneId }" :aria-expanded="sceneOpen" @click="togglePanel('scene')">{{ t('studyDock.5') }}</button>
+      <div v-if="sceneOpen" class="grid">
       <p class="hint">{{ t('studyDock.7') }}</p>
       <button
         v-for="s in SCENES"
@@ -135,8 +158,11 @@ function commitCustom() {
         <span>{{ s.name }}</span>
       </button>
     </div>
+    </div>
 
-    <div v-if="focusOpen" class="mix">
+    <div class="panel">
+      <button type="button" class="chip panel-name" :class="{ on: focusOpen }" :aria-expanded="focusOpen" @click="togglePanel('focus')">{{ t('studyDock.6') }}<em v-if="mixCount">{{ mixCount }}</em></button>
+      <div v-if="focusOpen" class="mix">
       <p class="hint">{{ t('studyDock.8') }}</p>
       <label v-for="s in SOUNDS" :key="s.id" class="mix-row">
         <span>{{ s.name }}</span>
@@ -179,6 +205,7 @@ function commitCustom() {
         />
         <em>{{ musicVolume }}</em>
       </label>
+    </div>
     </div>
     </div>
   </div>
@@ -240,19 +267,22 @@ function commitCustom() {
   font-size: 10px;
 }
 
-.dur,
-.row-btns {
+.dur {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
   margin-bottom: 8px;
 }
 
+.panel-name {
+  align-self: flex-start;
+}
+
 .custom {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin: 0 0 10px;
+  margin: 0;
   font-size: 12px;
   color: var(--text-secondary);
 }
@@ -278,18 +308,29 @@ function commitCustom() {
   color: var(--text-muted);
 }
 
-/* 电脑端：场景在左，专注设置在右。窄屏（≤860，与自习坞竖排同一断点）仍上下叠。 */
-@media (min-width: 861px) {
-  .panels {
-    flex-direction: row;
-    align-items: flex-start;
-    gap: 16px;
-  }
-  .panels > .grid,
-  .panels > .mix {
-    flex: 1 1 0;
-    min-width: 0;
-  }
+/* 横排只在自习空间页的电脑端。其它页面即使窗口很宽也保持上下叠。 */
+.study.wide .panels {
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.study.wide .panels > .panel {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+}
+
+.panel > .grid,
+.panel > .mix {
+  width: 100%;
 }
 
 .grid {

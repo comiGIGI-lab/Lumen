@@ -95,12 +95,7 @@ onBeforeUnmount(() => {
       :class="{ on: current === 'chat' }"
       @click="emit('open-chat')"
     >{{ t('nav.chat') }}</button>
-    <button
-      type="button"
-      class="nav-link"
-      :class="{ on: current === 'wrongbook' }"
-      @click="emit('open-wrongbook')"
-    >{{ t('nav.wrongbook') }}</button>
+    <!-- 错题本不单列：在知识库里切换。 -->
     <button
       type="button"
       class="nav-link"
