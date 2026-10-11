@@ -567,7 +567,12 @@ curl -s localhost:8000/api/knowledge?q=任意词  # 检索照常返回
 ### 16.2 安装（一次性）
 
 ```bash
-pip3 install PyMySQL==2.2.8        # 纯 Python 驱动，隔离在 server/，不污染 quiz/向量 RAG 零依赖模块
+pip3 install PyMySQL==1.2.3        # 纯 Python 驱动，隔离在 server/，不污染 quiz/向量 RAG 零依赖模块
+
+# ⚠️ 版本号必须是 **1.2.3**（发行版号）。不要写 2.2.8 —— pip 上没有 2.x；
+#   2.2.8 是 `pymysql.__version__` 这个模块内部属性的值，与发行版号不一致，
+#   照着它写会直接安装失败（No matching distribution found）。
+#   Ubuntu 24.04 若报 externally-managed-environment，加 --break-system-packages。
 ```
 
 ### 16.3 建库 + 建表
@@ -587,7 +592,14 @@ PY
 
 ### 16.4 配置（.env，已 gitignore）
 
-在 `server/.env`（或 web 根 `.env`）写入连接参数与 Token 密钥：
+⚠️ **必须放在 `vendor/study-liu/.env`（即 `SOURCE_DIR/.env`）或 `web/.env`** ——
+`api_server._load_dotenv_stdlib()` **只扫这两个路径**，写 `server/.env` 不生效，
+而且不会报错：缺键就回退默认（host=localhost / user=root / 空密码），
+表现为 `/api/wrongbook`、`/api/progress/overview` 等 **500（Access denied for user 'root'@'localhost'）**。
+2026-10-11 线上 cutover 就踩过一次这个坑。写完用 `GET /api/health` 看 `env_loaded`
+是否列出你写的键来确认，**别靠"没报错"判断**。
+
+在 `vendor/study-liu/.env` 写入连接参数：
 
 ```env
 STUDY_LIU_MYSQL_HOST=127.0.0.1
@@ -595,11 +607,13 @@ STUDY_LIU_MYSQL_PORT=3306
 STUDY_LIU_MYSQL_USER=study_liu
 STUDY_LIU_MYSQL_PASSWORD=********
 STUDY_LIU_MYSQL_DATABASE=study_liu
-STUDY_LIU_TOKEN_SECRET=********   # 账号 JWT 签名密钥；从文件版切过来时，务必与 accounts.json 里的 secret 保持一致，否则老 Token 全部失效
 ```
 
-实际值见服务器 `server/.env`（`.gitignore` 已含，不进仓库）。`api_server` 在 import 业务模块前用标准库预加载
-`.env` 注入 `os.environ`；缺任一则回退默认（host=localhost / port=3306 / user=root / db=study_liu / 空密码）。
+`STUDY_LIU_TOKEN_SECRET` **建议干脆不写**：`server/storage_users.py` 的 `token_secret()`
+是「env 优先，否则回落读 `data/accounts.json` 里已有的 secret」。保留 `accounts.json` 就不写这一项，
+现有登录 token 全部继续有效；一旦写入且与旧值不同，所有在线用户会被立刻踢下线。
+
+实际值见服务器 `vendor/study-liu/.env`（`chmod 600`，`.gitignore` 已含，不进仓库）。
 
 ### 16.5 降级（数据库不可用）
 
