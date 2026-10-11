@@ -1,0 +1,1425 @@
+<!DOCTYPE html>
+<!-- 智教星途·知识库页原型 v0.5（接入版），由 LearnBuddy 生成，2026-09-20 -->
+<!-- 相对 v0.4：① 顶部导航旁新增连接状态指示器：已连接生产（47.106.76.244）/ 已连接本地（localhost:8000）/ 演示模式（内置假数据）/ 离线回落，点击切换，选择存 localStorage['zjxt.apiTarget']
+     ② 数据层统一封装，字段与错误结构严格对齐《API-Contract-knowledge-base-v0.2-2026-09-20.md》阶段一，不新增任何字段：
+        GET  /api/knowledge?q=                       -> { items, total }
+        POST /api/knowledge        {title,content,tags}      -> { ok, id, item } | 400 { ok:false, error }
+        POST /api/knowledge/delete {id}                      -> { ok, id }       | 404 { ok:false, error }
+        POST /api/knowledge/import {title,text,tags,source}  -> 同 §3.2
+     ③ 删除端点用 POST /api/knowledge/delete（契约 §3.3：后端无 do_DELETE），不发明 HTTP DELETE
+     ④ 请求失败或后端未启动时自动回落内置假数据，指示器转「离线 · 示例数据」，只用轻提示条，不弹错误打断演示
+     ⑤ 演示控制台新增两个动作：灌入五条示例笔记（走真实 POST，兼作后端种子数据录入工具）、清空（走真实 DELETE）
+     ⑥ 新建笔记入口与表单做真：标题 / 标签 / 正文三栏，提交走 POST，成功后列表即时刷新 -->
+<!-- 沿用 v0.4 不动的部分：视觉令牌、i18n 结构、暗色、768px 响应式断点、页脚与隐私弹层 -->
+<!-- 公共片段（三页必须同步修改）：:root 变量块 / zj-nav 导航区 / 汉堡菜单 / 隐私弹层 / I18N 的 nav.* 与 privacy.* 键 -->
+<!-- 文案硬规则：不带感叹号；不出现「高效」「智能」等营销词 -->
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title data-i18n="page.title">智教星途 · 知识库</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  :root {
+    --bg: #FBF9F6;
+    --surface: #FFFFFF;
+    --band: #F8F3EC;
+    --peach: #FFE8D6;
+    --text: #191919;
+    --border: #E4DED5;
+    --primary: #191919;
+    --primary-ink: #FFFFFF;
+    --accent: #E51520;
+    --muted: #808080;
+    --chip: #F1ECE4;
+    --ok: #2E7D32;
+    --warn: #B26A00;
+    --err: #E51520;
+    --err-bg: #FDECEC;
+    --font-serif: Georgia, "Times New Roman", "Songti SC", "Noto Serif CJK SC", "Source Han Serif SC", serif;
+    --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    --shadow-btn: 0 5px 10px rgba(0,0,0,.15);
+  }
+  :root[data-theme="dark"] {
+    --bg: #141414;
+    --surface: #1C1C1C;
+    --band: #232323;
+    --peach: #2A2422;
+    --text: #F2EFEA;
+    --border: #343434;
+    --primary: #F2EFEA;
+    --primary-ink: #141414;
+    --accent: #FF5A63;
+    --muted: #9A9A9A;
+    --chip: #2A2A2A;
+    --ok: #6BBF6B;
+    --warn: #E0A63C;
+    --err: #FF6B73;
+    --err-bg: #3A2222;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: var(--font-sans);
+    background: var(--bg);
+    color: var(--text);
+  }
+  .surface { background: var(--surface); }
+  .bd { border-color: var(--border); }
+  .tm { color: var(--muted); }
+  .btn-p { background: var(--primary); color: var(--primary-ink); box-shadow: var(--shadow-btn); }
+  .btn-p:hover { filter: brightness(1.08); }
+  .btn-danger { color: var(--err); border-color: var(--err); }
+  .chip { background: var(--chip); color: var(--text); }
+  .chip-active { background: var(--primary); color: var(--primary-ink); }
+  .nav-item.active { background: var(--chip); box-shadow: inset 3px 0 0 var(--primary); }
+  .dot-ok { background: var(--ok); }
+  .dot-run { background: var(--primary); animation: pulse 1.2s infinite; }
+  .dot-queue { background: var(--muted); }
+  .dot-err { background: var(--err); }
+  .row-failed { background: var(--err-bg); }
+  .bar-fill { transition: width .35s ease; }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  .fade-in { animation: fadeIn .25s ease both; }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+  /* ===== 连接状态指示器 ===== */
+  .zj-conn { position: relative; }
+  .zj-conn-btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    height: 32px; padding: 0 12px; border-radius: 1000px;
+    border: 1px solid var(--border); background: transparent; color: var(--text);
+    font-family: var(--font-sans); font-size: 12px; cursor: pointer; white-space: nowrap;
+  }
+  .zj-conn-btn:hover { background: var(--chip); }
+  .zj-conn-menu {
+    position: absolute; top: 38px; right: 0; z-index: 40; min-width: 244px;
+    background: var(--surface); border: 1px solid var(--border); padding: 4px;
+    box-shadow: 0 8px 24px rgba(0,0,0,.12);
+  }
+  .zj-conn-menu button {
+    display: block; width: 100%; text-align: left; padding: 8px 10px;
+    background: none; border: none; color: var(--text);
+    font-family: var(--font-sans); font-size: 12px; cursor: pointer;
+  }
+  .zj-conn-menu button:hover { background: var(--chip); }
+  .zj-conn-menu button.cm-on { box-shadow: inset 2px 0 0 var(--accent); }
+  .zj-conn-menu .cm-sub { display: block; color: var(--muted); font-size: 11px; margin-top: 2px; }
+  .conn-dot { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; }
+  .conn-ok { background: var(--ok); }
+  .conn-err { background: var(--err); animation: pulse 1.2s infinite; }
+  .conn-idle { background: var(--muted); }
+
+  /* ===== 轻提示条（不打断演示） ===== */
+  .zj-toast {
+    position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%);
+    z-index: 60; max-width: 88vw; padding: 10px 18px; border-radius: 1000px;
+    background: var(--primary); color: var(--primary-ink); font-size: 13px;
+    box-shadow: var(--shadow-btn); opacity: 0; pointer-events: none; transition: opacity .2s ease;
+  }
+  .zj-toast.show { opacity: 1; }
+
+  /* ===== lionheart 视觉：直角卡片 + 胶囊按钮 + 大留白 ===== */
+  .rounded-xl, .rounded-lg { border-radius: 0 !important; }
+  button.rounded-lg, button.rounded-xl, a.rounded-lg { border-radius: 1000px !important; }
+  input.rounded-lg, textarea.rounded-lg { border-radius: 1000px !important; }
+  textarea.rounded-lg { border-radius: 0 !important; }
+  .btn-p, .btn-danger { border-radius: 1000px !important; }
+  .btn-danger { padding-left: 14px; padding-right: 14px; }
+
+  /* 标题用衬线体，正文用无衬线 —— 沿用 lionheart 的 Lora 基调 */
+  #noteTitle { font-family: var(--font-serif); font-size: 28px; font-weight: 400; letter-spacing: .01em; }
+  .doc-sec-title { font-family: var(--font-serif); font-size: 20px; }
+
+  /* 留白节奏：区块间距 32px，内容区 40px 内边距 */
+  .space-y-6 > * + * { margin-top: 32px !important; }
+  #contentArea { padding: 40px !important; max-width: 1180px; margin: 0 auto; }
+  .surface { box-shadow: 0 1px 2px rgba(0,0,0,.04); }
+
+  /* 顶部三页导航（公共片段） */
+  nav.zj-nav a { font-size: 12px; letter-spacing: .12em; text-transform: uppercase; white-space: nowrap; }
+  nav.zj-nav a.active { color: var(--accent); font-weight: 500; }
+  nav.zj-nav a.active::after {
+    content: ""; display: block; height: 2px; background: var(--accent); margin-top: 4px;
+  }
+  .nav-item.active { box-shadow: inset 3px 0 0 var(--accent) !important; }
+  .dot-run { background: var(--accent) !important; }
+  .dot-ok { background: var(--ok); }
+
+  /* 精简页脚 */
+  .zj-minifooter { background: var(--band); border-top: 1px solid var(--border); }
+  .zj-minifooter button { background: none; border: none; cursor: pointer; color: inherit; text-decoration: underline; }
+
+  /* ============================================================
+   * 响应式：断点 768px
+   * 规则：① 侧边栏收成顶部横向滚动条 ② 网格落单列 ③ 导航条只剩 logo + 当前页名 + 汉堡
+   *      ④ 文档表横向滚动 ⑤ 演示控制台让位
+   * ============================================================ */
+  .nav-current { display: none; }
+  .zj-burger { display: none; }
+  .zj-mobile-menu { display: none; }
+  .zj-mobile-search { display: none; }
+
+  @media (max-width: 768px) {
+    /* 导航条 */
+    nav.zj-nav { display: none !important; }
+    .zj-actions { display: none !important; }
+    .zj-search { display: none !important; }
+    .zj-logo-block { width: auto !important; }
+    .nav-current {
+      display: inline; font-size: 12px; letter-spacing: .12em;
+      text-transform: uppercase; color: var(--accent); white-space: nowrap;
+    }
+    .zj-burger {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 36px; height: 36px; border-radius: 1000px;
+      border: 1px solid var(--border); font-size: 14px; background: transparent; color: var(--text);
+    }
+    .zj-mobile-menu.open { display: block; }
+    .zj-mobile-search { display: block; }
+
+    /* 连接指示器窄屏压缩 */
+    .zj-conn-btn { height: 30px; padding: 0 10px; font-size: 11px; gap: 6px; }
+    .zj-conn-menu { min-width: 210px; }
+
+    /* 主体：由左右改为上下 */
+    .zj-shell { flex-direction: column !important; }
+
+    /* 侧边栏 → 顶部横向滚动条 */
+    .zj-sidebar {
+      width: 100% !important; flex-direction: row !important; align-items: center;
+      border-right: none !important; border-bottom: 1px solid var(--border) !important;
+      overflow-x: auto; flex: 0 0 auto !important;
+    }
+    .zj-sidebar .sb-title { display: none !important; }
+    .zj-sidebar #noteList {
+      display: flex !important; flex-direction: row !important; gap: 8px;
+      overflow-x: auto; overflow-y: hidden; padding: 8px !important; flex: 1 1 auto !important;
+    }
+    .zj-sidebar #noteList .nav-item { flex: 0 0 auto; min-width: 190px; padding-top: 8px; padding-bottom: 8px; }
+    .zj-sidebar .sb-new { border-top: none !important; padding: 8px 12px !important; flex: 0 0 auto; }
+    .zj-sidebar .sb-new button { width: auto !important; white-space: nowrap; padding-left: 16px; padding-right: 16px; }
+
+    /* 网格落单列 */
+    .grid-stack-2 { grid-template-columns: 1fr !important; }
+    .grid-stack-3 { grid-template-columns: 1fr !important; }
+    #contentArea { padding: 20px !important; }
+    .space-y-6 > * + * { margin-top: 20px !important; }
+    #noteTitle { font-size: 22px; }
+
+    /* 文档表横向滚动 */
+    .zj-tablewrap { overflow-x: auto; }
+    .zj-tablewrap table { min-width: 640px; }
+
+    /* 固定定位的辅助件让位 */
+    .zj-demo-console { display: none !important; }
+    #fabImport { bottom: 64px !important; }
+    #importModal > div { width: 92vw !important; }
+  }
+</style>
+</head>
+<body class="min-h-screen">
+
+<div class="flex flex-col" style="height:100vh;">
+
+<!-- ========== 顶部 AppBar ========== -->
+<header class="surface border-b bd h-16 flex items-center px-5 gap-5 shrink-0">
+  <!-- 左：logo + 副标题 -->
+  <div class="zj-logo-block flex items-center gap-3 w-60 shrink-0">
+    <div class="w-9 h-9 rounded-lg btn-p flex items-center justify-center text-sm font-bold">ZJ</div>
+    <div class="leading-tight">
+      <div class="font-semibold" data-i18n="app.name">智教星途</div>
+      <div class="text-xs tm" data-i18n="app.slogan">多模态教学智能体</div>
+    </div>
+  </div>
+
+  <!-- 窄屏专用：当前页名 -->
+  <span class="nav-current" data-i18n="nav.kb">知识库</span>
+
+  <!-- 连接状态指示器：已连接生产 / 已连接本地 / 演示模式 / 离线回落，选择存 localStorage -->
+  <div class="zj-conn shrink-0">
+    <button id="connBtn" class="zj-conn-btn" aria-haspopup="true" aria-expanded="false" title="数据源">
+      <span id="connDot" class="conn-dot conn-idle"></span>
+      <span id="connText" data-i18n="conn.demo">演示模式</span>
+      <span class="tm" style="font-size:10px;">▾</span>
+    </button>
+    <div id="connMenu" class="zj-conn-menu hidden">
+      <button data-target="prod">
+        <span data-i18n="conn.prod">已连接生产</span>
+        <span class="cm-sub">47.106.76.244</span>
+      </button>
+      <button data-target="local">
+        <span data-i18n="conn.local">已连接本地</span>
+        <span class="cm-sub">localhost:8000</span>
+      </button>
+      <button data-target="demo">
+        <span data-i18n="conn.demo">演示模式</span>
+        <span class="cm-sub" data-i18n="conn.demoSub">内置假数据，不发请求</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- 中：三页导航（公共片段，三页同步） -->
+  <nav class="zj-nav flex items-center gap-7 shrink-0">
+    <a href="首页原型v0.2-2026-09-20.html" class="tm" data-i18n="nav.home">首页</a>
+    <a href="知识库页原型v0.5-2026-09-20.html" class="active" data-i18n="nav.kb">知识库</a>
+    <a href="文档导入页原型v0.2-2026-09-20.html" class="tm" data-i18n="nav.import">导入</a>
+    <a href="进度勾选页原型v0.1-2026-09-20.html" class="tm" data-i18n="nav.progress">进度</a>
+  </nav>
+
+  <!-- 中：搜索框（窄屏移到下一行） -->
+  <div class="zj-search flex-1 max-w-xl">
+    <div class="relative">
+      <input id="searchInput" type="text"
+        class="w-full h-10 pl-10 pr-3 rounded-lg border bd surface text-sm outline-none"
+        data-i18n-placeholder="search.placeholder" placeholder="搜索笔记标题、标签或知识点…" />
+      <span class="absolute left-3 top-1/2 -translate-y-1/2 tm text-sm">🔍</span>
+    </div>
+  </div>
+
+  <!-- 右：语言切换 + 主题切换 + 导入 + 头像 -->
+  <div class="zj-actions flex items-center gap-3 ml-auto">
+    <button class="js-lang h-9 px-3 rounded-lg border bd text-sm font-medium" title="language">EN</button>
+    <button class="js-theme h-9 w-9 rounded-lg border bd text-sm" title="theme">🌙</button>
+    <button id="importBtnTop" class="btn-p h-9 px-4 rounded-lg text-sm font-medium" data-i18n="action.import">
+      导入文档
+    </button>
+    <div class="w-9 h-9 rounded-full chip flex items-center justify-center text-sm font-medium">林</div>
+  </div>
+
+  <button class="zj-burger ml-auto" aria-label="menu" aria-expanded="false">☰</button>
+</header>
+
+<!-- ========== 窄屏汉堡菜单（公共片段，三页同步） ========== -->
+<div id="zjMobileMenu" class="zj-mobile-menu surface border-b bd">
+  <div class="px-5 py-3 flex flex-col">
+    <a href="首页原型v0.2-2026-09-20.html" class="py-3 text-sm" data-i18n="nav.home">首页</a>
+    <a href="知识库页原型v0.5-2026-09-20.html" class="py-3 text-sm" data-i18n="nav.kb">知识库</a>
+    <a href="文档导入页原型v0.2-2026-09-20.html" class="py-3 text-sm" data-i18n="nav.import">导入</a>
+    <a href="进度勾选页原型v0.1-2026-09-20.html" class="py-3 text-sm" data-i18n="nav.progress">进度</a>
+    <div class="flex gap-2 pt-3 mt-1 border-t bd">
+      <button class="js-lang h-9 px-3 rounded-lg border bd text-sm">EN</button>
+      <button class="js-theme h-9 w-9 rounded-lg border bd text-sm">🌙</button>
+      <button id="importBtnMobile" class="btn-p h-9 px-4 rounded-lg text-sm" data-i18n="action.import">导入文档</button>
+    </div>
+  </div>
+</div>
+
+<!-- ========== 窄屏搜索行 ========== -->
+<div class="zj-mobile-search surface border-b bd px-4 py-2">
+  <div class="relative">
+    <input id="searchInputMobile" type="text"
+      class="w-full h-9 pl-9 pr-3 rounded-lg border bd surface text-sm outline-none"
+      data-i18n-placeholder="search.placeholder" placeholder="搜索笔记标题、标签或知识点…" />
+    <span class="absolute left-3 top-1/2 -translate-y-1/2 tm text-sm">🔍</span>
+  </div>
+</div>
+
+<div class="zj-shell flex flex-1 min-h-0">
+
+  <!-- ========== 左侧 240px 侧边栏（窄屏收成顶部横向滚动条） ========== -->
+  <aside class="zj-sidebar surface border-r bd shrink-0 flex flex-col min-h-0" style="width: 240px;">
+    <div class="sb-title px-4 py-3 text-xs tm uppercase tracking-wide" data-i18n="sidebar.title">
+      我的笔记
+    </div>
+    <div id="noteList" class="flex-1 overflow-y-auto px-2 pb-2 space-y-1"></div>
+    <div class="sb-new p-3 border-t bd">
+      <button id="newNoteBtn" class="w-full h-10 rounded-lg border bd text-sm font-medium" data-i18n="sidebar.new">
+        + 新建笔记
+      </button>
+    </div>
+  </aside>
+
+  <!-- ========== 主区 ========== -->
+  <main class="flex-1 overflow-y-auto">
+    <!-- 标签筛选 chip 行 -->
+    <div class="sticky top-0 z-10 surface border-b bd px-6 py-3 flex items-center gap-2 flex-wrap">
+      <button class="filter-chip chip-active h-8 px-3 rounded-full text-sm" data-filter="all" data-i18n="filter.all">全部</button>
+      <button class="filter-chip chip h-8 px-3 rounded-full text-sm" data-filter="高数" data-i18n="filter.math">高数</button>
+      <button class="filter-chip chip h-8 px-3 rounded-full text-sm" data-filter="英语" data-i18n="filter.english">英语</button>
+      <button class="filter-chip chip h-8 px-3 rounded-full text-sm" data-filter="错题" data-i18n="filter.wrong">错题</button>
+      <button class="filter-chip chip h-8 px-3 rounded-full text-sm" data-filter="其他" data-i18n="filter.other">其他</button>
+      <span class="ml-auto text-xs tm" id="countText"></span>
+    </div>
+
+    <!-- ===== 演示态 1：空知识库引导页 ===== -->
+    <div id="emptyState" class="hidden p-6">
+      <div class="surface border bd rounded-xl p-12 flex flex-col items-center text-center fade-in max-w-2xl mx-auto mt-10">
+        <div class="text-5xl mb-4">📚</div>
+        <div class="text-lg font-semibold mb-2" data-i18n="empty.title">知识库还是空的</div>
+        <div class="text-sm tm mb-8" data-i18n="empty.desc">上传第一份课件，AI 会自动解析、分块并建立可提问的知识库</div>
+        <div class="grid grid-cols-3 gap-4 w-full mb-8 text-left grid-stack-3">
+          <div class="border bd rounded-lg p-4">
+            <div class="text-xl mb-2">⬆️</div>
+            <div class="text-sm font-medium mb-1" data-i18n="empty.step1">上传课件</div>
+            <div class="text-xs tm" data-i18n="empty.step1desc">支持 PDF / 图片 / 音频</div>
+          </div>
+          <div class="border bd rounded-lg p-4">
+            <div class="text-xl mb-2">⚙️</div>
+            <div class="text-sm font-medium mb-1" data-i18n="empty.step2">自动解析</div>
+            <div class="text-xs tm" data-i18n="empty.step2desc">OCR + 转写 + 分块索引</div>
+          </div>
+          <div class="border bd rounded-lg p-4">
+            <div class="text-xl mb-2">💬</div>
+            <div class="text-sm font-medium mb-1" data-i18n="empty.step3">开始提问</div>
+            <div class="text-xs tm" data-i18n="empty.step3desc">答案可溯源到原文</div>
+          </div>
+        </div>
+        <div class="flex gap-3">
+          <button id="emptyImport" class="btn-p h-10 px-5 rounded-lg text-sm font-medium" data-i18n="empty.cta">导入第一份文档</button>
+          <button id="emptyDemo" class="h-10 px-5 rounded-lg border bd text-sm" data-i18n="empty.loadDemo">载入示例笔记</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== 正常内容区 ===== -->
+    <div id="contentArea" class="p-6 space-y-6">
+      <!-- 笔记详情：标题 -->
+      <section class="surface border bd rounded-xl p-5">
+        <input id="noteTitle" class="w-full text-2xl font-semibold surface outline-none border-none"
+          data-i18n-placeholder="detail.titlePlaceholder" placeholder="笔记标题" />
+      </section>
+
+      <!-- 笔记详情：元信息 -->
+      <section class="surface border bd rounded-xl p-5">
+        <div class="flex items-center justify-between mb-3">
+          <div class="text-sm font-semibold" data-i18n="detail.meta">元信息</div>
+          <button id="deleteNoteBtn" class="h-8 px-3 rounded-lg border bd text-xs btn-danger" data-i18n="action.delete">删除笔记</button>
+        </div>
+        <dl class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm grid-stack-2">
+          <div>
+            <dt class="tm text-xs" data-i18n="detail.createdAt">创建时间</dt>
+            <dd id="metaCreated" class="mt-1">—</dd>
+          </div>
+          <div>
+            <dt class="tm text-xs" data-i18n="detail.updatedAt">最近更新</dt>
+            <dd id="metaUpdated" class="mt-1">—</dd>
+          </div>
+          <div>
+            <dt class="tm text-xs" data-i18n="detail.tag">标签</dt>
+            <dd id="metaTag" class="mt-1">—</dd>
+          </div>
+          <div>
+            <dt class="tm text-xs" data-i18n="detail.docCount">关联文档</dt>
+            <dd id="metaDocs" class="mt-1">—</dd>
+          </div>
+        </dl>
+      </section>
+
+      <!-- 文档列表：状态列（抄 Dify） -->
+      <section class="surface border bd rounded-xl overflow-hidden">
+        <div class="px-5 py-3 border-b bd flex items-center">
+          <span class="text-sm font-semibold" data-i18n="doclist.title">关联文档</span>
+          <span class="ml-2 text-xs tm" data-i18n="doclist.hint">状态决定是否可提问</span>
+        </div>
+        <div class="zj-tablewrap">
+          <table class="w-full text-sm">
+            <thead class="text-xs tm">
+              <tr class="border-b bd">
+                <th class="text-left font-medium px-5 py-2" data-i18n="doclist.colName">文档名</th>
+                <th class="text-left font-medium px-5 py-2" data-i18n="doclist.colType">类型</th>
+                <th class="text-left font-medium px-5 py-2" data-i18n="doclist.colStatus">状态</th>
+                <th class="text-left font-medium px-5 py-2" data-i18n="doclist.colChunks">分块数</th>
+                <th class="text-left font-medium px-5 py-2" data-i18n="doclist.colAction">操作</th>
+              </tr>
+            </thead>
+            <tbody id="docTableBody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- 分块预览（抄 Dify） -->
+      <section class="surface border bd rounded-xl p-5">
+        <div class="text-sm font-semibold mb-3" data-i18n="chunk.title">分块预览</div>
+        <div id="chunkPreview" class="space-y-2"></div>
+      </section>
+
+      <!-- 保存备注 -->
+      <section class="surface border bd rounded-xl p-5">
+        <div class="text-sm font-semibold mb-3" data-i18n="note.remark">备注</div>
+        <textarea id="remarkInput" rows="4"
+          class="w-full rounded-lg border bd surface p-3 text-sm outline-none resize-none"
+          data-i18n-placeholder="note.remarkPlaceholder"
+          placeholder="记录你的复习计划、易错点…"></textarea>
+        <div class="mt-3 flex items-center gap-3">
+          <button id="saveRemark" class="btn-p h-9 px-4 rounded-lg text-sm font-medium" data-i18n="action.save">保存备注</button>
+          <span id="saveHint" class="text-xs tm opacity-0 transition-opacity" data-i18n="note.saved">已保存</span>
+          <span class="text-xs tm" data-i18n="note.autosave">修改后自动保存</span>
+        </div>
+      </section>
+    </div>
+  </main>
+</div>
+
+<!-- ========== 精简页脚：联系方式 + 隐私说明 ========== -->
+<footer class="zj-minifooter shrink-0">
+  <div class="px-5 py-3 flex items-center gap-4 text-xs tm flex-wrap">
+    <span>team@zhijiaoxingtu.example</span>
+    <button class="js-privacy-open" data-i18n="footer.privacy">隐私说明</button>
+    <span class="ml-auto" data-i18n="footer.rights">© 2026 智教星途 · 原型演示页面</span>
+  </div>
+</footer>
+
+</div>
+
+<!-- ========== 右下角悬浮导入按钮 ========== -->
+<button id="fabImport"
+  class="btn-p fixed bottom-6 right-6 h-12 w-12 rounded-full shadow-lg flex items-center justify-center text-xl"
+  title="import">＋</button>
+
+<!-- ========== 演示控制台（答辩用，可删；窄屏隐藏） ========== -->
+<div class="zj-demo-console fixed bottom-6 left-6 surface border border-dashed bd rounded-xl p-3 w-64 text-xs">
+  <div class="font-semibold mb-2 tm" data-i18n="demo.title">演示控制台</div>
+  <div class="space-y-2">
+    <button id="demoEmptyBtn" class="w-full h-8 rounded-lg border bd text-left px-3" data-i18n="demo.empty">切换空知识库</button>
+    <button id="demoFailBtn" class="w-full h-8 rounded-lg border bd text-left px-3" data-i18n="demo.injectFail">注入解析失败</button>
+    <button id="demoResetBtn" class="w-full h-8 rounded-lg border bd text-left px-3" data-i18n="demo.reset">重置演示数据</button>
+    <div class="pt-2 mt-2 border-t bd space-y-2">
+      <button id="demoSeedBtn" class="w-full h-8 rounded-lg border bd text-left px-3" data-i18n="demo.seed">灌入五条示例笔记</button>
+      <button id="demoClearBtn" class="w-full h-8 rounded-lg border bd text-left px-3" data-i18n="demo.clear">清空（真实 DELETE）</button>
+    </div>
+    <div id="apiLog" class="pt-2 mt-2 border-t bd tm break-all" style="max-height:110px;overflow:auto;line-height:1.6;"></div>
+  </div>
+</div>
+
+<!-- ========== 导入弹窗（含上传进度动画） ========== -->
+<div id="importModal" class="fixed inset-0 z-30 hidden items-center justify-center" style="background: rgba(0,0,0,.45);">
+  <div class="surface rounded-xl w-[520px] p-6 border bd">
+    <div class="flex items-center justify-between mb-4">
+      <div class="font-semibold" data-i18n="modal.title">导入文档</div>
+      <button id="modalClose" class="tm text-lg">✕</button>
+    </div>
+
+    <!-- 拖拽区 -->
+    <div id="dropZone" class="border-2 border-dashed bd rounded-xl h-36 flex flex-col items-center justify-center tm text-sm">
+      <div class="text-2xl mb-2">📄</div>
+      <div data-i18n="modal.drop">拖拽文件到此处，或点击选择</div>
+      <div class="text-xs mt-1" data-i18n="modal.support">支持 PDF / 图片 / 音频</div>
+    </div>
+
+    <!-- 上传队列 + 进度条 -->
+    <div id="uploadQueue" class="hidden mt-4 space-y-3">
+      <div class="text-xs tm" data-i18n="modal.uploading">正在上传并解析…</div>
+      <div id="uploadRows"></div>
+    </div>
+
+    <!-- 完成态 -->
+    <div id="uploadDone" class="hidden mt-4 rounded-lg border bd p-3 text-sm">
+      ✅ <span data-i18n="modal.doneHint">3 个文档已加入解析队列</span>
+    </div>
+
+    <div class="mt-5 flex justify-end gap-3">
+      <button id="modalCancel" class="h-9 px-4 rounded-lg border bd text-sm" data-i18n="modal.cancel">取消</button>
+      <button id="modalConfirm" class="btn-p h-9 px-4 rounded-lg text-sm font-medium" data-i18n="modal.confirm">开始解析</button>
+    </div>
+  </div>
+</div>
+
+<!-- ========== 新建笔记弹窗（真实 POST /api/knowledge） ========== -->
+<div id="noteModal" class="fixed inset-0 z-30 hidden items-center justify-center" style="background: rgba(0,0,0,.45);">
+  <div class="surface rounded-xl p-6 border bd" style="width:520px; max-width:92vw;">
+    <div class="flex items-center justify-between mb-4">
+      <div class="font-semibold" data-i18n="new.title">新建笔记</div>
+      <button id="noteModalClose" class="tm text-lg" style="background:none;border:none;cursor:pointer;">✕</button>
+    </div>
+    <div class="space-y-3">
+      <div>
+        <div class="text-xs tm mb-1" data-i18n="new.titleLabel">标题</div>
+        <input id="newTitle" class="w-full h-10 px-3 rounded-lg border bd surface text-sm outline-none"
+          data-i18n-placeholder="new.titlePh" placeholder="高等数学 · 极限与连续" />
+      </div>
+      <div>
+        <div class="text-xs tm mb-1" data-i18n="new.tagLabel">标签</div>
+        <input id="newTags" class="w-full h-10 px-3 rounded-lg border bd surface text-sm outline-none"
+          data-i18n-placeholder="new.tagPh" placeholder="高数, 极限" />
+      </div>
+      <div>
+        <div class="text-xs tm mb-1" data-i18n="new.contentLabel">正文</div>
+        <textarea id="newContent" rows="5" class="w-full rounded-lg border bd surface p-3 text-sm outline-none resize-none"
+          data-i18n-placeholder="new.contentPh" placeholder="粘贴或输入笔记正文…"></textarea>
+      </div>
+      <div id="newError" class="hidden text-xs" style="color:var(--err);"></div>
+      <div class="text-xs tm" data-i18n="new.hint">提交走 POST /api/knowledge，字段为 title / content / tags</div>
+    </div>
+    <div class="mt-5 flex justify-end gap-3">
+      <button id="noteModalCancel" class="h-9 px-4 rounded-lg border bd text-sm" data-i18n="modal.cancel">取消</button>
+      <button id="noteSubmit" class="btn-p h-9 px-4 rounded-lg text-sm font-medium" data-i18n="new.submit">创建笔记</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="zj-toast"></div>
+
+<!-- ========== 隐私说明弹层（公共片段，三页同步） ========== -->
+<div id="privacyModal" class="fixed inset-0 z-40 hidden items-center justify-center" style="background: rgba(0,0,0,.45);">
+  <div class="card surface p-7 border bd" style="width:520px; max-width:92vw;">
+    <div class="flex items-center justify-between mb-4">
+      <div class="text-lg font-semibold" data-i18n="privacy.title">隐私说明</div>
+      <button class="js-privacy-close tm text-lg" style="background:none;border:none;cursor:pointer;">✕</button>
+    </div>
+    <div class="text-sm tm space-y-3" style="line-height:1.7;">
+      <p data-i18n="privacy.p1">本页面为参赛原型演示，不收集任何个人信息。</p>
+      <p data-i18n="privacy.p2">演示所用的笔记、文档与学习记录均保存在你本机浏览器中，不会上传到服务器。</p>
+      <p data-i18n="privacy.p3">页面上的解析状态、分块数量与统计数字均为演示用示例数据。</p>
+    </div>
+    <div class="mt-6 flex justify-end">
+      <button class="js-privacy-close h-9 px-4 rounded-lg border bd text-sm" data-i18n="privacy.ok">知道了</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* 主题偏好跨页保持：localStorage['zjxt.theme'] */
+(function () {
+  var saved = localStorage.getItem('zjxt.theme');
+  if (saved) document.documentElement.dataset.theme = saved;
+})();
+
+/* ============================================================
+ * 1. i18n 字典（zh / en）
+ * ============================================================ */
+const I18N = {
+  zh: {
+    'page.title': '智教星途 · 知识库',
+    'app.name': '智教星途',
+    'nav.home': '首页', 'nav.kb': '知识库', 'nav.import': '导入文档', 'nav.progress': '进度',
+    'app.slogan': '多模态教学智能体',
+    'search.placeholder': '搜索笔记标题、标签或知识点…',
+    'action.import': '导入文档',
+    'action.save': '保存备注',
+    'action.preview': '预览分块',
+    'action.retry': '重试',
+    'action.retrying': '重试中…',
+    'sidebar.title': '我的笔记',
+    'sidebar.new': '+ 新建笔记',
+    'sidebar.noMatch': '没有匹配的笔记',
+    'filter.all': '全部', 'filter.math': '高数', 'filter.english': '英语',
+    'filter.wrong': '错题', 'filter.other': '其他',
+    'tag.high-math': '高数', 'tag.english': '英语', 'tag.mistakes': '错题', 'tag.others': '其他',
+    'count.notes': '共 {n} 条笔记',
+    'detail.titlePlaceholder': '笔记标题',
+    'detail.meta': '元信息',
+    'detail.createdAt': '创建时间', 'detail.updatedAt': '最近更新',
+    'detail.tag': '标签', 'detail.docCount': '关联文档',
+    'doclist.title': '关联文档', 'doclist.hint': '状态决定是否可提问',
+    'doclist.colName': '文档名', 'doclist.colType': '类型', 'doclist.colStatus': '状态',
+    'doclist.colChunks': '分块数', 'doclist.colAction': '操作',
+    'chunk.title': '分块预览',
+    'note.remark': '备注',
+    'note.remarkPlaceholder': '记录你的复习计划、易错点…',
+    'note.saved': '已保存',
+    'note.autosave': '修改后自动保存',
+    'status.ready': '已入库', 'status.parsing': '解析中',
+    'status.queue': '排队中', 'status.failed': '解析失败',
+    'doctype.pdf': 'PDF', 'doctype.image': '图片', 'doctype.audio': '音频',
+    'modal.title': '导入文档', 'modal.drop': '拖拽文件到此处，或点击选择',
+    'modal.support': '支持 PDF / 图片 / 音频', 'modal.cancel': '取消',
+    'modal.confirm': '开始解析', 'modal.uploading': '正在上传并解析…',
+    'modal.doneHint': '3 个文档已加入解析队列',
+    'empty.title': '知识库还是空的',
+    'empty.desc': '上传第一份课件，AI 会自动解析、分块并建立可提问的知识库',
+    'empty.step1': '上传课件', 'empty.step1desc': '支持 PDF / 图片 / 音频',
+    'empty.step2': '自动解析', 'empty.step2desc': 'OCR + 转写 + 分块索引',
+    'empty.step3': '开始提问', 'empty.step3desc': '答案可溯源到原文',
+    'empty.cta': '导入第一份文档', 'empty.loadDemo': '载入示例笔记',
+    'demo.title': '演示控制台', 'demo.empty': '切换空知识库',
+    'demo.injectFail': '注入解析失败', 'demo.reset': '重置演示数据',
+    'footer.privacy': '隐私说明', 'footer.rights': '© 2026 智教星途 · 原型演示页面',
+    'privacy.title': '隐私说明',
+    'privacy.p1': '本页面为参赛原型演示，不收集任何个人信息。',
+    'privacy.p2': '演示所用的笔记、文档与学习记录均保存在你本机浏览器中，不会上传到服务器。',
+    'privacy.p3': '页面上的解析状态、分块数量与统计数字均为演示用示例数据。',
+    'privacy.ok': '知道了',
+    'conn.prod': '已连接生产', 'conn.local': '已连接本地', 'conn.demo': '演示模式',
+    'conn.demoSub': '内置假数据，不发请求', 'conn.offline': '离线 · 示例数据',
+    'new.title': '新建笔记', 'new.titleLabel': '标题', 'new.tagLabel': '标签',
+    'new.contentLabel': '正文', 'new.submit': '创建笔记',
+    'new.titlePh': '高等数学 · 极限与连续', 'new.tagPh': '高数, 极限',
+    'new.contentPh': '粘贴或输入笔记正文…',
+    'new.hint': '提交走 POST /api/knowledge，字段为 title / content / tags',
+    'action.delete': '删除笔记',
+    'demo.seed': '灌入五条示例笔记', 'demo.clear': '清空（真实 DELETE）',
+    'toast.created': '笔记已创建', 'toast.deleted': '笔记已删除',
+    'toast.loadFail': '列表拉取失败，已回落到示例数据',
+    'toast.demoLocal': '演示模式：改动只存在本地，未发请求',
+    'toast.seedDone': '已灌入 {n} 条示例笔记',
+    'toast.seedPartial': '灌入完成 {ok} 条，失败 {fail} 条：{e}',
+    'toast.clearDone': '已清空 {n} 条笔记',
+    'toast.clearPartial': '清空完成 {ok} 条，失败 {fail} 条：{e}',
+    'toast.createFail': '创建失败', 'toast.deleteFail': '删除失败',
+    'log.listOk': 'GET /api/knowledge → {n} 条',
+    'log.listFail': 'GET /api/knowledge 失败：{e}',
+    'log.created': 'POST /api/knowledge → id {id}',
+    'log.deleted': 'POST /api/knowledge/delete → id {id}',
+    'note.n1': '高等数学 · 极限与连续', 'note.n2': '考研英语 · 长难句拆解 01',
+    'note.n3': '线性代数 · 矩阵秩的判定', 'note.n4': '错题本 · 不定积分常错点',
+    'note.n5': '数据结构 · 红黑树笔记', 'note.n6': '机器学习 · 损失函数汇总',
+    'note.n7': '英语听力真题精听 Week3', 'note.n8': '概率论 · 大数定律与中心极限定理',
+    'remark.n1': '本周重点：ε-N 定义 + 两个重要极限，配套 3 道错题重做。',
+    'remark.n2': '每天 5 句长难句，先自己拆再对照解析。',
+    'remark.n3': '重点记：初等变换不改变秩。',
+    'remark.n4': '错因分类：符号错误 6 次、公式记混 4 次。',
+    'remark.n5': '旋转变色部分要能手绘，面试高频。',
+    'remark.n6': '交叉熵 vs MSE 的适用边界要讲清楚。',
+    'remark.n7': '精听流程：盲听 → 看稿 → 复述。',
+    'remark.n8': '中心极限定理三个条件别记漏。',
+    'chunk.c1': '数列极限的 ε-N 定义：对任意 ε>0，存在 N，当 n>N 时 |a_n - A| < ε…',
+    'chunk.c2': '夹逼准则：若 b_n ≤ a_n ≤ c_n 且 lim b_n = lim c_n = A，则 lim a_n = A…',
+    'chunk.c3': '两个重要极限：lim(sin x / x) = 1；(1 + 1/n)^n → e…'
+  },
+  en: {
+    'page.title': 'ZhiJiaoXingTu · Knowledge Base',
+    'app.name': 'ZhiJiaoXingTu',
+    'nav.home': 'Home', 'nav.kb': 'Knowledge Base', 'nav.import': 'Import', 'nav.progress': 'Progress',
+    'app.slogan': 'Multimodal Teaching Agent',
+    'search.placeholder': 'Search notes, tags or knowledge points…',
+    'action.import': 'Import',
+    'action.save': 'Save Note',
+    'action.preview': 'Preview Chunks',
+    'action.retry': 'Retry',
+    'action.retrying': 'Retrying…',
+    'sidebar.title': 'My Notes',
+    'sidebar.new': '+ New Note',
+    'sidebar.noMatch': 'No matching notes',
+    'filter.all': 'All', 'filter.math': 'Math', 'filter.english': 'English',
+    'filter.wrong': 'Mistakes', 'filter.other': 'Others',
+    'tag.high-math': 'Math', 'tag.english': 'English', 'tag.mistakes': 'Mistakes', 'tag.others': 'Others',
+    'count.notes': '{n} notes',
+    'detail.titlePlaceholder': 'Note title',
+    'detail.meta': 'Metadata',
+    'detail.createdAt': 'Created', 'detail.updatedAt': 'Updated',
+    'detail.tag': 'Tag', 'detail.docCount': 'Documents',
+    'doclist.title': 'Linked Documents', 'doclist.hint': 'Status decides whether it is queryable',
+    'doclist.colName': 'Name', 'doclist.colType': 'Type', 'doclist.colStatus': 'Status',
+    'doclist.colChunks': 'Chunks', 'doclist.colAction': 'Actions',
+    'chunk.title': 'Chunk Preview',
+    'note.remark': 'Note',
+    'note.remarkPlaceholder': 'Write your review plan and weak points…',
+    'note.saved': 'Saved',
+    'note.autosave': 'Auto-saved after edit',
+    'status.ready': 'Ready', 'status.parsing': 'Parsing',
+    'status.queue': 'Queued', 'status.failed': 'Failed',
+    'doctype.pdf': 'PDF', 'doctype.image': 'Image', 'doctype.audio': 'Audio',
+    'modal.title': 'Import Documents', 'modal.drop': 'Drop files here, or click to select',
+    'modal.support': 'PDF / Image / Audio supported', 'modal.cancel': 'Cancel',
+    'modal.confirm': 'Start Parsing', 'modal.uploading': 'Uploading and parsing…',
+    'modal.doneHint': '3 documents added to the parsing queue',
+    'empty.title': 'Your knowledge base is empty',
+    'empty.desc': 'Upload your first courseware — it will be parsed, chunked, and made queryable automatically',
+    'empty.step1': 'Upload', 'empty.step1desc': 'PDF / Image / Audio',
+    'empty.step2': 'Auto Parse', 'empty.step2desc': 'OCR + transcription + indexing',
+    'empty.step3': 'Ask Anything', 'empty.step3desc': 'Answers traceable to source',
+    'empty.cta': 'Import Your First Document', 'empty.loadDemo': 'Load Sample Notes',
+    'demo.title': 'Demo Console', 'demo.empty': 'Toggle Empty State',
+    'demo.injectFail': 'Inject Parse Failure', 'demo.reset': 'Reset Demo Data',
+    'footer.privacy': 'Privacy', 'footer.rights': '© 2026 ZhiJiaoXingTu · Prototype demo page',
+    'privacy.title': 'Privacy',
+    'privacy.p1': 'This is a contest prototype. No personal information is collected.',
+    'privacy.p2': 'Notes, documents and study records used in the demo stay in your own browser and are never uploaded to a server.',
+    'privacy.p3': 'Parsing states, chunk counts and statistics on this page are sample data for demonstration.',
+    'privacy.ok': 'Got it',
+    'conn.prod': 'Connected · Production', 'conn.local': 'Connected · Local', 'conn.demo': 'Demo Mode',
+    'conn.demoSub': 'Built-in sample data, no requests', 'conn.offline': 'Offline · Sample data',
+    'new.title': 'New Note', 'new.titleLabel': 'Title', 'new.tagLabel': 'Tags',
+    'new.contentLabel': 'Content', 'new.submit': 'Create Note',
+    'new.titlePh': 'Advanced Math · Limits', 'new.tagPh': 'Math, Limits',
+    'new.contentPh': 'Paste or type the note content…',
+    'new.hint': 'Submitted via POST /api/knowledge with title / content / tags',
+    'action.delete': 'Delete Note',
+    'demo.seed': 'Seed 5 Sample Notes', 'demo.clear': 'Clear (Real DELETE)',
+    'toast.created': 'Note created', 'toast.deleted': 'Note deleted',
+    'toast.loadFail': 'Could not load the list — falling back to sample data',
+    'toast.demoLocal': 'Demo mode: changes stay local, no request sent',
+    'toast.seedDone': '{n} sample notes seeded',
+    'toast.seedPartial': '{ok} seeded, {fail} failed: {e}',
+    'toast.clearDone': '{n} notes deleted',
+    'toast.clearPartial': '{ok} deleted, {fail} failed: {e}',
+    'toast.createFail': 'Create failed', 'toast.deleteFail': 'Delete failed',
+    'log.listOk': 'GET /api/knowledge → {n} items',
+    'log.listFail': 'GET /api/knowledge failed: {e}',
+    'log.created': 'POST /api/knowledge → id {id}',
+    'log.deleted': 'POST /api/knowledge/delete → id {id}',
+    'note.n1': 'Advanced Math · Limits and Continuity', 'note.n2': 'Postgrad English · Long Sentences 01',
+    'note.n3': 'Linear Algebra · Rank of a Matrix', 'note.n4': 'Mistake Log · Indefinite Integrals',
+    'note.n5': 'Data Structures · Red-Black Trees', 'note.n6': 'Machine Learning · Loss Functions',
+    'note.n7': 'English Listening Practice Week 3', 'note.n8': 'Probability · Law of Large Numbers',
+    'remark.n1': 'Focus: ε-N definition + two special limits, redo 3 mistakes.',
+    'remark.n2': '5 sentences a day: parse first, then check the reference.',
+    'remark.n3': 'Key point: elementary transforms preserve rank.',
+    'remark.n4': 'Error types: sign errors 6, formula confusion 4.',
+    'remark.n5': 'Be able to draw rotations by hand — frequent interview topic.',
+    'remark.n6': 'Clarify when to use cross-entropy vs MSE.',
+    'remark.n7': 'Workflow: listen blind → read script → retell.',
+    'remark.n8': "Don't miss the three conditions of the CLT.",
+    'chunk.c1': 'ε-N definition of sequence limits: for any ε>0 there exists N such that |a_n - A| < ε when n>N…',
+    'chunk.c2': 'Squeeze theorem: if b_n ≤ a_n ≤ c_n and lim b_n = lim c_n = A, then lim a_n = A…',
+    'chunk.c3': 'Two important limits: lim(sin x / x) = 1; (1 + 1/n)^n → e…'
+  }
+};
+
+/* ============================================================
+ * 2. 假数据
+ * ============================================================ */
+/* 阶段一 Note 形状：{ id, title, content, tags[], created_at } —— 与契约 §2.1 一字不差
+ * _seed 只是前端用来在演示数据上套 i18n 键的标记，不参与任何请求体 */
+const SEED_NOTES = [
+  { _seed: 'n1', id: 1, title: '高等数学 · 极限与连续', content: '本周重点：ε-N 定义 + 两个重要极限，配套 3 道错题重做。', tags: ['高数', '极限'], created_at: '2026-09-12 09:10:00' },
+  { _seed: 'n2', id: 2, title: '考研英语 · 长难句拆解 01', content: '每天 5 句长难句，先自己拆再对照解析。', tags: ['英语'], created_at: '2026-09-10 20:41:00' },
+  { _seed: 'n3', id: 3, title: '线性代数 · 矩阵秩的判定', content: '重点记：初等变换不改变秩。', tags: ['高数'], created_at: '2026-09-09 15:22:00' },
+  { _seed: 'n4', id: 4, title: '错题本 · 不定积分常错点', content: '错因分类：符号错误 6 次、公式记混 4 次。', tags: ['错题'], created_at: '2026-09-08 22:15:00' },
+  { _seed: 'n5', id: 5, title: '数据结构 · 红黑树笔记', content: '旋转变色部分要能手绘，面试高频。', tags: ['其他'], created_at: '2026-09-07 11:30:00' },
+  { _seed: 'n6', id: 6, title: '机器学习 · 损失函数汇总', content: '交叉熵 vs MSE 的适用边界要讲清楚。', tags: ['其他'], created_at: '2026-09-06 13:08:00' },
+  { _seed: 'n7', id: 7, title: '英语听力真题精听 Week3', content: '精听流程：盲听 → 看稿 → 复述。', tags: ['英语'], created_at: '2026-09-05 19:44:00' },
+  { _seed: 'n8', id: 8, title: '概率论 · 大数定律与中心极限定理', content: '中心极限定理三个条件别记漏。', tags: ['其他'], created_at: '2026-09-04 10:02:00' }
+];
+
+/* 灌入后端用的五条种子笔记（纯契约字段，无 _seed） */
+const SEED_INJECT = [
+  { title: '高等数学 · 极限与连续', content: '数列极限的 ε-N 定义：对任意 ε>0，存在 N，当 n>N 时 |a_n - A| < ε。配套两个重要极限。', tags: ['高数', '极限'] },
+  { title: '高等数学 · 导数与微分', content: '导数定义、四则运算法则、复合函数链式法则与高阶导数。', tags: ['高数'] },
+  { title: '考研英语 · 长难句拆解 01', content: '每天 5 句长难句，先自己拆主干再对照解析，重点记从句引导词。', tags: ['英语'] },
+  { title: '线性代数 · 矩阵秩的判定', content: '初等变换不改变秩；秩 = 行阶梯形非零行数 = 最高阶非零子式阶数。', tags: ['高数', '线代'] },
+  { title: '错题本 · 不定积分常错点', content: '错因分类：符号错误 6 次、公式记混 4 次；换元后忘记回代。', tags: ['错题'] }
+];
+
+const SEED_DOCS = {
+  n1: [
+    { id: 'd101', name: '第2章 极限与连续.pdf', type: 'pdf', status: 'ready', chunks: 42 },
+    { id: 'd102', name: '课堂板书_0912.jpg', type: 'image', status: 'parsing', chunks: 0, progress: 62 },
+    { id: 'd103', name: '习题课录音.mp3', type: 'audio', status: 'queue', chunks: 0 }
+  ],
+  n2: [
+    { id: 'd201', name: '长难句精讲.pdf', type: 'pdf', status: 'ready', chunks: 28 },
+    { id: 'd202', name: '真题阅读扫描件.jpg', type: 'image', status: 'failed', chunks: 0, error: 'OCR_FAILED' }
+  ],
+  n3: [{ id: 'd301', name: '矩阵秩判定方法.pdf', type: 'pdf', status: 'ready', chunks: 17 }],
+  n4: [
+    { id: 'd401', name: '不定积分错题集.pdf', type: 'pdf', status: 'ready', chunks: 35 },
+    { id: 'd402', name: '错题照片_01.jpg', type: 'image', status: 'ready', chunks: 9 },
+    { id: 'd403', name: '错题照片_02.jpg', type: 'image', status: 'parsing', chunks: 0, progress: 28 },
+    { id: 'd404', name: '老师讲解录音.mp3', type: 'audio', status: 'queue', chunks: 0 }
+  ],
+  n5: [
+    { id: 'd501', name: '红黑树讲义.pdf', type: 'pdf', status: 'ready', chunks: 24 },
+    { id: 'd502', name: '插入删除演示.jpg', type: 'image', status: 'ready', chunks: 6 }
+  ],
+  n6: [
+    { id: 'd601', name: '损失函数综述.pdf', type: 'pdf', status: 'ready', chunks: 31 },
+    { id: 'd602', name: '课件截图.png', type: 'image', status: 'parsing', chunks: 0, progress: 45 },
+    { id: 'd603', name: '课程录音_第4讲.mp3', type: 'audio', status: 'ready', chunks: 12 }
+  ],
+  n7: [{ id: 'd701', name: '听力真题_Week3.mp3', type: 'audio', status: 'ready', chunks: 15 }],
+  n8: [
+    { id: 'd801', name: '大数定律.pdf', type: 'pdf', status: 'ready', chunks: 20 },
+    { id: 'd802', name: '公式推导手写稿.jpg', type: 'image', status: 'failed', chunks: 0, error: 'IMAGE_TOO_BLURRY' }
+  ]
+};
+
+const STATUS_CLS = { ready: 'dot-ok', parsing: 'dot-run', queue: 'dot-queue', failed: 'dot-err' };
+
+let NOTES = JSON.parse(JSON.stringify(SEED_NOTES));
+let DOCS = JSON.parse(JSON.stringify(SEED_DOCS));
+let lang = localStorage.getItem('zjxt.lang') || 'zh';
+let currentFilter = 'all';
+let currentNoteId = 1;
+let keyword = '';
+let demoEmpty = false;
+let uploadTimer = null;
+
+/* 连接状态：prod / local / demo；online 表示最近一次请求是否成功 */
+let apiTarget = localStorage.getItem('zjxt.apiTarget') || 'demo';
+if (!['prod', 'local', 'demo'].includes(apiTarget)) apiTarget = 'demo';
+let online = false;
+let lastError = '';
+let searchTimer = null;
+
+const $ = (s) => document.querySelector(s);
+const $$ = (s) => Array.prototype.slice.call(document.querySelectorAll(s));
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+const escapeHtml = (s) => String(s == null ? '' : s).replace(/[&<>"']/g,
+  c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const nowStr = () => {
+  const d = new Date(), p = (x) => String(x).padStart(2, '0');
+  return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) +
+    ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+};
+
+/* ============================================================
+ * 3. i18n 运行时
+ * ============================================================ */
+function t(key, vars) {
+  let s = (I18N[lang] && I18N[lang][key]) || I18N.zh[key] || key;
+  if (vars) Object.keys(vars).forEach(k => { s = s.replace('{' + k + '}', vars[k]); });
+  return s;
+}
+
+function setLang(next) {
+  lang = next;
+  localStorage.setItem('zjxt.lang', next);
+  document.documentElement.lang = next === 'en' ? 'en' : 'zh-CN';
+  $$('[data-i18n]').forEach(el => { el.textContent = t(el.dataset.i18n); });
+  $$('[data-i18n-placeholder]').forEach(el => {
+    el.setAttribute('placeholder', t(el.dataset.i18nPlaceholder));
+  });
+  $$('.js-lang').forEach(el => { el.textContent = next === 'zh' ? 'EN' : '中'; });
+  document.title = t('page.title');
+  renderSidebar();
+  renderDetail();
+}
+
+/* ============================================================
+ * 4. 渲染：侧边栏
+ * ============================================================ */
+/* 演示数据套 i18n 键，真实数据直接用后端返回的 title / content */
+const noteTitle = (n) => n._seed ? t('note.' + n._seed) : (n.title || '—');
+const noteBody = (n) => n._seed ? t('remark.' + n._seed) : (n.content || '');
+const noteStamp = (n) => (n.created_at || '').slice(5, 16) || '—';
+
+function renderSidebar() {
+  const list = $('#noteList');
+  const kw = keyword.toLowerCase();
+  const data = NOTES.filter(n => {
+    const tags = n.tags || [];
+    const hitFilter = currentFilter === 'all' || tags.some(x => String(x).includes(currentFilter));
+    const hitKw = !kw || (noteTitle(n) + noteBody(n) + tags.join(' ')).toLowerCase().includes(kw);
+    return hitFilter && hitKw;
+  });
+  $('#countText').textContent = t('count.notes', { n: data.length });
+  list.innerHTML = data.length === 0
+    ? `<div class="px-3 py-6 text-center text-xs tm">${t('sidebar.noMatch')}</div>`
+    : data.map(n => `
+      <div data-id="${n.id}"
+        class="nav-item w-full text-left px-3 py-2 rounded-lg cursor-pointer ${String(n.id) === String(currentNoteId) ? 'active' : ''}">
+        <div class="flex items-center justify-between gap-2">
+          <div class="text-sm font-medium truncate">${escapeHtml(noteTitle(n))}</div>
+          <span class="chip text-xs px-2 py-0.5 rounded-full shrink-0">${escapeHtml((n.tags && n.tags[0]) || '—')}</span>
+        </div>
+        <div class="text-xs tm mt-1">${escapeHtml(noteStamp(n))}</div>
+      </div>`).join('');
+  list.querySelectorAll('.nav-item').forEach(el => {
+    el.addEventListener('click', () => { currentNoteId = el.dataset.id; renderSidebar(); renderDetail(); });
+  });
+}
+
+/* ============================================================
+ * 5. 渲染：笔记详情 + 文档表（失败红行 + 重试）
+ * ============================================================ */
+function renderDetail() {
+  if (!NOTES.length) return;
+  const note = NOTES.find(n => String(n.id) === String(currentNoteId)) || NOTES[0];
+  currentNoteId = note.id;
+  $('#noteTitle').value = noteTitle(note);
+  $('#remarkInput').value = noteBody(note);
+  $('#metaCreated').textContent = note.created_at || '—';
+  $('#metaUpdated').textContent = note.created_at || '—'; /* 阶段一无 updated_at，按契约 §6 取 created_at */
+  $('#metaTag').textContent = (note.tags && note.tags.length) ? note.tags.join(' / ') : '—';
+  const docs = DOCS[note._seed] || [];
+  $('#metaDocs').textContent = docs.length ? (docs.length + (lang === 'zh' ? ' 个' : '')) : '—';
+
+  $('#docTableBody').innerHTML = docs.map(d => {
+    const failed = d.status === 'failed';
+    const retryBtn = failed
+      ? `<button data-retry="${d.id}" class="text-xs px-2 py-1 rounded border btn-danger">${t('action.retry')}</button>`
+      : `<button class="text-xs tm hover:underline">${t('action.preview')}</button>`;
+    return `
+      <tr class="border-b bd ${failed ? 'row-failed' : ''}">
+        <td class="px-5 py-3">${d.name}</td>
+        <td class="px-5 py-3 tm" data-i18n="doctype.${d.type}">${t('doctype.' + d.type)}</td>
+        <td class="px-5 py-3">
+          <span class="inline-flex items-center gap-2">
+            <span class="w-2 h-2 rounded-full ${STATUS_CLS[d.status]}"></span>
+            <span data-i18n="status.${d.status}">${t('status.' + d.status)}</span>
+            ${d.status === 'parsing' && d.progress ? `<span class="text-xs tm">${d.progress}%</span>` : ''}
+          </span>
+        </td>
+        <td class="px-5 py-3 tm">${d.chunks || '—'}</td>
+        <td class="px-5 py-3">${retryBtn}</td>
+      </tr>`;
+  }).join('');
+
+  $('#docTableBody').querySelectorAll('[data-retry]').forEach(btn => {
+    btn.addEventListener('click', () => retryDocument(btn.dataset.retry, btn));
+  });
+
+  const chunks = [
+    { id: '#01', src: '第2章 极限与连续.pdf · P12', text: t('chunk.c1') },
+    { id: '#02', src: '第2章 极限与连续.pdf · P14', text: t('chunk.c2') },
+    { id: '#03', src: '课堂板书_0912.jpg · OCR', text: t('chunk.c3') }
+  ];
+  $('#chunkPreview').innerHTML = chunks.map(c => `
+    <div class="border bd rounded-lg p-3 text-sm">
+      <div class="flex items-center justify-between mb-1">
+        <span class="text-xs tm">${c.id}</span>
+        <span class="text-xs tm">${c.src}</span>
+      </div>
+      <div>${c.text}</div>
+    </div>`).join('');
+}
+
+/* ============================================================
+ * 6. 演示态 2：解析失败 → 重试 → 排队中 → 解析中 → 已入库
+ * ============================================================ */
+function retryDocument(docId, btn) {
+  const doc = (DOCS[currentNoteId] || []).find(d => d.id === docId);
+  if (!doc) return;
+  btn.disabled = true;
+  btn.textContent = t('action.retrying');
+  doc.status = 'queue';
+  renderDetail();
+  setTimeout(() => { doc.status = 'parsing'; doc.progress = 18; renderDetail(); }, 700);
+  setTimeout(() => { doc.progress = 74; renderDetail(); }, 1500);
+  setTimeout(() => {
+    doc.status = 'ready'; doc.progress = 100; doc.chunks = 16; delete doc.error;
+    renderDetail();
+  }, 2600);
+}
+
+/* ============================================================
+ * 7. 演示态 3：导入弹窗上传进度动画
+ * ============================================================ */
+const DEMO_FILES = [
+  { name: '第3章 导数与微分.pdf', size: '2.4 MB' },
+  { name: '课堂板书_0920.jpg', size: '1.1 MB' },
+  { name: '习题课录音_0920.mp3', size: '8.7 MB' }
+];
+
+function openModal() {
+  $('#importModal').classList.remove('hidden');
+  $('#importModal').classList.add('flex');
+  $('#uploadQueue').classList.add('hidden');
+  $('#uploadDone').classList.add('hidden');
+  $('#dropZone').classList.remove('hidden');
+  if (uploadTimer) clearInterval(uploadTimer);
+}
+
+function closeModal() {
+  $('#importModal').classList.add('hidden');
+  $('#importModal').classList.remove('flex');
+  if (uploadTimer) clearInterval(uploadTimer);
+}
+
+function startUpload() {
+  $('#dropZone').classList.add('hidden');
+  $('#uploadQueue').classList.remove('hidden');
+  $('#uploadDone').classList.add('hidden');
+  $('#uploadRows').innerHTML = DEMO_FILES.map((f, i) => `
+    <div>
+      <div class="flex items-center justify-between text-xs mb-1">
+        <span class="truncate">${f.name}</span>
+        <span class="tm" id="pct${i}">0%</span>
+      </div>
+      <div class="h-2 rounded-full chip overflow-hidden">
+        <div id="bar${i}" class="bar-fill h-full btn-p" style="width:0%"></div>
+      </div>
+    </div>`).join('');
+
+  const progress = [0, 0, 0];
+  const speed = [7, 11, 4];
+  uploadTimer = setInterval(() => {
+    let allDone = true;
+    progress.forEach((p, i) => {
+      if (p < 100) {
+        allDone = false;
+        p = Math.min(100, p + speed[i]);
+        progress[i] = p;
+        $('#bar' + i).style.width = p + '%';
+        $('#pct' + i).textContent = Math.round(p) + '%';
+      }
+    });
+    if (allDone) {
+      clearInterval(uploadTimer);
+      $('#uploadDone').classList.remove('hidden');
+      setTimeout(() => {
+        if (!DOCS[currentNoteId]) DOCS[currentNoteId] = [];
+        DOCS[currentNoteId].push(
+          { id: 'new' + Date.now(), name: DEMO_FILES[0].name, type: 'pdf', status: 'parsing', chunks: 0, progress: 12 },
+          { id: 'new' + (Date.now() + 1), name: DEMO_FILES[1].name, type: 'image', status: 'queue', chunks: 0 },
+          { id: 'new' + (Date.now() + 2), name: DEMO_FILES[2].name, type: 'audio', status: 'queue', chunks: 0 }
+        );
+        closeModal();
+        renderDetail();
+      }, 900);
+    }
+  }, 220);
+}
+
+/* ============================================================
+ * 8. 演示态 1：空知识库
+ * ============================================================ */
+function setEmptyMode(flag) {
+  demoEmpty = flag;
+  $('#emptyState').classList.toggle('hidden', !flag);
+  $('#contentArea').classList.toggle('hidden', flag);
+  document.querySelector('.filter-chip').parentElement.classList.toggle('hidden', flag);
+  if (flag) { NOTES = []; renderSidebar(); } else loadNotes(keyword);
+}
+
+/* 每次拉到数据后的收尾：空则走空状态引导，非空则落到第一条 */
+function finishLoad() {
+  const empty = NOTES.length === 0;
+  $('#emptyState').classList.toggle('hidden', !empty);
+  $('#contentArea').classList.toggle('hidden', empty);
+  document.querySelector('.filter-chip').parentElement.classList.toggle('hidden', empty);
+  demoEmpty = empty;
+  if (!empty && !NOTES.some(n => String(n.id) === String(currentNoteId))) currentNoteId = NOTES[0].id;
+  renderSidebar();
+  if (!empty) renderDetail();
+}
+
+/* ============================================================
+ * 8bis. 数据层：严格对齐契约 v0.2 阶段一，不新增任何字段
+ *   GET  /api/knowledge?q=                       -> { items, total }
+ *   POST /api/knowledge        {title,content,tags}      -> { ok, id, item } | 400 { ok:false, error }
+ *   POST /api/knowledge/delete {id}                      -> { ok, id }       | 404 { ok:false, error }
+ *   POST /api/knowledge/import {title,text,tags,source}  -> 同 §3.2
+ *   错误结构统一 { ok:false, error }，前端直接把 error 字符串透出，不另造错误码
+ * ============================================================ */
+const API_TARGETS = {
+  prod:  { base: 'http://47.106.76.244', key: 'conn.prod' },
+  local: { base: 'http://localhost:8000', key: 'conn.local' },
+  demo:  { base: '', key: 'conn.demo' }
+};
+const REQ_TIMEOUT = 6000;
+
+function toast(msg) {
+  const el = $('#toast');
+  if (!el) return;
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(el._timer);
+  el._timer = setTimeout(() => el.classList.remove('show'), 2800);
+}
+
+function apiLog(msg) {
+  const box = $('#apiLog');
+  if (!box) return;
+  box.innerHTML = '<div>[' + new Date().toTimeString().slice(0, 8) + '] ' + escapeHtml(msg) + '</div>' + box.innerHTML;
+}
+
+async function requestJSON(path, method, body) {
+  const base = API_TARGETS[apiTarget].base;
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), REQ_TIMEOUT);
+  try {
+    const res = await fetch(base + path, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: body ? JSON.stringify(body) : undefined,
+      signal: ctrl.signal
+    });
+    let data = null;
+    try { data = await res.json(); } catch (e) { data = null; }
+    if (!res.ok || !data || data.ok === false) {
+      throw new Error((data && data.error) ? data.error : ('HTTP ' + res.status));
+    }
+    return data;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+const API = {
+  list(q) { return requestJSON('/api/knowledge' + (q ? '?q=' + encodeURIComponent(q) : ''), 'GET'); },
+  create(payload) { return requestJSON('/api/knowledge', 'POST', payload); },
+  remove(id) { return requestJSON('/api/knowledge/delete', 'POST', { id }); },
+  importText(payload) { return requestJSON('/api/knowledge/import', 'POST', payload); }
+};
+
+/* 连接指示器：三态 + 离线回落态 */
+function setConn(state) {
+  const dot = $('#connDot'), txt = $('#connText');
+  const key = state === 'offline' ? 'conn.offline' : API_TARGETS[state].key;
+  dot.className = 'conn-dot ' + (state === 'offline' ? 'conn-err' : (state === 'demo' ? 'conn-idle' : 'conn-ok'));
+  txt.dataset.i18n = key;
+  txt.textContent = t(key);
+  $$('#connMenu button').forEach(b => b.classList.toggle('cm-on', b.dataset.target === apiTarget));
+}
+
+function setTarget(next) {
+  apiTarget = next;
+  localStorage.setItem('zjxt.apiTarget', next);
+  setConn(next);
+  $('#connMenu').classList.add('hidden');
+  loadNotes(keyword);
+}
+
+/* 拉列表：演示模式直接用内置假数据；真实目标失败则静默回落 */
+async function loadNotes(q) {
+  if (apiTarget === 'demo') {
+    online = false; lastError = '';
+    NOTES = JSON.parse(JSON.stringify(SEED_NOTES));
+    setConn('demo');
+    apiLog('demo mode · ' + NOTES.length + ' sample notes');
+    finishLoad();
+    return;
+  }
+  try {
+    const data = await API.list(q || '');
+    online = true; lastError = '';
+    NOTES = Array.isArray(data.items) ? data.items : [];
+    setConn(apiTarget);
+    apiLog(t('log.listOk', { n: NOTES.length }));
+  } catch (e) {
+    online = false; lastError = e.message || String(e);
+    NOTES = JSON.parse(JSON.stringify(SEED_NOTES));
+    setConn('offline');
+    apiLog(t('log.listFail', { e: lastError }));
+    toast(t('toast.loadFail'));
+  }
+  finishLoad();
+}
+
+/* ---- 新建笔记：走 POST /api/knowledge ---- */
+function openNoteModal() {
+  $('#newTitle').value = '';
+  $('#newTags').value = '';
+  $('#newContent').value = '';
+  $('#newError').classList.add('hidden');
+  $('#noteModal').classList.remove('hidden');
+  $('#noteModal').classList.add('flex');
+  setTimeout(() => $('#newTitle').focus(), 30);
+}
+function closeNoteModal() {
+  $('#noteModal').classList.add('hidden');
+  $('#noteModal').classList.remove('flex');
+}
+function showNewError(msg) {
+  const box = $('#newError');
+  box.textContent = msg;
+  box.classList.remove('hidden');
+}
+
+async function submitNewNote() {
+  const title = $('#newTitle').value.trim();
+  const content = $('#newContent').value;
+  const tags = $('#newTags').value.split(/[,，]/).map(s => s.trim()).filter(Boolean);
+  if (!title && !content.trim()) { showNewError('标题与内容不能同时为空'); return; }
+
+  if (apiTarget === 'demo') {
+    NOTES.unshift({ id: Date.now(), title: title || '未命名笔记', content, tags, created_at: nowStr() });
+    closeNoteModal();
+    finishLoad();
+    toast(t('toast.demoLocal'));
+    return;
+  }
+  try {
+    const res = await API.create({ title, content, tags });
+    apiLog(t('log.created', { id: res.id }));
+    closeNoteModal();
+    await loadNotes('');
+    currentNoteId = (res.item && res.item.id) || res.id;
+    renderSidebar(); renderDetail();
+    toast(t('toast.created'));
+  } catch (e) {
+    showNewError(e.message);
+    toast(t('toast.createFail') + '：' + e.message);
+  }
+}
+
+/* ---- 删除笔记：走 POST /api/knowledge/delete ---- */
+async function deleteCurrentNote() {
+  const note = NOTES.find(n => String(n.id) === String(currentNoteId));
+  if (!note) return;
+  if (apiTarget === 'demo') {
+    NOTES = NOTES.filter(n => String(n.id) !== String(note.id));
+    finishLoad();
+    toast(t('toast.demoLocal'));
+    return;
+  }
+  try {
+    await API.remove(note.id);
+    apiLog(t('log.deleted', { id: note.id }));
+    await loadNotes('');
+    toast(t('toast.deleted'));
+  } catch (e) {
+    lastError = e.message;
+    toast(t('toast.deleteFail') + '：' + e.message);
+  }
+}
+
+/* ---- 演示控制台：灌入五条示例笔记（真实 POST） ---- */
+async function seedNotes() {
+  if (apiTarget === 'demo') {
+    const added = SEED_INJECT.map((s, i) => ({ id: 900 + i, title: s.title, content: s.content, tags: s.tags, created_at: nowStr() }));
+    NOTES = added.concat(NOTES);
+    finishLoad();
+    toast(t('toast.demoLocal'));
+    return;
+  }
+  let ok = 0, fail = 0, err = '';
+  for (const s of SEED_INJECT) {
+    try {
+      const r = await API.create({ title: s.title, content: s.content, tags: s.tags });
+      apiLog(t('log.created', { id: r.id }));
+      ok++;
+    } catch (e) { fail++; err = e.message; }
+  }
+  await loadNotes('');
+  toast(fail ? t('toast.seedPartial', { ok, fail, e: err }) : t('toast.seedDone', { n: ok }));
+}
+
+/* ---- 演示控制台：清空（真实 DELETE） ---- */
+async function clearNotes() {
+  if (apiTarget === 'demo') {
+    NOTES = [];
+    finishLoad();
+    toast(t('toast.demoLocal'));
+    return;
+  }
+  const snapshot = NOTES.slice();
+  let ok = 0, fail = 0, err = '';
+  for (const n of snapshot) {
+    try {
+      await API.remove(n.id);
+      apiLog(t('log.deleted', { id: n.id }));
+      ok++;
+    } catch (e) { fail++; err = e.message; }
+  }
+  await loadNotes('');
+  toast(fail ? t('toast.clearPartial', { ok, fail, e: err }) : t('toast.clearDone', { n: ok }));
+}
+
+/* ============================================================
+ * 9. 事件绑定
+ * ============================================================ */
+$$('.js-lang').forEach(btn => btn.addEventListener('click', () => setLang(lang === 'zh' ? 'en' : 'zh')));
+
+$$('.js-theme').forEach(btn => btn.addEventListener('click', () => {
+  const root = document.documentElement;
+  const next = root.dataset.theme === 'light' ? 'dark' : 'light';
+  root.dataset.theme = next;
+  localStorage.setItem('zjxt.theme', next);
+  $$('.js-theme').forEach(b => { b.textContent = next === 'dark' ? '☀️' : '🌙'; });
+}));
+
+/* 汉堡菜单 */
+const burger = $('.zj-burger');
+const mobileMenu = $('#zjMobileMenu');
+burger.addEventListener('click', () => {
+  const open = mobileMenu.classList.toggle('open');
+  burger.setAttribute('aria-expanded', open ? 'true' : 'false');
+  burger.textContent = open ? '✕' : '☰';
+});
+mobileMenu.querySelectorAll('a').forEach(a => a.addEventListener('click', () => {
+  mobileMenu.classList.remove('open');
+  burger.setAttribute('aria-expanded', 'false');
+  burger.textContent = '☰';
+}));
+
+/* 搜索：桌面框与窄屏框双向同步 */
+function bindSearch(el) {
+  el.addEventListener('input', (e) => {
+    keyword = e.target.value.trim();
+    const other = el.id === 'searchInput' ? $('#searchInputMobile') : $('#searchInput');
+    if (other && other.value !== e.target.value) other.value = e.target.value;
+    if (apiTarget === 'demo') { renderSidebar(); return; }
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => loadNotes(keyword), 300); /* 契约 §6：搜索 debounce 300ms */
+  });
+}
+bindSearch($('#searchInput'));
+bindSearch($('#searchInputMobile'));
+
+document.querySelectorAll('.filter-chip').forEach(btn => {
+  btn.addEventListener('click', () => {
+    currentFilter = btn.dataset.filter;
+    document.querySelectorAll('.filter-chip').forEach(b => { b.classList.remove('chip-active'); b.classList.add('chip'); });
+    btn.classList.add('chip-active'); btn.classList.remove('chip');
+    renderSidebar();
+  });
+});
+
+$('#importBtnTop').addEventListener('click', openModal);
+$('#importBtnMobile').addEventListener('click', () => {
+  mobileMenu.classList.remove('open'); burger.textContent = '☰';
+  openModal();
+});
+$('#fabImport').addEventListener('click', openModal);
+$('#emptyImport').addEventListener('click', openModal);
+$('#modalClose').addEventListener('click', closeModal);
+$('#modalCancel').addEventListener('click', closeModal);
+$('#dropZone').addEventListener('click', startUpload);
+$('#modalConfirm').addEventListener('click', startUpload);
+$('#importModal').addEventListener('click', (e) => { if (e.target === $('#importModal')) closeModal(); });
+
+$('#demoEmptyBtn').addEventListener('click', () => setEmptyMode(!demoEmpty));
+$('#demoResetBtn').addEventListener('click', () => {
+  DOCS = JSON.parse(JSON.stringify(SEED_DOCS));
+  setEmptyMode(false);
+  currentFilter = 'all';
+  document.querySelectorAll('.filter-chip').forEach((b, i) => {
+    b.classList.toggle('chip-active', i === 0); b.classList.toggle('chip', i !== 0);
+  });
+  $('#searchInput').value = ''; $('#searchInputMobile').value = ''; keyword = '';
+  currentNoteId = NOTES.length ? NOTES[0].id : 1;
+  renderSidebar(); renderDetail();
+});
+
+/* 连接指示器：展开 / 选择 / 点击外部收起 */
+$('#connBtn').addEventListener('click', (e) => {
+  e.stopPropagation();
+  const menu = $('#connMenu');
+  const open = menu.classList.toggle('hidden') === false;
+  $('#connBtn').setAttribute('aria-expanded', open ? 'true' : 'false');
+});
+$$('#connMenu button').forEach(btn => {
+  btn.addEventListener('click', (e) => { e.stopPropagation(); setTarget(btn.dataset.target); });
+});
+document.addEventListener('click', () => $('#connMenu').classList.add('hidden'));
+
+/* 新建笔记弹窗 */
+$('#newNoteBtn').addEventListener('click', openNoteModal);
+$('#noteModalClose').addEventListener('click', closeNoteModal);
+$('#noteModalCancel').addEventListener('click', closeNoteModal);
+$('#noteSubmit').addEventListener('click', submitNewNote);
+$('#noteModal').addEventListener('click', (e) => { if (e.target === $('#noteModal')) closeNoteModal(); });
+
+/* 删除当前笔记 */
+$('#deleteNoteBtn').addEventListener('click', deleteCurrentNote);
+
+/* 演示控制台：真实写入动作 */
+$('#demoSeedBtn').addEventListener('click', seedNotes);
+$('#demoClearBtn').addEventListener('click', clearNotes);
+
+/* 空状态里的「载入示例笔记」→ 切到演示模式 */
+$('#emptyDemo').addEventListener('click', () => setTarget('demo'));
+$('#demoFailBtn').addEventListener('click', () => {
+  const docs = DOCS[currentNoteId] || (DOCS[currentNoteId] = []);
+  docs.push({ id: 'fail' + Date.now(), name: '手写笔记_模糊页.jpg', type: 'image', status: 'failed', chunks: 0, error: 'IMAGE_TOO_BLURRY' });
+  renderDetail();
+});
+
+$('#saveRemark').addEventListener('click', () => {
+  const hint = $('#saveHint');
+  hint.classList.remove('opacity-0');
+  setTimeout(() => hint.classList.add('opacity-0'), 1600);
+});
+
+/* 隐私说明弹层 */
+function openPrivacy() {
+  const m = $('#privacyModal');
+  m.classList.remove('hidden'); m.classList.add('flex');
+}
+function closePrivacy() {
+  const m = $('#privacyModal');
+  m.classList.add('hidden'); m.classList.remove('flex');
+}
+$$('.js-privacy-open').forEach(b => b.addEventListener('click', openPrivacy));
+$$('.js-privacy-close').forEach(b => b.addEventListener('click', closePrivacy));
+$('#privacyModal').addEventListener('click', (e) => { if (e.target === $('#privacyModal')) closePrivacy(); });
+
+/* ============================================================
+ * 10. 初始化
+ * ============================================================ */
+setLang(lang);
+setConn(apiTarget);
+loadNotes('');
+(function () {
+  var cur = document.documentElement.dataset.theme;
+  $$('.js-theme').forEach(b => { b.textContent = cur === 'dark' ? '☀️' : '🌙'; });
+})();
+</script>
+</body>
+</html>
