@@ -4,6 +4,7 @@
  * zjxt.welcomed 归欢迎层，两边互不相干。
  */
 import { computed, reactive, ref } from 'vue'
+import { keyedStorage } from '@/composables/ownerTag'
 
 export const PET_KEY = 'zjxt.pet'
 
@@ -148,9 +149,17 @@ const INFRINGE_IDS = [
 /** 旧侵权 id 命中标记：命中后要在 pet 初始化后立即把清空结果写回存储，让首屏引导页能重新出现 */
 let clearedInfringe = false
 
+function petKey() {
+  // 按账号分档：同一浏览器多账号不互相污染；anon 档兼容旧的 zjxt.pet
+  // （老数据只在 anon 身份下读得到，首次保存后落到新 key，旧 key 不再写）
+  return keyedStorage('zjxt.pet')
+}
+
 function loadPet() {
   try {
-    const raw = localStorage.getItem(PET_KEY)
+    const key = petKey()
+    let raw = localStorage.getItem(key)
+    if (!raw && key !== PET_KEY) raw = localStorage.getItem(PET_KEY) // 旧版未分档数据
     if (!raw) return null
     const data = JSON.parse(raw)
     if (!data || typeof data.id !== 'string') return null
@@ -263,7 +272,7 @@ function nextDayStr(s) {
 
 function persist() {
   try {
-    localStorage.setItem(PET_KEY, JSON.stringify({ ...pet }))
+    localStorage.setItem(petKey(), JSON.stringify({ ...pet }))
   } catch (_) {
     /* 存不上不阻塞 */
   }

@@ -488,6 +488,17 @@ async function loadBootstrap() {
 onMounted(async () => {
   await loadBootstrap()
 
+  // 匿名 LLM 限速命中（后端 429 + code: ANON_LIMIT_*）：提示并引导登录。
+  // 登录用户不受限，登录后即可不限次使用全部 AI 功能
+  // （见 server/api_server.py 的 _enforce_anon_llm_quota）。
+  window.addEventListener('zjxt:anon-limit', (ev) => {
+    const detail = ev?.detail || {}
+    statusTone.value = 'warn'
+    statusText.value =
+      detail.message || '今日匿名体验额度已用完，登录后即可不限次使用全部 AI 功能。'
+    if (!showLogin.value) showLogin.value = true
+  })
+
   // 支持深链：?course=机器学习&auto=1&level=进阶&daily_hours=4h&goal=考试&deadline=2026-10-10
   // 便于把「一条完整链路」直接做成可分享的演示链接，也方便自动化截图验证。
   const qs = new URLSearchParams(window.location.search)

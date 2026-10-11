@@ -24,6 +24,7 @@ const { t } = useI18n()
 const SCOPES = computed(() => [
   { id: 'all', label: t('kb.scopeAll') },
   { id: 'private', label: t('kb.scopePrivate') },
+  { id: 'shared', label: t('kb.scopeShared') },
   { id: 'public', label: t('kb.scopePublic') },
 ])
 
@@ -426,6 +427,7 @@ onBeforeUnmount(() => {
         <span class="kb-group-name">{{ t('kb.new') }}</span>
         <select v-model="uploadScope" :aria-label="t('kb.new')">
           <option value="private">{{ t('kb.scopePrivate') }}</option>
+          <option value="shared">{{ t('kb.scopeShared') }}</option>
           <option value="public">{{ t('kb.scopePublic') }}</option>
         </select>
         <select v-model="uploadCategory" :aria-label="t('kb.cat')">
@@ -491,7 +493,7 @@ onBeforeUnmount(() => {
 
       <section v-if="current" class="detail">
         <div class="note-facts">
-          <span>{{ current.scope === 'private' ? t('kb.private') : t('kb.public') }}</span>
+          <span>{{ current.scope === 'private' ? t('kb.private') : current.scope === 'shared' ? t('kb.scopeShared') : t('kb.public') }}</span>
           <span v-if="current.category">{{ categoryLabel(current.category) }}</span>
           <button type="button" class="ghost small" @click="showShare = true">{{ t('kb.shareNote') }}</button>
           <button type="button" class="ghost small" @click="downloadNote">{{ t('kb.download') }}</button>

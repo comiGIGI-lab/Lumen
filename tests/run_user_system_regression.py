@@ -135,8 +135,14 @@ def source_checks():
     timer = read(TIMER)
     check("study_settings_persist", "zjxt.study" in timer or "studyKey(" in timer)
     kb = read(KNOWLEDGE)
+    # 知识库的「官方资料库 / 我的个人库」两档视图（dc590c5 起）。
+    # 4df5ce7 之后组件文案全面 i18n 化：.vue 里只剩 key，中文挪到
+    # web/src/i18n/auto-zh.json。所以两种写法都算通过——组件里硬编码中文，
+    # 或组件用 kb.scopePublic/kb.scopePrivate 且中文包里确实是「官方/个人」。
+    zh_pkg = read(os.path.join(REPO_ROOT, "web", "src", "i18n", "auto-zh.json"))
     check("knowledge_official_personal_views",
-          ("官方" in kb) and ("个人" in kb or "private" in kb))
+          (("官方" in kb) or ("kb.scopePublic" in kb and "官方" in zh_pkg))
+          and (("个人" in kb) or ("kb.scopePrivate" in kb and "个人" in zh_pkg)))
 
     print("\n[3b] 源检查：MySQL 隔离 + 匿名 LLM 限速")
     db_py = os.path.join(SERVER, "db.py")

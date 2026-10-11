@@ -5,16 +5,21 @@
  * 结构：大标题 + 副标题 + 图标输入框 + 全宽主按钮 + 底部切换链接。
  * 参考稿用的是蓝色，这里沿用本站品牌红保持一致；要完全照搬蓝色改一个变量即可。
  *
- * 两态：
- *   signin  账号 + 密码 → 登录
- *   signup  账号 + 密码 + 确认密码 → 注册（后端只建普通账号）
+ * 三态：
+ *   signin    账号 + 密码 → 登录
+ *   signup    账号 + 密码 + 确认密码 → 注册（后端只建普通账号）
+ *   changepw  已登录：原密码 + 新密码 → 自助改密（POST /api/password）
+ *
+ * 已登录卡片还有「账号管理」入口（仅管理员），打开 AccountAdminDialog。
  *
  * ⚠️ 前端只负责显示，接口的权限校验在服务端。
  */
 import { computed, ref, watch } from 'vue'
 import ModalDialog from './ModalDialog.vue'
+import AccountAdminDialog from './AccountAdminDialog.vue'
 import { useI18n } from '@/i18n'
 import { useAuth } from '@/composables/useAuth'
+import { api } from '@/api/client'
 
 const props = defineProps({
   open: { type: Boolean, default: false },
@@ -35,8 +40,13 @@ const confirm = ref('')
 const showPw = ref(false)
 const busy = ref(false)
 const err = ref('')
+const okMsg = ref('')
+
+// 管理员「账号管理」子弹窗
+const showAdmin = ref(false)
 
 const isSignup = computed(() => mode.value === 'signup')
+const isChangePw = computed(() => mode.value === 'changepw')
 
 watch(
   () => props.open,
@@ -44,6 +54,7 @@ watch(
     if (v) {
       mode.value = props.initialMode === 'signup' ? 'signup' : 'signin'
       err.value = ''
+      okMsg.value = ''
       password.value = ''
       confirm.value = ''
       showPw.value = false
@@ -54,6 +65,46 @@ watch(
 function switchMode() {
   mode.value = isSignup.value ? 'signin' : 'signup'
   err.value = ''
+  confirm.value = ''
+}
+
+function gotoChangePw() {
+  mode.value = 'changepw'
+  err.value = ''
+  okMsg.value = ''
+  password.value = ''
+  confirm.value = ''
+}
+
+function backToCard() {
+  mode.value = 'signin'
+  err.value = ''
+  okMsg.value = ''
+  password.value = ''
+  confirm.value = ''
+}
+
+async function submitChangePw() {
+  if (busy.value) return
+  err.value = ''
+  okMsg.value = ''
+  if (!password.value || !confirm.value) {
+    err.value = t('auth.needBoth')
+    return
+  }
+  if (confirm.value.length < 6) {
+    err.value = t('auth.changePwShort')
+    return
+  }
+  busy.value = true
+  const r = await api.changePassword(password.value, confirm.value)
+  busy.value = false
+  if (!r || !r.ok) {
+    err.value = (r && r.error) || t('auth.failed')
+    return
+  }
+  okMsg.value = t('auth.changePwOk')
+  password.value = ''
   confirm.value = ''
 }
 
@@ -94,8 +145,42 @@ function doLogout() {
 <template>
   <ModalDialog :open="props.open" :title="''" width="420px" @close="emit('close')">
     <div class="acc">
+      <!-- 已登录：改密表单 -->
+      <template v-if="isLoggedIn && isChangePw">
+        <h2 class="h1">{{ t('auth.changePw') }}</h2>
+        <p class="sub">{{ t('auth.changePwSub') }}</p>
+        <form class="fields" @submit.prevent="submitChangePw">
+          <div class="field">
+            <span class="ico" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
+                <rect x="4.5" y="10.5" width="15" height="9.5" rx="2.2" />
+                <path d="M8.2 10.5V8a3.8 3.8 0 0 1 7.6 0v2.5" stroke-linecap="round" />
+              </svg>
+            </span>
+            <input v-model="password" class="ctl" type="password" autocomplete="current-password"
+                   :placeholder="t('auth.oldPwPlaceholder')" />
+          </div>
+          <div class="field">
+            <span class="ico" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
+                <rect x="4.5" y="10.5" width="15" height="9.5" rx="2.2" />
+                <path d="M8.2 10.5V8a3.8 3.8 0 0 1 7.6 0v2.5" stroke-linecap="round" />
+              </svg>
+            </span>
+            <input v-model="confirm" class="ctl" type="password" autocomplete="new-password"
+                   :placeholder="t('auth.newPwPlaceholder')" />
+          </div>
+          <p v-if="err" class="err">{{ err }}</p>
+          <p v-if="okMsg" class="okmsg">{{ okMsg }}</p>
+          <button type="submit" class="primary" :disabled="busy">
+            {{ busy ? t('auth.changing') : t('auth.changePw') }}
+          </button>
+          <button type="button" class="primary ghost" @click="backToCard">{{ t('auth.back') }}</button>
+        </form>
+      </template>
+
       <!-- 已登录：身份卡片 -->
-      <template v-if="isLoggedIn">
+      <template v-else-if="isLoggedIn">
         <h2 class="h1">{{ t('auth.title') }}</h2>
         <p class="sub">{{ t('auth.signedInAs') }}</p>
         <div class="who">
@@ -105,7 +190,15 @@ function doLogout() {
           </span>
         </div>
         <p class="hint">{{ isAdmin ? t('auth.adminHint') : t('auth.userHint') }}</p>
-        <button type="button" class="primary ghost" @click="doLogout">{{ t('auth.logout') }}</button>
+        <div class="ops">
+          <button type="button" class="primary ghost" @click="gotoChangePw">
+            {{ t('auth.changePw') }}
+          </button>
+          <button v-if="isAdmin" type="button" class="primary ghost" @click="showAdmin = true">
+            {{ t('auth.manage') }}
+          </button>
+        </div>
+        <button type="button" class="primary ghost logout" @click="doLogout">{{ t('auth.logout') }}</button>
       </template>
 
       <!-- 未登录：登录 / 注册 -->
@@ -194,6 +287,9 @@ function doLogout() {
       </template>
     </div>
   </ModalDialog>
+
+  <!-- 管理员账号管理（子弹窗，放在外层弹窗之外避免遮罩叠加错乱） -->
+  <AccountAdminDialog :open="showAdmin" @close="showAdmin = false" />
 </template>
 
 <style scoped>
@@ -289,6 +385,26 @@ function doLogout() {
   text-align: left;
   font-size: 13px;
   color: var(--danger, #c4101a);
+}
+.okmsg {
+  margin: 0;
+  text-align: left;
+  font-size: 13px;
+  color: #1a7f37;
+}
+
+/* ---- 已登录卡片按钮组 ---- */
+.ops {
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+}
+.ops .primary.ghost {
+  margin-top: 0;
+  flex: 1 1 0;
+}
+.primary.logout {
+  margin-top: 10px;
 }
 
 /* ---- 主按钮：全宽 ---- */
