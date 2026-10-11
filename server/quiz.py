@@ -344,7 +344,7 @@ _TOOL_SYSTEM = """你是严谨的 AI 出题老师。你需要借助 Tavily 联�
 若已有知识库资料足够，可直接用 <finish> 输出题目。"""
 
 
-def _tool_user(course, difficulty, plan, is_url, kb_ctx):
+def _tool_user(course, difficulty, plan, is_url, kb_ctx, lively=False):
     lines = []
     if is_url:
         lines.append("待抓取的文档 URL：%s" % course)
@@ -354,11 +354,12 @@ def _tool_user(course, difficulty, plan, is_url, kb_ctx):
     lines.append("题型要求：%s" % _plan_spec(plan, difficulty))
     if kb_ctx and kb_ctx.strip():
         lines.append("【知识库已有资料，可与联网资料结合使用】\n%s" % kb_ctx)
+    lines.append("文风：" + _style_rule(lively))
     lines.append("请先判断输入是 URL 还是主题，调用合适的 Tavily 工具获取资料，再用 <finish> 输出题目。")
     return "\n\n".join(lines)
 
 
-def _run_tool_agent(course, difficulty, plan, api_key, is_url, kb_ctx=""):
+def _run_tool_agent(course, difficulty, plan, api_key, is_url, kb_ctx="", lively=False):
     """工具智能体：驱动现有出题 LLM 走「调用 Tavily 工具 → 收尾出题」循环。
 
     返回 {"ok": bool, "questions": [...], "sources": [...], "error": str}。
@@ -368,7 +369,7 @@ def _run_tool_agent(course, difficulty, plan, api_key, is_url, kb_ctx=""):
     tools = _build_tavily_tools(api_key)
     messages = [
         {"role": "system", "content": _TOOL_SYSTEM},
-        {"role": "user", "content": _tool_user(course, difficulty, plan, is_url, kb_ctx)},
+        {"role": "user", "content": _tool_user(course, difficulty, plan, is_url, kb_ctx, lively)},
     ]
     sources = []
     for step in range(1, MAX_AGENT_STEPS + 1):
@@ -481,7 +482,18 @@ def _plan_spec(plan, difficulty):
     return "；".join(parts) if parts else "3 道单选题"
 
 
-def _build_prompt(course, difficulty, plan, kb):
+def _style_rule(lively):
+    """文风只改表达，不改考点、答案和 JSON 形状。默认关闭。"""
+    if not lively:
+        return "行文保持严谨、直接，不要玩笑、不要生活化场景、不要比喻。"
+    return (
+        "文风要求：轻松幽默。每道题的题干用一个生活化场景或比喻把知识点讲出来，"
+        "解析也用一句通俗比喻帮助理解。不得为了好玩改变知识点、正确选项或事实；"
+        "不要网络烂梗，不要人身攻击。"
+    )
+
+
+def _build_prompt(course, difficulty, plan, kb, lively=False):
     hint = DIFFICULTY_HINT.get(difficulty, DIFFICULTY_HINT["medium"])
     spec = _plan_spec(plan, difficulty)
     if kb and kb.strip():
@@ -490,7 +502,7 @@ def _build_prompt(course, difficulty, plan, kb):
         material_rule = ("下方暂无参考资料，请基于你对该主题的可靠通用知识严谨出题，"
                         "确保事实准确、不杜撰。")
     return (
-        "你是严谨的出题老师。%s\n\n"
+        "你是严谨的出题老师。%s\n%s\n\n"
         "课程：%s\n难度要求：%s\n\n"
         "请出：%s。只输出一个 JSON 对象，不要输出其他文字：\n"
         '{"questions": [{"type": "single", "stem": "题干", '
@@ -499,7 +511,7 @@ def _build_prompt(course, difficulty, plan, kb):
         '"answer": ["A"], "explanation": "解析", "knowledge_point": "知识点"}]}\n\n'
         "要求：每题必须带 type 字段（single/multi/judge）；选项文本两两不同；"
         "题干、解析、知识点都用中文且非空。\n\n"
-        "出题依据的资料：\n%s" % (material_rule, course, hint, spec, kb)
+        "出题依据的资料：\n%s" % (material_rule, _style_rule(lively), course, hint, spec, kb)
     )
 
 
@@ -647,58 +659,202 @@ def _generate_from_prompt(prompt):
     return qs
 
 
-def _assemble(course, difficulty, plan, questions, src_kind, src_list, citations, client_id):
-    """统一标来源、落盘、裁剪对外负载（generate_quiz 收尾）。"""
-    if len(questions) < MIN_VALID_QUESTIONS:
-        return {"ok": False, "error": "本次生成的题目未通过格式校验，请重试。", "retrieved": citations}
-    # 统一标来源（topic / kb / web）与来源清单
-    for q in questions:
-        q["source"] = src_kind
-        q["sources"] = src_list
+def _public_question(q):
+    """对外单题：不含 answer。"""
+    return {
+        "id": q["id"], "type": q["type"], "stem": q["stem"], "options": q["options"],
+        "explanation": q["explanation"], "knowledge_point": q["knowledge_point"],
+        "source": q["source"], "sources": q["sources"],
+    }
 
-    quiz_id = "z-%d-%s" % (
+
+def _new_quiz_id():
+    return "z-%d-%s" % (
         int(datetime.now().strftime("%H%M%S")) + os.getpid() % 1000,
         os.urandom(3).hex(),
     )
+
+
+def _begin_run(course, difficulty, plan, questions, src_kind, src_list, citations, client_id):
+    """第一题（及已校验题）先建局并落盘。后续题用 _append_question 追加。"""
+    for q in questions:
+        q["source"] = src_kind
+        q["sources"] = src_list
+    quiz_id = _new_quiz_id()
     ts = _now()
     run = {
         "quiz_id": quiz_id,
         "course": course,
         "difficulty": difficulty,
         "count": len(questions),
+        "expected": sum(plan.values()) if isinstance(plan, dict) else len(questions),
         "types": plan,
         "source": src_kind,
         "client_id": str(client_id or "")[:64],
         "created_at": ts,
         "started_at": ts,
-        # 完整题目（含 answer）只在服务端；对外负载由 grade/report 与调用方另行裁剪
         "questions": questions,
         "answers": {},
+        "retrieved": citations,
+        "status": "streaming",
     }
     with _LOCK:
         runs = _load()
         runs[quiz_id] = run
-        # 只留最近 MAX_RUNS_KEPT 局，防止 JSON 无限膨胀
         if len(runs) > MAX_RUNS_KEPT:
-            ordered = sorted(
-                runs.items(),
-                key=lambda kv: kv[1].get("created_at") or "",
-            )
+            ordered = sorted(runs.items(), key=lambda kv: kv[1].get("created_at") or "")
             for k, _v in ordered[: len(runs) - MAX_RUNS_KEPT]:
                 del runs[k]
         _save()
+    return run
 
-    payload_questions = [
-        {
-            "id": q["id"], "type": q["type"], "stem": q["stem"], "options": q["options"],
-            "explanation": q["explanation"], "knowledge_point": q["knowledge_point"],
-            "source": q["source"], "sources": q["sources"],
-        }
-        for q in questions
-    ]
+
+def _append_question(quiz_id, q, src_kind, src_list):
+    """后续题落盘。返回对外题目；局不存在返回 None。"""
+    q["source"] = src_kind
+    q["sources"] = src_list
+    with _LOCK:
+        runs = _load()
+        run = runs.get(quiz_id)
+        if not run:
+            return None
+        have = {x.get("id") for x in run["questions"]}
+        stems = {x.get("stem") for x in run["questions"]}
+        if q.get("stem") in stems:
+            return None
+        if q.get("id") in have:
+            n = len(run["questions"]) + 1
+            while ("q%d" % n) in have:
+                n += 1
+            q["id"] = "q%d" % n
+        run["questions"].append(q)
+        run["count"] = len(run["questions"])
+        _save()
+    return _public_question(q)
+
+
+def _finish_run(quiz_id, status="done"):
+    with _LOCK:
+        runs = _load()
+        run = runs.get(quiz_id)
+        if not run:
+            return None
+        run["status"] = status
+        run["count"] = len(run.get("questions") or [])
+        _save()
+        return run
+
+
+def _iter_questions(questions, quiz_id):
+    """已落盘题目按到达顺序对外推送。answer 不出现在事件里。"""
+    for i, q in enumerate(questions):
+        yield ("question", {
+            "ok": True, "index": i, "question": _public_question(q), "quiz_id": quiz_id,
+        })
+
+
+def iter_generate_quiz(course, difficulty="medium", count=_COUNT_DEFAULT, types=None,
+                       client_id="", web_search=True, lively=False):
+    """边出边推。默认拆成「先 1 题、再剩余题」两次模型调用。
+
+    第一次调用返回并落盘后立刻 yield meta + question，调用方可以在第二次调用进行时判分。
+    题量已经是 1，或注入的 _llm_chat 一次就给出全部题时，不再二次调用。
+    yield (event, data)，data 不含 answer。整卷 POST 仍走 generate_quiz。
+    """
+    course = str(course or "").strip()
+    try:
+        total = int(count)
+    except (TypeError, ValueError):
+        total = _COUNT_DEFAULT
+    total = max(_COUNT_MIN, min(_COUNT_MAX, total))
+
+    def _emit_bundle(res):
+        if not res.get("ok"):
+            yield ("error", {"ok": False, "error": res.get("error") or "出题失败",
+                             "retrieved": res.get("retrieved") or []})
+            yield ("done", {"ok": False})
+            return None
+        quiz_id = res["quiz_id"]
+        questions = res["questions"]
+        yield ("meta", {
+            "ok": True,
+            "quiz_id": quiz_id,
+            "course": res["course"],
+            "difficulty": res["difficulty"],
+            "expected": total,
+            "types": res.get("types") or {},
+            "source": res.get("source") or "kb",
+            "retrieved": res.get("retrieved") or [],
+        })
+        yield from _iter_questions(questions, quiz_id)
+        return quiz_id
+
+    first_n = 1 if total > 1 else total
+    gen = _emit_bundle(generate_quiz(
+        course, difficulty=difficulty, count=first_n, types=types,
+        client_id=client_id, web_search=web_search, min_questions=1, lively=lively,
+        min_count=1,
+    ))
+    quiz_id = None
+    failed = False
+    for item in gen:
+        if item[0] == "meta":
+            quiz_id = item[1].get("quiz_id")
+        if item[0] in ("error", "done") and not item[1].get("ok"):
+            failed = True
+        yield item
+    if failed or not quiz_id:
+        return
+    if first_n >= total:
+        _finish_run(quiz_id, "done")
+        yield ("done", {"ok": True, "quiz_id": quiz_id, "count": first_n})
+        return
+
+    rest = generate_quiz(
+        course, difficulty=difficulty, count=total - first_n, types=types,
+        client_id=client_id, web_search=web_search, min_questions=1, lively=lively,
+        min_count=1,
+    )
+    added = 0
+    if rest.get("ok"):
+        with _LOCK:
+            runs = _load()
+            extra_run = runs.get(rest["quiz_id"]) or {}
+            extra = list(extra_run.get("questions") or [])
+        for q in extra:
+            if added >= total - first_n:
+                break
+            pub = _append_question(quiz_id, dict(q), q.get("source") or rest.get("source") or "topic",
+                                   q.get("sources") or [])
+            if pub:
+                yield ("question", {
+                    "ok": True, "index": first_n + added, "question": pub, "quiz_id": quiz_id,
+                })
+                added += 1
+        with _LOCK:
+            runs = _load()
+            runs.pop(rest["quiz_id"], None)
+            _save()
+    _finish_run(quiz_id, "done")
+    yield ("done", {"ok": True, "quiz_id": quiz_id, "count": first_n + added})
+
+
+def _assemble(course, difficulty, plan, questions, src_kind, src_list, citations, client_id,
+             min_questions=None):
+    """统一标来源、落盘、裁剪对外负载（generate_quiz 收尾）。
+
+    min_questions 默认仍是整卷下限。流式首段可以传 1，先把第一题交给前端。
+    """
+    need = MIN_VALID_QUESTIONS if min_questions is None else min_questions
+    if len(questions) < need:
+        return {"ok": False, "error": "本次生成的题目未通过格式校验，请重试。", "retrieved": citations}
+    run = _begin_run(course, difficulty, plan, questions, src_kind, src_list, citations, client_id)
+    _finish_run(run["quiz_id"], "done")
+
+    payload_questions = [_public_question(q) for q in questions]
     return {
         "ok": True,
-        "quiz_id": quiz_id,
+        "quiz_id": run["quiz_id"],
         "course": course,
         "difficulty": difficulty,
         "count": len(questions),
@@ -709,7 +865,7 @@ def _assemble(course, difficulty, plan, questions, src_kind, src_list, citations
     }
 
 
-def generate_quiz(course, difficulty="medium", count=_COUNT_DEFAULT, types=None, client_id="", web_search=True):
+def generate_quiz(course, difficulty="medium", count=_COUNT_DEFAULT, types=None, client_id="", web_search=True, min_questions=None, lively=False, min_count=None):
     """出题入口。返回 dict（HTTP 层直接回 JSON）。
 
     联网出题走「Tavily 工具智能体」：URL 用 extract、主题用 search，模型按复杂度自选自浅/深
@@ -727,7 +883,10 @@ def generate_quiz(course, difficulty="medium", count=_COUNT_DEFAULT, types=None,
         count = int(count)
     except (TypeError, ValueError):
         count = _COUNT_DEFAULT
-    count = max(_COUNT_MIN, min(_COUNT_MAX, count))
+    # min_count：只有流式路径会用。整卷接口仍按 _COUNT_MIN 夹住，保持对外契约不变；
+    # 若不对流式放行，一次「只要 1 题」会被抬成整套题，「第一题先到」就失去意义。
+    lo = _COUNT_MIN if min_count is None else max(1, int(min_count))
+    count = max(lo, min(_COUNT_MAX, count))
     if not course:
         return {"ok": False, "error": "请先输入课程名", "retrieved": []}
 
@@ -739,12 +898,12 @@ def generate_quiz(course, difficulty="medium", count=_COUNT_DEFAULT, types=None,
     if is_url:
         if not key:
             return {"ok": False, "error": WEAK_HIT_ERROR, "retrieved": []}
-        agent = _run_tool_agent(course, difficulty, plan, key, is_url=True, kb_ctx="")
+        agent = _run_tool_agent(course, difficulty, plan, key, is_url=True, kb_ctx="", lively=lively)
         if not agent["ok"]:
             return {"ok": False, "error": WEAK_HIT_ERROR, "retrieved": []}
         return _assemble(
             course, difficulty, plan, agent["questions"], "web",
-            agent["sources"], agent["sources"], client_id,
+            agent["sources"], agent["sources"], client_id, min_questions,
         )
 
     # 主题题：知识库可选增强 + 联网工具智能体（由 web_search 开关控制）
@@ -755,21 +914,22 @@ def generate_quiz(course, difficulty="medium", count=_COUNT_DEFAULT, types=None,
         for n, s, _ in hits
     ]
     if web_search and key:
-        agent = _run_tool_agent(course, difficulty, plan, key, is_url=False, kb_ctx=kb_ctx)
+        agent = _run_tool_agent(course, difficulty, plan, key, is_url=False, kb_ctx=kb_ctx, lively=lively)
         if agent["ok"]:
             web_sources = agent["sources"]
             src_kind = "web" if web_sources else ("kb" if hits else "topic")
             return _assemble(
                 course, difficulty, plan, agent["questions"], src_kind,
-                web_sources, kb_citations + web_sources, client_id,
+                web_sources, kb_citations + web_sources, client_id, min_questions,
             )
         # 联网工具智能体失败/异常 → 降级为空上下文，基于通用知识出题（不拒绝）
         logging.warning("联网工具智能体失败，降级为空上下文出题: %s", agent.get("error"))
     # 联网关闭 / 无 key / 降级：直接 KB 或通用知识出题
-    questions = _generate_from_prompt(_build_prompt(course, difficulty, plan, kb_ctx))
+    questions = _generate_from_prompt(_build_prompt(course, difficulty, plan, kb_ctx, lively))
     src_kind = "kb" if hits else "topic"
     return _assemble(
         course, difficulty, plan, questions, src_kind, [], kb_citations, client_id,
+        min_questions,
     )
 
 

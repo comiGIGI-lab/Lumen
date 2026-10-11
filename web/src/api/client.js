@@ -304,6 +304,21 @@ export const api = {
     })
   },
 
+  /** 为自己的笔记生成口令。接收方兑换后得到一份私有副本。 */
+  knowledgeShare(ids) {
+    return request('/knowledge/share', {
+      method: 'POST',
+      body: JSON.stringify({ ids }),
+    })
+  },
+
+  knowledgeRedeem(code) {
+    return request('/knowledge/redeem', {
+      method: 'POST',
+      body: JSON.stringify({ code }),
+    })
+  },
+
   /** 删除一条知识库笔记 */
   knowledgeDelete(id) {
     return request(`/knowledge/${id}`, { method: 'DELETE' })
@@ -434,10 +449,10 @@ export const api = {
    * 响应不含 answer —— 判分走 quizGrade（服务端持标准答案）。
    * web_search：联网搜索开关（默认开）；关闭/无 key/失败时降级为空上下文、不拒绝。
    */
-  quizGenerate(course, difficulty = 'medium', count = 5, types = 'mixed', webSearch = true) {
+  quizGenerate(course, difficulty = 'medium', count = 5, types = 'mixed', webSearch = true, lively = false) {
     return request('/quiz/generate', {
       method: 'POST',
-      body: JSON.stringify({ course, difficulty, count, types, web_search: webSearch }),
+      body: JSON.stringify({ course, difficulty, count, types, web_search: webSearch, lively }),
     })
   },
 
@@ -484,12 +499,35 @@ export const api = {
   mindmapDelete(course) {
     return request(`/mindmap/${encodeURIComponent(course)}`, { method: 'DELETE' })
   },
+
+  /** 语音引擎探测。后端始终 200：available=false 时 reason 可直接展示。 */
+  asrStatus() {
+    return request('/asr')
+  },
 }
 
 /**
  * 构造「生成方案」SSE 地址。
  * 用 GET + query 是为了能用浏览器原生 EventSource（它只支持 GET）。
  */
+/**
+ * 出题 SSE。第一题到达即 question 事件，后续题继续推，结束为 done。
+ * EventSource 只能 GET，token / client_id 走查询参数。
+ */
+export function quizStreamUrl(course, { difficulty = 'medium', count = 5, types = 'mixed', webSearch = true, lively = false } = {}) {
+  const qs = new URLSearchParams({
+    course,
+    difficulty,
+    count: String(count),
+    types,
+    web_search: webSearch ? '1' : '0',
+    lively: lively ? '1' : '0',
+    client_id: clientId(),
+  })
+  if (authToken()) qs.set('token', authToken())
+  return `${BASE}/quiz/stream?${qs.toString()}`
+}
+
 export function planStreamUrl(course, profile = {}, useCache = true) {
   const qs = new URLSearchParams({
     course,

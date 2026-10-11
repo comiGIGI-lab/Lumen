@@ -1070,18 +1070,24 @@ class ApiHandler(BaseHTTPRequestHandler):
         return self._send_json(r)
 
     def log_message(self, fmt, *args):  # 收敛控制台噪音
-        if self.path.startswith("/api/plan/stream"):
+        if self.path.startswith("/api/plan/stream") or self.path.startswith("/api/quiz/stream"):
             return
         sys.stderr.write("[api] %s\n" % (fmt % args))
 
-    def _auth(self):
-        """取当前登录用户；未登录返回 None。"""
-        return accounts.check_token(self.headers.get("X-Auth-Token") or "")
+    def _auth(self, query=None):
+        """取当前登录用户；未登录返回 None。
+
+        SSE（EventSource）不能自定义请求头，token 回落到查询参数 token。
+        """
+        token = (self.headers.get("X-Auth-Token") or "").strip()
+        if not token and query:
+            token = (query.get("token") or [""])[0].strip()
+        return accounts.check_token(token)
 
     def _knowledge_scope(self, raw):
         """上传空间只接受三档；缺省或非法值都落到本人私有空间。"""
         scope = str(raw or "").strip().lower()
-        return scope if scope in ("private", "shared", "public") else "private"
+        return scope if scope in ("private", "public") else "private"
 
     def _require_admin(self):
         """管理员校验。
@@ -1393,7 +1399,7 @@ class ApiHandler(BaseHTTPRequestHandler):
                 store = KnowledgeStore()
                 if not q:
                     items = store.visible(username)
-                    if scope in ("private", "shared", "public"):
+                    if scope in ("private", "public"):
                         items = [item for item in items if item.get("scope") == scope]
                     if category:
                         items = [item for item in items if item.get("category") == category]
@@ -1416,7 +1422,11 @@ class ApiHandler(BaseHTTPRequestHandler):
                     hits = store.retrieve_visible(q, username, top_k=top_k)
                 items = []
                 for note, score, detail in hits:
-                    it = dict(note)
+                    it = store.normalize(note)
+                    if scope in ("private", "public") and it.get("scope") != scope:
+                        continue
+                    if category and it.get("category") != category:
+                        continue
                     it["_score"] = round(score, 2)
                     it["_match"] = detail
                     items.append(it)
@@ -1426,6 +1436,9 @@ class ApiHandler(BaseHTTPRequestHandler):
 
             if path == "/api/plan/stream":
                 return self._handle_stream(query)
+
+            if path == "/api/quiz/stream":
+                return self._handle_quiz_stream(query)
 
             return self._send_json({"ok": False, "error": f"未知接口 {path}"}, 404)
         except Exception as e:
@@ -1532,6 +1545,29 @@ class ApiHandler(BaseHTTPRequestHandler):
                     "ok": True, "id": note_id, "category": category,
                     "categories": store.categories(user["username"]),
                 })
+
+            if path == "/api/knowledge/share":
+                user = self._auth()
+                if not user:
+                    return self._send_json({"ok": False, "error": "请先登录后再分享"}, 401)
+                raw_ids = body.get("ids") or []
+                if not isinstance(raw_ids, list):
+                    return self._send_json({"ok": False, "error": "ids 必须是数组"}, 400)
+                store = KnowledgeStore()
+                code = store.issue_share(raw_ids, user["username"])
+                if not code:
+                    return self._send_json({"ok": False, "error": "只能分享自己的笔记"}, 403)
+                return self._send_json({"ok": True, "code": code})
+
+            if path == "/api/knowledge/redeem":
+                user = self._auth()
+                if not user:
+                    return self._send_json({"ok": False, "error": "请先登录后再兑换"}, 401)
+                store = KnowledgeStore()
+                created = store.redeem_share(body.get("code"), user["username"])
+                if not created:
+                    return self._send_json({"ok": False, "error": "口令无效或笔记已删除"}, 404)
+                return self._send_json({"ok": True, "ids": created, "count": len(created)})
 
             if path == "/api/knowledge":
                 # 粘贴文本入库（与上传导入共用分块 + 内容安全逻辑）
@@ -1735,15 +1771,21 @@ class ApiHandler(BaseHTTPRequestHandler):
                     count=body.get("count") or 5,
                     types=body.get("types") or None,
                     web_search=body.get("web_search", True),
+                    lively=body.get("lively", False),
                     client_id=self._client_id(),
                 )
                 return self._send_json(res)
 
             if path == "/api/quiz/grade":
                 # 服务端判分：correct/answer/explanation 从缓存的标准答案对照得出
+                guard = self._require_user()
+                if guard:
+                    return self._send_json(guard[0], guard[1])
                 quiz_id = (body.get("quiz_id") or "").strip()
                 question_id = (body.get("question_id") or "").strip()
-                selected = (body.get("selected") or "").strip()
+                # 多选是数组。对 list 做 .strip() 会直接 500，整卷流式答题时必须保留原值。
+                raw_sel = body.get("selected")
+                selected = raw_sel.strip() if isinstance(raw_sel, str) else raw_sel
                 if not quiz_id or not question_id:
                     return self._send_json(
                         {"ok": False, "error": "缺少 quiz_id 或 question_id"}, 400)
@@ -1760,6 +1802,9 @@ class ApiHandler(BaseHTTPRequestHandler):
             if path == "/api/quiz/report":
                 # 选择题闯关复盘（Day6）：与 /api/chat 同一套安全闸，作用于本局课程名。
                 # run_id 取 POST body 或查询串 ?run_id=，二选一。
+                guard = self._require_user()
+                if guard:
+                    return self._send_json(guard[0], guard[1])
                 run_id = (body.get("run_id") or "").strip()
                 if not run_id:
                     _q = urllib.parse.parse_qs(parsed.query)
@@ -1786,6 +1831,9 @@ class ApiHandler(BaseHTTPRequestHandler):
                     return self._send_json(guard[0], guard[1])
                 return self._send_json(rep)
             if path == "/api/export":
+                guard = self._require_user()
+                if guard:
+                    return self._send_json(guard[0], guard[1])
                 course = (body.get("course") or "").strip()
                 fmt = (body.get("format") or "markdown").strip().lower()
                 result = body.get("result") or progress_store.load_result(course)
@@ -1833,6 +1881,9 @@ class ApiHandler(BaseHTTPRequestHandler):
                 #   clear_key=true  → 主动清空
                 #   api_key 非空     → 更新
                 #   其余（含 api_key=""）→ 沿用 settings.json 里已有的 Key
+                guard = self._require_user()
+                if guard:
+                    return self._send_json(guard[0], guard[1])
                 provider = body.get("provider") or "mock"
                 base_url = body.get("base_url") or "https://api.deepseek.com"
                 model = body.get("model") or "deepseek-chat"
@@ -1853,6 +1904,9 @@ class ApiHandler(BaseHTTPRequestHandler):
             if path == "/api/progress/done":
                 # 勾选/取消勾选大纲或计划里的某一项。
                 # 底层 progress_store.set_done() 在桌面版就写好了，只是从来没有路由调它。
+                guard = self._require_user()
+                if guard:
+                    return self._send_json(guard[0], guard[1])
                 course = (body.get("course") or "").strip()
                 kind = (body.get("kind") or "").strip()
                 if not course or kind not in ("outline", "plan"):
@@ -1882,6 +1936,9 @@ class ApiHandler(BaseHTTPRequestHandler):
                     return self._send_json(guard[0], guard[1])
                 # 整张图覆盖保存。前端负责布局与增删，后端只做结构校验：
                 # id 合法唯一、parent 存在、恰好一个根、无环（见 mindmap_store._clean_nodes）
+                guard = self._require_user()
+                if guard:
+                    return self._send_json(guard[0], guard[1])
                 entry, err = mindmap_store.save_map(
                     self._owner_id(),
                     (body.get("course") or "").strip(),
@@ -2112,6 +2169,67 @@ class ApiHandler(BaseHTTPRequestHandler):
             try:
                 emit("error", {"ok": False, "error": error_text.internal_error(e)})
                 emit("done", {"ok": False, "error": error_text.internal_error(e)})
+            except Exception:
+                pass
+        finally:
+            self._sse_close()
+
+    def _handle_quiz_stream(self, query):
+        """GET /api/quiz/stream —— 第一题校验通过即推，后续题继续推。
+
+        事件：meta / question / error / done。question 不含 answer。
+        安全闸与 POST /api/quiz/generate 相同。EventSource 只能 GET，登录 token 走查询参数。
+        """
+        course = (query.get("course") or [""])[0].strip()
+        if not course:
+            return self._send_json({"ok": False, "error": "缺少 course 参数"}, 400)
+        client_id = self._client_id(query)
+        if detect_crisis(course):
+            log_crisis("quiz_stream", course, client_id)
+            self._sse_open()
+            self.close_connection = True
+            self._sse_send("error", _crisis_response_chat(course))
+            self._sse_send("done", {"ok": False, "type": "crisis"})
+            return self._sse_close()
+        detail = check_detail(course)
+        if detail["action"] == "BLOCK":
+            log_safety_hit("quiz_stream", course, detail, client_id)
+            return self._send_json({"ok": False, "error": SAFETY_ERROR_MESSAGE}, 400)
+        if accounts.auth_enabled() and not self._auth(query):
+            return self._send_json({"ok": False, "error": "请先登录后再操作"}, 401)
+
+        difficulty = (query.get("difficulty") or ["medium"])[0]
+        types = (query.get("types") or ["mixed"])[0]
+        raw_count = (query.get("count") or ["5"])[0]
+        raw_web = (query.get("web_search") or ["1"])[0]
+        web_search = raw_web not in ("0", "false", "False")
+        raw_lively = (query.get("lively") or ["0"])[0]
+        lively = raw_lively in ("1", "true", "True")
+
+        self._sse_open()
+        self.close_connection = True
+
+        def emit(event, data):
+            self._sse_send(event, data)
+
+        try:
+            for event, data in quiz_mod.iter_generate_quiz(
+                course,
+                difficulty=difficulty,
+                count=raw_count,
+                types=types,
+                web_search=web_search,
+                lively=lively,
+                client_id=client_id,
+            ):
+                emit(event, data)
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+        except Exception as e:
+            traceback.print_exc()
+            try:
+                emit("error", {"ok": False, "error": error_text.internal_error(e)})
+                emit("done", {"ok": False})
             except Exception:
                 pass
         finally:

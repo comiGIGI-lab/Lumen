@@ -7,9 +7,9 @@
  * → 答错写错题本（source: 'quiz'）→ 通关后 api.quizReport 复盘
  * → logExp 结算经验。全程 {{ }} 插值，不用 v-html。
  */
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, ref } from 'vue'
 import { useI18n } from '@/i18n'
-import { api } from '@/api/client'
+import { api, quizStreamUrl } from '@/api/client'
 import { usePet } from '@/composables/usePet'
 
 const props = defineProps({
@@ -23,6 +23,7 @@ const difficulty = ref('medium')
 const count = ref(5)
 const qtype = ref('mixed') // single | multi | judge | mixed
 const webSearch = ref(true) // 联网搜索开关（默认开；关/无 key/失败均降级为空上下文出题）
+const lively = ref(false) // 轻松幽默：生活场景和比喻，默认关
 const busy = ref(false)
 const errorText = ref('')
 
@@ -34,8 +35,14 @@ const judged = ref(null) // grade 响应：{ correct, answer, explanation, knowl
 const results = ref([]) // [{id, correct, knowledge_point}]
 const finished = ref(false)
 const report = ref(null) // quizReport 响应
+const expected = ref(0)
+const streamDone = ref(true)
+let es = null
 
 const current = computed(() => (run.value ? run.value.questions[index.value] : null))
+const waitingNext = computed(() => (
+  !!run.value && !finished.value && index.value >= run.value.questions.length && !streamDone.value
+))
 const score = computed(() => results.value.filter((r) => r.correct).length)
 
 const DIFFS = [
@@ -77,36 +84,122 @@ function toggleMulti(key) {
   picked.value = arr
 }
 
+function closeStream() {
+  if (es) {
+    es.close()
+    es = null
+  }
+}
+
+function failStart(msg) {
+  closeStream()
+  busy.value = false
+  streamDone.value = true
+  if (!run.value) {
+    errorText.value = msg || t('quizPage.errGenerate')
+    emit('notify', { type: 'warn', text: errorText.value })
+  }
+}
+
 async function start() {
   const course = (props.courseContext || '').trim()
   if (!course) {
     errorText.value = t('quizPage.errCourse')
     return
   }
+  closeStream()
   busy.value = true
   errorText.value = ''
   run.value = null
   results.value = []
   finished.value = false
   report.value = null
-  try {
-    const res = await api.quizGenerate(course, difficulty.value, count.value, qtype.value, webSearch.value)
-    if (!res.ok) {
-      errorText.value = res.error || t('quizPage.errGenerate')
-      emit('notify', { type: 'warn', text: errorText.value })
+  expected.value = Number(count.value) || 0
+  streamDone.value = false
+  index.value = 0
+  picked.value = null
+  judged.value = null
+
+  const url = quizStreamUrl(course, {
+    difficulty: difficulty.value,
+    count: count.value,
+    types: qtype.value,
+    webSearch: webSearch.value,
+    lively: lively.value,
+  })
+  es = new EventSource(url)
+  es.addEventListener('meta', (ev) => {
+    const data = JSON.parse(ev.data)
+    expected.value = data.expected || expected.value
+    run.value = {
+      quiz_id: data.quiz_id,
+      course: data.course,
+      difficulty: data.difficulty,
+      types: data.types,
+      source: data.source,
+      retrieved: data.retrieved || [],
+      questions: run.value ? run.value.questions : [],
+    }
+    busy.value = false
+  })
+  es.addEventListener('question', (ev) => {
+    const data = JSON.parse(ev.data)
+    const q = data.question
+    if (!q || !run.value) return
+    if (!run.value.questions.some((x) => x.id === q.id)) {
+      run.value.questions.push(q)
+    }
+    busy.value = false
+    if (run.value.questions.length === 1) {
+      emit('notify', { type: 'success', text: t('quizPage.started') })
+    }
+  })
+  es.addEventListener('error', (ev) => {
+    if (!ev.data) return
+    try {
+      const data = JSON.parse(ev.data)
+      failStart(data.error || t('quizPage.errGenerate'))
+    } catch (_) {
+      /* 连接级错误走 onerror */
+    }
+  })
+  es.addEventListener('done', (ev) => {
+    let ok = true
+    try {
+      ok = JSON.parse(ev.data).ok !== false
+    } catch (_) { /* 缺省视为结束 */ }
+    streamDone.value = true
+    busy.value = false
+    closeStream()
+    if (!ok && !run.value) failStart(t('quizPage.errGenerate'))
+  })
+  es.onerror = () => {
+    if (streamDone.value) return
+    if (!run.value) {
+      // 连接没建立（反代不支持流式）时退回整卷接口，保证还能出题
+      closeStream()
+      api.quizGenerate(course, difficulty.value, count.value, qtype.value, webSearch.value, lively.value)
+        .then((res) => {
+          if (!res.ok) {
+            failStart(res.error || t('quizPage.errGenerate'))
+            return
+          }
+          run.value = res
+          expected.value = (res.questions || []).length
+          streamDone.value = true
+          busy.value = false
+          emit('notify', { type: 'success', text: t('quizPage.started') })
+        })
+        .catch((e) => failStart(`${t('quizPage.errGenerate')}：${e.message}`))
       return
     }
-    run.value = res
-    index.value = 0
-    picked.value = null
-    judged.value = null
-    emit('notify', { type: 'success', text: t('quizPage.started') })
-  } catch (e) {
-    errorText.value = `${t('quizPage.errGenerate')}：${e.message}`
-  } finally {
+    streamDone.value = true
     busy.value = false
+    closeStream()
   }
 }
+
+onBeforeUnmount(closeStream)
 
 function _selectedForSubmit() {
   if (!current.value) return null
@@ -183,6 +276,10 @@ async function next() {
   judged.value = null
   picked.value = null
   if (index.value + 1 >= run.value.questions.length) {
+    if (!streamDone.value) {
+      index.value += 1
+      return
+    }
     finished.value = true
     // 结算经验：每题 2 点，走既有 logExp 规则
     logExp('答题闯关', results.value.length * XP_QUIZ_PER_Q)
@@ -203,11 +300,13 @@ async function next() {
 }
 
 function reset() {
+  closeStream()
   run.value = null
   finished.value = false
   report.value = null
   results.value = []
   errorText.value = ''
+  streamDone.value = true
 }
 </script>
 
@@ -277,6 +376,17 @@ function reset() {
           {{ webSearch ? t('quizPage.webSearchOn') : t('quizPage.webSearchOff') }}
         </button>
       </div>
+      <div class="field">
+        <span class="s-label">{{ t('quizPage.lively') }}</span>
+        <button
+          type="button"
+          class="pill"
+          :class="{ on: lively }"
+          @click="lively = !lively"
+        >
+          {{ lively ? t('quizPage.livelyOn') : t('quizPage.livelyOff') }}
+        </button>
+      </div>
       <button type="button" class="btn btn-accent" :disabled="busy" @click="start">
         {{ busy ? t('quizPage.generating') : t('quizPage.start') }}
       </button>
@@ -286,17 +396,18 @@ function reset() {
     <!-- 答题 -->
     <div v-else-if="!finished" class="q">
       <div class="q-meta">
-        <span>{{ index + 1 }} / {{ run.questions.length }}</span>
+        <span>{{ index + 1 }} / {{ expected || run.questions.length }}</span>
         <span>{{ t('quizPage.diff.' + run.difficulty) }}</span>
-        <span class="q-type">{{ tpLabel(run.questions[index].type) }}</span>
-        <span v-if="run.questions[index].source === 'web'" class="badge-web">
+        <span v-if="current" class="q-type">{{ tpLabel(current.type) }}</span>
+        <span v-if="current && current.source === 'web'" class="badge-web">
           {{ t('quizPage.webSource') }}
         </span>
       </div>
-      <p class="q-stem">{{ current.stem }}</p>
+      <p v-if="waitingNext" class="muted">{{ t('quizPage.moreComing') }}</p>
+      <p v-else-if="current" class="q-stem">{{ current.stem }}</p>
 
       <!-- 单选 / 判断：单选按钮式 -->
-      <template v-if="current.type !== 'multi'">
+      <template v-if="current && current.type !== 'multi'">
         <button
           v-for="o in current.options"
           :key="o.key"
@@ -334,7 +445,7 @@ function reset() {
         </button>
       </template>
 
-      <div v-if="!judged" class="q-actions">
+      <div v-if="current && !judged" class="q-actions">
         <button type="button" class="btn btn-accent" :disabled="busy" @click="submit">
           {{ t('quizPage.submit') }}
         </button>
@@ -348,7 +459,7 @@ function reset() {
         <p class="v-exp">{{ judged.explanation }}</p>
         <p class="v-kp">{{ t('quizPage.kp') }}：{{ judged.knowledge_point }}</p>
         <button type="button" class="btn btn-accent" @click="next">
-          {{ index + 1 >= run.questions.length ? t('quizPage.finish') : t('quizPage.next') }}
+          {{ index + 1 >= (expected || run.questions.length) && streamDone ? t('quizPage.finish') : t('quizPage.next') }}
         </button>
       </div>
     </div>
