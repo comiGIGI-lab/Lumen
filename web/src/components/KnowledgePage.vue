@@ -480,7 +480,7 @@ onBeforeUnmount(() => {
             @click="pickNote(n.id)"
           >
             <span class="note-t">{{ n.title }}</span>
-            <span class="chip">{{ tagLabel(n.tag) }}</span>
+            <span class="chip">{{ n.category ? categoryLabel(n.category) : tagLabel(n.tag) }}</span>
             <span class="note-d">{{ n.updated }}</span>
           </button>
           <p v-if="!filtered.length" class="none">
@@ -507,7 +507,7 @@ onBeforeUnmount(() => {
         <dl class="meta">
           <div><dt>{{ t('knowledgePage.27') }}</dt><dd>{{ current.created }}</dd></div>
           <div><dt>{{ t('knowledgePage.28') }}</dt><dd>{{ current.updated }}</dd></div>
-          <div><dt>{{ t('knowledgePage.29') }}</dt><dd>{{ tagLabel(current.tag) }}</dd></div>
+          <div><dt>{{ t('knowledgePage.29') }}</dt><dd>{{ current.topics && current.topics.length ? current.topics.join(' · ') : tagLabel(current.tag) }}</dd></div>
           <div><dt>{{ t('knowledgePage.30') }}</dt><dd>{{ currentDocs.length }}</dd></div>
         </dl>
 

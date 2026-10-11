@@ -317,6 +317,32 @@ def _vectorize_notes(notes, chunks, owner, scope, category):
 
 
 # ============================================================
+# AI 自动分类
+# ============================================================
+def _apply_auto_classify(category, tags, title, text):
+    """用户没手动指定分类时，用 AI 分析正文补学科分类 + 主题标签。
+
+    返回 (category, tags)。任何异常都静默降级，绝不阻断导入。
+    """
+    if category:
+        return category, tags
+    try:
+        import auto_tag
+        auto = auto_tag.classify_material(title, text)
+    except Exception:
+        auto = None
+    if not auto or not auto.get("category"):
+        return category, tags
+    cat = auto["category"]
+    new_tags = list(tags) if tags else []
+    for t in (auto.get("tags") or []):
+        t = str(t).strip()
+        if t and t not in new_tags:
+            new_tags.append(t)
+    return cat, new_tags
+
+
+# ============================================================
 # 主入口
 # ============================================================
 def ingest(path, filename, tags=None, store=None, data_dir=None, title=None,
@@ -495,6 +521,10 @@ def ingest(path, filename, tags=None, store=None, data_dir=None, title=None,
     if out["kind"] == "image":
         tags.append("#vision")
 
+    # ---- 4.1 AI 自动分类：用户没手动选分类时，用大模型分析正文补学科+主题标签 ----
+    # 分类失败静默降级为关键词兜底，绝不阻塞导入。
+    category, tags = _apply_auto_classify(category, tags, base_title, text)
+
     total = len(chunks)
     for i, ck in enumerate(chunks, 1):
         title = base_title if total == 1 else "%s · %d/%d" % (base_title, i, total)
@@ -533,6 +563,9 @@ def ingest_text(text, title=None, tags=None, store=None,
                 "chars": 0, "error": reject}
 
     title = (title or "").strip() or ("粘贴笔记 %s" % time.strftime("%m-%d %H:%M"))
+    tags = list(tags) if tags else ["#import", "#paste"]
+    # AI 自动分类：用户没手动选分类时，用大模型分析正文补学科+主题标签
+    category, tags = _apply_auto_classify(category, tags, title, text)
     try:
         import parse_blocks as _pb
         paste_blocks = _pb.plaintext_to_blocks(text)
@@ -546,7 +579,7 @@ def ingest_text(text, title=None, tags=None, store=None,
         t = title if total == 1 else "%s · %d/%d" % (title, i, total)
         notes.append({"id": store.add(
                           title=t, content=ck,
-                          tags=list(tags) if tags else ["#import", "#paste"],
+                          tags=tags,
                           owner=owner, scope=scope, category=category),
                       "title": t})
         chunks_kept.append(ck)

@@ -115,12 +115,23 @@ function groupEntries(items) {
     const created = fmtTime(first.created_at)
     const total = g.items.length
 
+    // 主题标签：后端 tags 里去掉文件类型标签（#pdf/#md/…），剩下的就是
+    // AI 自动分类 / 用户手动给的主题关键词（如「栈与队列」「三次握手」）。
+    const topics = []
+    for (const e of g.items) {
+      for (const raw of e.tags || []) {
+        const t = String(raw || '').trim()
+        if (t && !t.startsWith('#') && !topics.includes(t)) topics.push(t)
+      }
+    }
+
     notes.push({
       id: g.key,
       title: g.base,
       tag: guessTag(`${g.base} ${g.items.map((e) => e.tags.join(' ')).join(' ')}`),
       scope: first.scope || 'public',
       category: first.category || '',
+      topics,
       created,
       updated: created,
       remark: '',
