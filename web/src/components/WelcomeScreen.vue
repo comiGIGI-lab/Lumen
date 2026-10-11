@@ -36,8 +36,7 @@ const { t, isEn } = useI18n()
 const showPrivacy = ref(false)
 const activeCard = ref(0)
 
-// 与顶栏主入口一致：学习方案、知识库、课程问答闯关、自习空间。
-const cards = [
+// 与顶栏主入口一致：学习方案、知识库、课程问答闯关、自习空间。const cards = [
   {
     num: '01',
     title: '学习方案生成',
@@ -64,8 +63,7 @@ const cards = [
     title: '自习空间',
     enTitle: 'Study space',
     body: '进来就展开自习坞。电脑端场景和专注设置左右并排，窄屏上下排列。完整计时结束才计入经验。',
-    enBody: 'The study dock opens when you enter. On a computer, scenes and focus settings sit side by side; on a narrow screen they stack. Only a finished timer counts toward experience.',
-  },
+    enBody: 'The study dock opens when you enter. On a computer, scenes and focus settings sit side by side; on a narrow screen they stack. Only a finished timer counts toward experience.',  },
 ]
 
 function onStart() {
@@ -91,8 +89,7 @@ function cardStyle(i) {
 
 <template>
   <div class="welcome" role="dialog" :aria-label="t('welcomeScreen.1')">
-    <!-- 顶栏由 App.vue 的那一份负责。欢迎层自己再挂一份会盖住首页按钮，点了进不去。 -->
-    <!-- ① HERO：全幅书桌摄影 + 遮罩 + LUMEN 刊名 -->
+    <!-- 顶栏由 App.vue 的那一份负责。欢迎层自己再挂一份会盖住首页按钮，点了进不去。 -->    <!-- ① HERO：全幅书桌摄影 + 遮罩 + LUMEN 刊名 -->
     <section class="wl-hero">
       <div class="wl-hero-photo" aria-hidden="true">
         <img src="/hero-desk.jpg" alt="" />
@@ -107,8 +104,7 @@ function cardStyle(i) {
           <button class="wl-btn wl-btn-light" type="button" @click="onStart">{{ t('welcomeScreen.6') }}</button>
           <button class="wl-btn wl-btn-light" type="button" @click="emit('open-knowledge')">{{ t('welcomeScreen.7') }}</button>
           <button class="wl-btn wl-btn-light" type="button" @click="emit('open-chat')">{{ t('welcomeScreen.8') }}</button>
-          <button class="wl-btn wl-btn-light" type="button" @click="emit('open-study')">{{ t('nav.study') }}</button>
-        </div>
+          <button class="wl-btn wl-btn-light" type="button" @click="emit('open-study')">{{ t('nav.study') }}</button>        </div>
       </div>
     </section>
 
@@ -162,8 +158,7 @@ function cardStyle(i) {
           <button class="wl-btn" type="button" @click="onStart">{{ t('welcomeScreen.13') }}</button>
           <button class="wl-btn" type="button" @click="emit('open-knowledge')">{{ t('welcomeScreen.14') }}</button>
           <button class="wl-btn" type="button" @click="emit('open-chat')">{{ t('welcomeScreen.15') }}</button>
-          <button class="wl-btn" type="button" @click="emit('open-study')">{{ t('nav.study') }}</button>
-        </div>
+          <button class="wl-btn" type="button" @click="emit('open-study')">{{ t('nav.study') }}</button>        </div>
       </div>
     </section>
 

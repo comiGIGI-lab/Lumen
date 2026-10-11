@@ -408,13 +408,11 @@ const interaction = usePetInteraction({
     showBubble(t('pet.toast.exp', { n: exp }), 'action', 1800)
   },
   onCozyBubble(name) {
-    showBubble(t('pet.toast.cozy', { name }), 'cozy', 3000)
-  },
+    showBubble(t('pet.toast.cozy', { name }), 'cozy', 3000)  },
   onIdleBubble() {
     const keys = ['pet.idle.1', 'pet.idle.2', 'pet.idle.3', 'pet.idle.4']
     const text = t(keys[Math.floor(Math.random() * keys.length)])
-    showBubble(text, 'idle', 4000)
-  },
+    showBubble(text, 'idle', 4000)  },
 })
 
 function actionLabel(action) {
@@ -424,8 +422,7 @@ function actionLabel(action) {
 function handleMenuAction(action) {
   const res = interaction.runAction(action)
   if (!res.success) {
-    showBubble(t('pet.toast.cooldown', { name: actionLabel(action), s: res.remaining }), 'cooldown', 1500)
-  }
+    showBubble(t('pet.toast.cooldown', { name: actionLabel(action), s: res.remaining }), 'cooldown', 1500)  }
 }
 </script>
 
