@@ -36,7 +36,9 @@ const {
   onMusicVolume,
 } = useStudyTimer()
 
-const panel = ref('') // '' | scene | focus
+// 进自习空间时场景和专注设置都展开。两者互不收起，点按钮只关自己那一块。
+const sceneOpen = ref(true)
+const focusOpen = ref(true)
 const customDraft = ref(String(customMin.value))
 
 watch(
@@ -52,7 +54,8 @@ function onPickScene(id) {
 }
 
 function togglePanel(name) {
-  panel.value = panel.value === name ? '' : name
+  if (name === 'scene') sceneOpen.value = !sceneOpen.value
+  else if (name === 'focus') focusOpen.value = !focusOpen.value
 }
 
 function onCustomInput(e) {
@@ -111,12 +114,13 @@ function commitCustom() {
     </label>
 
     <div class="row-btns">
-      <button type="button" class="chip" :class="{ on: panel === 'scene' || !!sceneId }" @click="togglePanel('scene')">{{ t('studyDock.5') }}</button>
-      <button type="button" class="chip" :class="{ on: panel === 'focus' }" @click="togglePanel('focus')">{{ t('studyDock.6') }}<em v-if="mixCount">{{ mixCount }}</em>
+      <button type="button" class="chip" :class="{ on: sceneOpen || !!sceneId }" :aria-expanded="sceneOpen" @click="togglePanel('scene')">{{ t('studyDock.5') }}</button>
+      <button type="button" class="chip" :class="{ on: focusOpen }" :aria-expanded="focusOpen" @click="togglePanel('focus')">{{ t('studyDock.6') }}<em v-if="mixCount">{{ mixCount }}</em>
       </button>
     </div>
 
-    <div v-if="panel === 'scene'" class="grid">
+    <div class="panels">
+    <div v-if="sceneOpen" class="grid">
       <p class="hint">{{ t('studyDock.7') }}</p>
       <button
         v-for="s in SCENES"
@@ -132,7 +136,7 @@ function commitCustom() {
       </button>
     </div>
 
-    <div v-if="panel === 'focus'" class="mix">
+    <div v-if="focusOpen" class="mix">
       <p class="hint">{{ t('studyDock.8') }}</p>
       <label v-for="s in SOUNDS" :key="s.id" class="mix-row">
         <span>{{ s.name }}</span>
@@ -175,6 +179,7 @@ function commitCustom() {
         />
         <em>{{ musicVolume }}</em>
       </label>
+    </div>
     </div>
   </div>
 </template>
@@ -260,11 +265,31 @@ function commitCustom() {
   background: var(--bg-card);
 }
 
+.panels {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
 .hint {
   grid-column: 1 / -1;
   margin: 0 0 4px;
   font-size: 12px;
   color: var(--text-muted);
+}
+
+/* 电脑端：场景在左，专注设置在右。窄屏（≤860，与自习坞竖排同一断点）仍上下叠。 */
+@media (min-width: 861px) {
+  .panels {
+    flex-direction: row;
+    align-items: flex-start;
+    gap: 16px;
+  }
+  .panels > .grid,
+  .panels > .mix {
+    flex: 1 1 0;
+    min-width: 0;
+  }
 }
 
 .grid {

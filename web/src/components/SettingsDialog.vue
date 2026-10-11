@@ -79,9 +79,10 @@ function syncNarrow() {
   isNarrow.value = !!(typeof window !== 'undefined' && window.matchMedia('(max-width: 430px)').matches)
 }
 const isLLM = computed(() => form.provider === 'llm')
-const openBase = computed(() => !isNarrow.value || ui.foldOpen.base)
-const openKey = computed(() => !isNarrow.value || ui.foldOpen.key)
-const openModel = computed(() => !isNarrow.value || ui.foldOpen.model)
+const showLlmForm = ref(false)
+const openBase = computed(() => showLlmForm.value && (!isNarrow.value || ui.foldOpen.base))
+const openKey = computed(() => showLlmForm.value && (!isNarrow.value || ui.foldOpen.key))
+const openModel = computed(() => showLlmForm.value && (!isNarrow.value || ui.foldOpen.model))
 
 onMounted(() => {
   syncNarrow()
@@ -107,6 +108,7 @@ watch(
     // 只有明确是 llm 才选中 LLM，其余（含 mode 尚未加载）一律落到 Mock，
     // 避免后端还没就绪时误显示成 LLM 模式
     form.provider = m.mode === 'llm' ? 'llm' : 'mock'
+    showLlmForm.value = form.provider === 'llm'
     form.api_key = ''
     form.base_url = m.base_url || 'https://api.deepseek.com'
     form.model = m.model || 'deepseek-chat'
@@ -153,6 +155,7 @@ function pickPlatform() {
 /** 切运行模式时清掉上一次的测试结果，避免误导 */
 function pickMode(v) {
   form.provider = v
+  showLlmForm.value = v === 'llm'
   ui.testMsg = ''
   ui.testTone = ''
 }
@@ -257,7 +260,7 @@ async function clearCache() {
     <section class="block">
       <div class="block-head">
         <h4>{{ t('settingsDialog.3') }}</h4>
-        <span class="block-sub">{{ t('settingsDialog.4') }}</span>
+        <span class="block-sub">{{ isLLM ? t('settingsDialog.4') : '内置模板，适合先体验' }}</span>
       </div>
       <div class="seg">
         <button
@@ -273,15 +276,17 @@ async function clearCache() {
           @click="pickMode('llm')"
         >{{ t('settingsDialog.6') }}</button>
       </div>
+      <p class="mode-note">离线 Mock 使用内置模板，不消耗额度，适合先体验。选中后再点「保存设置」才会切换。</p>
     </section>
 
-    <!-- ============ 模型配置 ============ -->
-    <section class="block">
-      <div class="block-head">
+    <!-- ============ 模型配置：默认收起，在线模式才需要展开 ============ -->
+    <section class="block" :class="{ 'llm-collapsed': !showLlmForm }">
+      <button type="button" class="block-head llm-toggle" :aria-expanded="showLlmForm" @click="showLlmForm = !showLlmForm">
         <h4>{{ t('settingsDialog.7') }}</h4>
-        <span class="block-sub">{{ t('settingsDialog.8') }}</span>
-      </div>
+        <span class="block-sub">{{ showLlmForm ? '收起' : (isLLM ? '填写后才会调用在线模型' : '体验模式用不到，需要时再展开') }}</span>
+      </button>
 
+      <template v-if="showLlmForm">
       <div class="field">
         <label class="lbl">{{ t('settingsDialog.9') }}</label>
         <div class="ctl">
@@ -380,6 +385,7 @@ async function clearCache() {
           <span v-else-if="ui.testMsg" class="test-msg" :class="ui.testTone">{{ ui.testMsg }}</span>
         </div>
       </div>
+      </template>
     </section>
 
     <!-- ============ 小提示 / 使用说明 ============ -->
@@ -411,12 +417,12 @@ async function clearCache() {
     <div v-if="ui.msg" class="feedback" :class="ui.tone">{{ ui.msg }}</div>
 
     <template #footer>
-      <button class="btn btn-ghost foot-left" type="button" @click="ui.showHelp = !ui.showHelp">
+      <button class="btn btn-ghost foot-left desk-only" type="button" @click="ui.showHelp = !ui.showHelp">
         {{ ui.showHelp ? t('settingsDialogX.6') : t('settingsDialogX.7') }}
       </button>
-      <button class="btn btn-ghost" type="button" @click="emit('show-tour')">{{ t('settingsDialog.35') }}</button>
-      <button class="btn btn-ghost" type="button" :disabled="ui.busy" @click="clearCache">{{ t('settingsDialog.36') }}</button>
-      <button v-if="onboarding" class="btn btn-ghost" type="button" @click="emit('close')">先体验</button>
+      <button class="btn btn-ghost desk-only" type="button" @click="emit('show-tour')">{{ t('settingsDialog.35') }}</button>
+      <button class="btn btn-ghost desk-only" type="button" :disabled="ui.busy" @click="clearCache">{{ t('settingsDialog.36') }}</button>
+      <button v-if="onboarding" class="btn btn-ghost" type="button" @click="emit('close')">{{ t('settingsDialog.tryFirst') }}</button>
       <button v-else class="btn btn-ghost" type="button" @click="emit('close')">{{ t('settingsDialog.37') }}</button>
       <button class="btn btn-primary" type="button" :disabled="ui.busy" @click="save">
         {{ ui.busy ? t('settingsDialogX.8') : t('settingsDialogX.9') }}
@@ -443,6 +449,23 @@ async function clearCache() {
   align-items: baseline;
   gap: 10px;
   margin-bottom: 12px;
+}
+.mode-note {
+  margin: 8px 0 0;
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+.llm-toggle {
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+.llm-collapsed .llm-toggle {
+  margin-bottom: 0;
 }
 
 .block-head h4 {
@@ -744,5 +767,12 @@ select.input {
 /* 让「使用说明」靠左，其余按钮靠右 */
 .foot-left {
   margin-right: auto;
+}
+
+/* 窄屏底栏只留「跳过/取消 + 保存」，英文长按钮不再把设置内容顶出屏幕。 */
+@media (max-width: 430px) {
+  .desk-only {
+    display: none;
+  }
 }
 </style>

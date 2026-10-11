@@ -36,61 +36,27 @@ export function authToken() {
   }
 }
 
-/** 登录态请求头：有 token 就带上。 */
-export function authHeaders() {
-  const token = authToken()
-  return token ? { 'X-Auth-Token': token } : {}
-}
-
 async function request(path, options = {}) {
   const res = await fetch(`${BASE}${path}`, {
     ...options,
     headers: {
       'Content-Type': 'application/json',
       'X-Client-Id': clientId(),
-      ...authHeaders(),
+      ...(authToken() ? { 'X-Auth-Token': authToken() } : {}),
       ...(options.headers || {}),
     },
   })
   if (!res.ok) {
     let msg = `请求失败（${res.status}）`
-    let code = ''
     try {
       const data = await res.json()
       if (data && data.error) msg = data.error
-      if (data && data.code) code = data.code
     } catch (_) {
       /* 忽略解析失败 */
     }
-    const err = new Error(msg)
-    err.code = code
-    // 匿名 LLM 限速命中（code: ANON_LIMIT_*）：通知全局弹「登录后不限次」引导（见 App.vue）。
-    // 后端限速是双闸（每浏览器 + 全局池），信息已在 msg 里说明，这里只负责把用户引到登录。
-    if (code === 'ANON_LIMIT_CLIENT' || code === 'ANON_LIMIT_GLOBAL') {
-      try {
-        window.dispatchEvent(
-          new CustomEvent('zjxt:anon-limit', { detail: { code, message: msg } })
-        )
-      } catch (_) {
-        /* 极端环境下 window 不可用也不影响主流程 */
-      }
-    }
-    throw err
+    throw new Error(msg)
   }
   return res.json()
-}
-
-/**
- * 软请求：登录/注册/改密这类「失败是正常业务结果」的接口，
- * 不走 request() 的 throw 通道 —— 调用方（useAuth）约定拿
- * {ok:false, error} 自己渲染错误，而不是接未捕获异常。
- */
-async function requestSoft(path, options = {}) {
-  try {
-    return await request(path, options)
-  } catch (e) {
-    return { ok: false, error: (e && e.message) || '请求失败' }
-  }
 }
 
 export const api = {
@@ -104,47 +70,26 @@ export const api = {
     return request('/mode')
   },
 
-  // ---------------- 账号（登录态 / 管理） ----------------
-
-  /** 我是谁：{ok, username, role, auth_enabled}（后端总是 200，看 ok 判断登录态） */
-  me() {
-    return requestSoft('/me')
-  },
-
-  /** 登录。失败返回 {ok:false, error}，不抛异常（useAuth 按此约定渲染错误）。 */
+  /** 登录：用户名 + 密码换 token（匿名入口，不带 token） */
   login(username, password) {
-    return requestSoft('/login', {
+    return request('/login', {
       method: 'POST',
       body: JSON.stringify({ username, password }),
     })
   },
 
-  /** 自助注册（后端只建普通账号），成功即登录。 */
+  /** 自助注册：只建普通账号，成功后等同于登录（匿名入口，不带 token） */
   register(username, password) {
-    return requestSoft('/register', {
+    return request('/register', {
       method: 'POST',
       body: JSON.stringify({ username, password }),
     })
   },
 
-  /** 自助改密：需登录，旧密码校验在服务端。 */
-  changePassword(oldPassword, newPassword) {
-    return requestSoft('/password', {
-      method: 'POST',
-      body: JSON.stringify({ old_password: oldPassword, new_password: newPassword }),
-    })
-  },
-
-  /** 账号列表（仅管理员）。 */
-  accountsList() {
-    return requestSoft('/accounts')
-  },
-
-  /** 账号操作（仅管理员）：action = create | role | password | delete。 */
-  accountAction(payload) {
-    return requestSoft('/accounts', {
-      method: 'POST',
-      body: JSON.stringify(payload),
+  /** 用本地 token 问后端「我是谁」；token 失效后端返 ok:false */
+  me() {
+    return request('/me', {
+      headers: { 'X-Auth-Token': authToken() },
     })
   },
 
@@ -304,6 +249,21 @@ export const api = {
     })
   },
 
+  /** 为自己的笔记生成口令。接收方兑换后得到一份私有副本。 */
+  knowledgeShare(ids) {
+    return request('/knowledge/share', {
+      method: 'POST',
+      body: JSON.stringify({ ids }),
+    })
+  },
+
+  knowledgeRedeem(code) {
+    return request('/knowledge/redeem', {
+      method: 'POST',
+      body: JSON.stringify({ code }),
+    })
+  },
+
   /** 删除一条知识库笔记 */
   knowledgeDelete(id) {
     return request(`/knowledge/${id}`, { method: 'DELETE' })
@@ -434,10 +394,10 @@ export const api = {
    * 响应不含 answer —— 判分走 quizGrade（服务端持标准答案）。
    * web_search：联网搜索开关（默认开）；关闭/无 key/失败时降级为空上下文、不拒绝。
    */
-  quizGenerate(course, difficulty = 'medium', count = 5, types = 'mixed', webSearch = true) {
+  quizGenerate(course, difficulty = 'medium', count = 5, types = 'mixed', webSearch = true, lively = false) {
     return request('/quiz/generate', {
       method: 'POST',
-      body: JSON.stringify({ course, difficulty, count, types, web_search: webSearch }),
+      body: JSON.stringify({ course, difficulty, count, types, web_search: webSearch, lively }),
     })
   },
 
@@ -484,12 +444,35 @@ export const api = {
   mindmapDelete(course) {
     return request(`/mindmap/${encodeURIComponent(course)}`, { method: 'DELETE' })
   },
+
+  /** 语音引擎探测。后端始终 200：available=false 时 reason 可直接展示。 */
+  asrStatus() {
+    return request('/asr')
+  },
 }
 
 /**
  * 构造「生成方案」SSE 地址。
  * 用 GET + query 是为了能用浏览器原生 EventSource（它只支持 GET）。
  */
+/**
+ * 出题 SSE。第一题到达即 question 事件，后续题继续推，结束为 done。
+ * EventSource 只能 GET，token / client_id 走查询参数。
+ */
+export function quizStreamUrl(course, { difficulty = 'medium', count = 5, types = 'mixed', webSearch = true, lively = false } = {}) {
+  const qs = new URLSearchParams({
+    course,
+    difficulty,
+    count: String(count),
+    types,
+    web_search: webSearch ? '1' : '0',
+    lively: lively ? '1' : '0',
+    client_id: clientId(),
+  })
+  if (authToken()) qs.set('token', authToken())
+  return `${BASE}/quiz/stream?${qs.toString()}`
+}
+
 export function planStreamUrl(course, profile = {}, useCache = true) {
   const qs = new URLSearchParams({
     course,
@@ -500,8 +483,5 @@ export function planStreamUrl(course, profile = {}, useCache = true) {
     use_cache: useCache ? '1' : '0',
     client_id: clientId(), // EventSource 无法自定义请求头，走查询参数
   })
-  // 登录态同样只能走查询参数：后端 _auth_any() 会回落读 auth_token
-  const token = authToken()
-  if (token) qs.set('auth_token', token)
   return `${BASE}/plan/stream?${qs.toString()}`
 }

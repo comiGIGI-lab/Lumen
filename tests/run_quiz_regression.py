@@ -77,6 +77,8 @@ def source_checks():
     api = read(API)
     check("api_has_quiz_generate_route", '"/api/quiz/generate"' in api,
           "do_POST missing /api/quiz/generate")
+    check("api_has_quiz_stream_route", '"/api/quiz/stream"' in api,
+          "do_GET missing /api/quiz/stream")
     check("api_has_quiz_grade_route", '"/api/quiz/grade"' in api,
           "do_POST missing /api/quiz/grade")
     quiz_block = ""
@@ -97,10 +99,11 @@ def source_checks():
         check("quiz_answer_not_in_generate_payload",
               re.search(r'"questions"\s*:', quiz_src) is not None,
               "quiz.py must build questions payload")
-        # 对外 payload 构造段（列表推导里逐题白名单字段）不得带 answer
-        m2 = re.search(r"payload_questions = \[[^\]]*\]", quiz_src, re.S)
+        # 对外单题白名单（_public_question）不得带 answer。SSE 与整卷共用它。
+        m2 = re.search(r"def _public_question\(q\):.*?return \{.*?\}", quiz_src, re.S)
         check("generate_payload_strips_answer",
-              m2 is not None and '"answer"' not in m2.group(0),
+              m2 is not None and '"answer"' not in m2.group(0)
+              and "payload_questions = [_public_question" in quiz_src,
               "questions payload must not carry answer")
         check("quiz_kb_optional_enrichment",
               "RAG_MIN_SCORE" in quiz_src and "RAG_MIN_COVERAGE" in quiz_src,
@@ -132,6 +135,9 @@ def source_checks():
     check("client_has_quiz_grade",
           re.search(r"quizGrade\(|'/quiz/grade'|\"/quiz/grade\"", client) is not None,
           "client.js missing quizGrade")
+    check("client_has_quiz_stream_url",
+          "function quizStreamUrl" in client and "/quiz/stream" in client,
+          "client.js missing quizStreamUrl")
 
     check("quiz_panel_exists", os.path.exists(QUIZ_PANEL), "QuizPanel.vue missing")
     if os.path.exists(QUIZ_PANEL):
@@ -151,6 +157,9 @@ def source_checks():
         check("panel_difficulty_options",
               "easy" in panel and "medium" in panel and "hard" in panel,
               "difficulty selector missing")
+        check("panel_uses_event_source",
+              "EventSource" in panel and "quizStreamUrl" in panel,
+              "QuizPanel must open the quiz SSE")
 
     page = read(CHAT_PAGE)
     check("chatpage_has_quiz_entry",
@@ -194,6 +203,35 @@ def source_checks():
           "client.js quizGenerate must forward web_search")
     check("panel_has_web_search_toggle",
           "webSearch" in panel, "QuizPanel missing web-search toggle")
+
+    print("lively tone toggle (humor / life scenarios)")
+    check("quiz_generate_takes_lively",
+          "lively" in quiz_src and "def generate_quiz" in quiz_src,
+          "generate_quiz must accept the lively flag")
+    check("quiz_lively_in_prompt",
+          "_style_rule" in quiz_src and "轻松幽默" in quiz_src,
+          "quiz.py must translate lively into a prompt instruction")
+    quiz_stream_fn = ""
+    mqs = re.search(r"def _handle_quiz_stream.*?(?=\nclass )", api, re.S)
+    if mqs:
+        quiz_stream_fn = mqs.group(0)
+    check("api_generate_forwards_lively",
+          quiz_block and "lively" in quiz_block,
+          "POST /api/quiz/generate must forward lively")
+    check("api_stream_forwards_lively",
+          quiz_stream_fn and "lively" in quiz_stream_fn,
+          "GET /api/quiz/stream must forward lively")
+    check("client_forwards_lively",
+          "lively" in client,
+          "client.js must forward lively for both quiz calls")
+    check("panel_has_lively_toggle",
+          "lively" in panel, "QuizPanel missing lively-tone toggle")
+    check("i18n_zh_lively_keys",
+          all(k in zh for k in ("quizPage.lively", "quizPage.livelyOn", "quizPage.livelyOff")),
+          "auto-zh.json missing lively keys")
+    check("i18n_en_lively_keys",
+          all(k in en for k in ("quizPage.lively", "quizPage.livelyOn", "quizPage.livelyOff")),
+          "auto-en.json missing lively keys")
     check("quiz_has_tavily_extract",
           "TavilyExtract" in quiz_src and "tavily_extract" in quiz_src and "tavily_search_deep" in quiz_src,
           "quiz.py must implement Tavily extract + 4 search/extract tools for URL direct-gen")
@@ -224,6 +262,9 @@ def runtime_checks():
     tmp = tempfile.mkdtemp(prefix="zjxt-quiz-reg-")
     os.environ["STUDY_LIU_DATA_DIR"] = tmp
     os.environ["LLM_PROVIDER"] = "mock"
+    # 本段测的是知识库直出，不走联网。开发机若已配置 key，要先拿掉。
+    os.environ.pop("STUDY_LIU_TAVILY_KEY", None)
+    os.environ.pop("TAVILY_API_KEY", None)
     # 托管环境没装 requests；core.llm 顶层 import 它，stub 掉（plan 回归同套路）
     if "requests" not in sys.modules:
         import types
@@ -260,9 +301,7 @@ def runtime_checks():
         os.environ.pop("STUDY_LIU_DATA_DIR", None)
         return
 
-    def fake_chat_ok(messages):
-        return json.dumps({
-                "questions": [
+    ALL_QS = [
                     {
                         "id": "q1", "type": "single",
                         "stem": "矩阵乘法满足以下哪一性质？",
@@ -303,7 +342,21 @@ def runtime_checks():
                         "knowledge_point": "特征值",
                     },
         ]
-    }, ensure_ascii=False)
+
+    calls = {"n": 0, "gen": 0}
+
+    def fake_chat_ok(messages):
+        calls["n"] += 1
+        text = messages[-1]["content"] if messages else ""
+        if "你是严谨的出题老师" in text:
+            calls["gen"] += 1
+        # 出题 prompt 要求的题数；流式路径会先要 1 题，再要剩余题。
+        asked = text.split("出题依据的资料")[0]
+        m = re.search(r"(\d+)\s*道(?:单选|多选|判断)", asked)
+        n = int(m.group(1)) if m else len(ALL_QS)
+        pool = ALL_QS[:1] if n <= 1 else ALL_QS
+        n = max(1, min(n, len(pool)))
+        return json.dumps({"questions": pool[:n]}, ensure_ascii=False)
 
     llm_mod.chat = fake_chat_ok
     quiz_mod._llm_chat = fake_chat_ok
@@ -347,6 +400,63 @@ def runtime_checks():
               "non-JSON LLM output must fail, not degrade")
 
         quiz_mod._llm_chat = fake_chat_ok
+
+        def fake_stream(messages):
+            calls["gen"] += 1
+            text = messages[-1]["content"] if messages else ""
+            asked = text.split("出题依据的资料")[0]
+            m = re.search(r"(\d+)\s*道(?:单选|多选|判断)", asked)
+            n = int(m.group(1)) if m else 1
+            pool = ALL_QS[:1] if n <= 1 else list(ALL_QS[1:1 + n])
+            return json.dumps({"questions": pool}, ensure_ascii=False)
+        quiz_mod._llm_chat = fake_stream
+        calls["gen"] = 0
+        seen = []
+        graded_mid = None
+        for event, data in quiz_mod.iter_generate_quiz("线性代数", difficulty="easy", count=3):
+            seen.append(event)
+            blob = json.dumps(data, ensure_ascii=False)
+            check("stream_event_hides_answer_%d" % len(seen), '"answer"' not in blob,
+                  "answer leaked into %s" % event)
+            if event == "question" and len([e for e in seen if e == "question"]) == 1:
+                check("stream_first_before_rest", calls["gen"] == 1,
+                      "first question must be emitted before the second model call, calls=%s" % calls["gen"])
+                graded_mid = quiz_mod.grade_quiz(data["quiz_id"], data["question"]["id"], "A")
+                calls["first_id"] = data["question"]["id"]
+        check("stream_order", seen[:2] == ["meta", "question"] and seen[-1] == "done",
+              "unexpected events %s" % seen)
+        check("stream_three_questions", seen.count("question") == 3,
+              "expected 3 streamed questions, got %s" % seen)
+        check("stream_grade_while_generating",
+              graded_mid and graded_mid.get("ok") and graded_mid.get("correct") is True,
+              "first question must be gradeable before the rest arrive")
+        quiz_mod._llm_chat = fake_chat_ok
+
+        # 趣味文风开关：只改表达，不改知识点/答案/题数
+        captured = {}
+        def fake_capture(messages):
+            captured["text"] = messages[-1]["content"] if messages else ""
+            return json.dumps({"questions": ALL_QS[:3]}, ensure_ascii=False)
+        quiz_mod._llm_chat = fake_capture
+        plain_run = quiz_mod.generate_quiz("线性代数", difficulty="easy", count=3)
+        plain = captured.get("text") or ""
+        fun_run = quiz_mod.generate_quiz("线性代数", difficulty="easy", count=3, lively=True)
+        fun = captured.get("text") or ""
+        check("lively_off_keeps_strict_tone", "轻松幽默" not in plain,
+              "default prompt must stay strict, no humor instruction")
+        check("lively_on_asks_humor", "轻松幽默" in fun and "比喻" in fun,
+              "lively prompt must ask for life scenarios and metaphor")
+        check("lively_keeps_count", len(plain_run.get("questions") or []) == 3
+              and len(fun_run.get("questions") or []) == 3,
+              "lively must not change how many questions are generated")
+        same_stems = [q["stem"] for q in (plain_run.get("questions") or [])] == \
+                     [q["stem"] for q in (fun_run.get("questions") or [])]
+        check("lively_keeps_questions", same_stems,
+              "lively must not change the questions themselves")
+        tool_fun = quiz_mod._tool_user(
+            "线性代数", "easy", {"single": 3, "multi": 0, "judge": 0}, False, "", True)
+        check("lively_reaches_tool_agent", "轻松幽默" in tool_fun,
+              "lively must reach the Tavily tool-agent prompt too")
         weak = quiz_mod.generate_quiz("量子占卜玄学导论", difficulty="easy", count=3)
         check("weak_kb_degraded_generate", weak.get("ok") is True,
               "weak KB hit must degrade to topic gen, not reject: %s" % weak.get("error"))
@@ -366,6 +476,8 @@ def runtime_day6():
     def setup(tmp):
         os.environ["STUDY_LIU_DATA_DIR"] = tmp
         os.environ["LLM_PROVIDER"] = "mock"
+        os.environ.pop("STUDY_LIU_TAVILY_KEY", None)
+        os.environ.pop("TAVILY_API_KEY", None)
         if "requests" not in sys.modules:
             import types as _t
             sys.modules["requests"] = _t.ModuleType("requests")

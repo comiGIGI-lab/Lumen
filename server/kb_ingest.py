@@ -300,13 +300,13 @@ def _vectorize_notes(notes, chunks, owner, scope, category):
             return
         import embeddings
         import vector_store
+        if not vector_store.AVAILABLE:
+            return
         texts = ["%s\\n%s" % (n.get("title") or "", ck)
                  for n, ck in zip(notes, chunks)]
-        # 先 embed 再看向量库：无 key / 断网时 embed 返回空，回归要求
-        # 「挂钩被调用且 upsert=0」。chromadb 未装时同样不写库，但不跳过 embed。
         vecs = embeddings.embed_texts(texts)
-        if not vecs or not vector_store.AVAILABLE:
-            return   # 无 key / 断网 / 无向量库：回退词法，不影响导入结果
+        if not vecs:
+            return   # 无 key / 断网：回退词法，不影响导入结果
         for (note, _ck), vec in zip(zip(notes, chunks), vecs):
             if vec:
                 vector_store.upsert_chunk(

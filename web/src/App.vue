@@ -33,6 +33,7 @@ const StudySpacePage = defineAsyncComponent(() => import('./components/StudySpac
 const WrongBookPage = defineAsyncComponent(() => import('./components/WrongBookPage.vue'))
 const LearningProgress = defineAsyncComponent(() => import('./components/LearningProgress.vue'))
 const MindMapPage = defineAsyncComponent(() => import('./components/MindMapPage.vue'))
+const HandbookPage = defineAsyncComponent(() => import('./components/HandbookPage.vue'))
 const ExportPreview = defineAsyncComponent(() => import('./components/ExportPreview.vue'))
 import { usePlanStream } from './composables/usePlanStream'
 import { useSpace } from './composables/useSpace'
@@ -112,12 +113,22 @@ function skipOnboardSettings() {
 
 function enterWelcome() {
   showWelcome.value = shouldShowWelcome()
-  if (showWelcome.value) notify({ type: 'success', text: '这是你的学伴宠物' })
+  if (showWelcome.value) notify({ type: 'success', text: '我准备好陪你学习啦！' })
+}
+
+function isPhone() {
+  try {
+    return window.matchMedia('(max-width: 430px)').matches
+  } catch (_) {
+    return false
+  }
 }
 
 function onGuideDone() {
   showGuide.value = false
-  if (!settingsOnboardDone() && !skipOnboardSettings()) {
+  // 手机屏太窄，一进门就盖一层 LLM 设置，顶栏和侧边悬浮窗会把表单挤没。
+  // 窄屏直接进欢迎层，模型稍后再从导航打开。
+  if (!isPhone() && !settingsOnboardDone() && !skipOnboardSettings()) {
     settingsOnboarding.value = true
     showSettings.value = true
     return
@@ -258,6 +269,7 @@ const BUBBLES = {
 }
 
 const appView = ref('course')
+const knowledgeSection = ref('notes')
 const showLogin = ref(false)
 
 function goHome() {
@@ -289,8 +301,9 @@ function openLogs() {
   openTrace()
 }
 
-function goKnowledge() {
+function goKnowledge(section) {
   if (showWelcome.value) onWelcomeDone()
+  knowledgeSection.value = section === 'speech' || section === 'map' ? section : 'notes'
   appView.value = 'knowledge'
 }
 
@@ -300,8 +313,7 @@ function goImport() {
 }
 
 function goTranscribe() {
-  if (showWelcome.value) onWelcomeDone()
-  appView.value = 'transcribe'
+  goKnowledge('speech')
 }
 
 function goChat() {
@@ -324,9 +336,13 @@ function goProgress() {
   appView.value = 'progress'
 }
 
-function goMindMap() {
+function goManual() {
   if (showWelcome.value) onWelcomeDone()
-  appView.value = 'mindmap'
+  appView.value = 'manual'
+}
+
+function goMindMap() {
+  goKnowledge('map')
 }
 
 // 欢迎层显示期间锁住 body 滚动，避免底层工具界面跟着滚
@@ -514,23 +530,12 @@ async function loadBootstrap() {
   } catch (e) {
     statusTone.value = 'error'
     statusText.value = `后端未启动：${e.message}（请先运行 python server/api_server.py）`
-    notify({ type: 'error', text: '无法连接后端，请在 study-liu-web 目录先启动 server' })
+    notify({ type: 'error', text: '呜呜，连不上大脑中枢了，请确认后端 server 启动了吗？' })
   }
 }
 
 onMounted(async () => {
   await loadBootstrap()
-
-  // 匿名 LLM 限速命中（后端 429 + code: ANON_LIMIT_*）：弹提示并引导登录。
-  // 登录用户不受限，登录后即可不限次使用全部 AI 功能（见 server/api_server._enforce_anon_llm_quota）。
-  window.addEventListener('zjxt:anon-limit', (ev) => {
-    const detail = ev?.detail || {}
-    notify({
-      type: 'warn',
-      text: detail.message || '今日匿名体验额度已用完，登录后即可不限次使用全部 AI 功能。',
-    })
-    if (!showLogin.value) showLogin.value = true
-  })
 
   // 支持深链：?course=机器学习&auto=1&level=进阶&daily_hours=4h&goal=考试&deadline=2026-10-10
   // 便于把「一条完整链路」直接做成可分享的演示链接，也方便自动化截图验证。
@@ -554,7 +559,7 @@ onMounted(async () => {
   const wantSettings = qs.get('settings')
   if (wantSettings === '1') {
     showSettings.value = true
-  } else if (wantSettings !== '0' && needsKey.value && qs.get('auto') !== '1') {
+  } else if (wantSettings !== '0' && needsKey.value && qs.get('auto') !== '1' && !isPhone()) {
     showSettings.value = true
     statusTone.value = 'warn'
     statusText.value = '⚠ 当前是 LLM 模式但还没填 API Key —— 请在这里填入你自己的 Key'
@@ -568,8 +573,8 @@ onMounted(async () => {
 function onGenerate(name, cacheOverride) {
   if (!name) {
     statusTone.value = 'warn'
-    statusText.value = '⚠ 请先输入课程名'
-    notify({ type: 'warn', text: '请先输入课程名' })
+    statusText.value = '⚠ 汪？好像还没告诉我今天要学什么课程呢'
+    notify({ type: 'warn', text: '汪？好像还没告诉我今天要学什么课程呢' })
     return
   }
   course.value = name
@@ -607,7 +612,7 @@ async function onProfileChange(p) {
 
 function copyText(text, label) {
   if (!text) return
-  const done = () => notify({ type: 'success', text: `${label}已复制到剪贴板` })
+  const done = () => notify({ type: 'success', text: `收到！${label}已经乖乖跑到剪贴板里啦` })
   if (navigator.clipboard?.writeText) {
     navigator.clipboard.writeText(text).then(done).catch(() => fallbackCopy(text, done))
   } else {
@@ -626,7 +631,7 @@ function fallbackCopy(text, done) {
     document.execCommand('copy')
     done()
   } catch (_) {
-    notify({ type: 'error', text: '复制失败，请手动选择文本' })
+    notify({ type: 'error', text: '哎呀，没能复制成功，主人手动选一下吧' })
   }
   document.body.removeChild(ta)
 }
@@ -689,7 +694,7 @@ function onLoadHistory(payload) {
   course.value = payload.course
   statusText.value = `📜 已载入历史方案：${payload.course}（大纲 ${payload.stats.outline} 章 / 计划 ${payload.stats.plan} 天）`
   statusTone.value = 'success'
-  notify({ type: 'success', text: `已载入「${payload.course}」的历史方案` })
+  notify({ type: 'success', text: `翻出旧档案啦！正在重温「${payload.course}」的方案~` })
   if (payload.type !== 'crisis') showExport.value = true
 }
 
@@ -704,7 +709,7 @@ async function onOpenCourseFromProgress(courseName) {
     appView.value = 'course'
     onLoadHistory(payload)
   } catch (e) {
-    notify({ type: 'error', text: `打开失败：${e.message}` })
+    notify({ type: 'error', text: `打不开这页档案了呜呜：${e.message}` })
   }
 }
 
@@ -751,7 +756,7 @@ async function onToggleProgress({ kind, index, done }) {
     const back = [...(studyProgress.value[kind] || [])]
     if (back[index]) back[index] = { ...back[index], done: prev }
     studyProgress.value = { ...studyProgress.value, [kind]: back }
-    notify({ type: 'error', text: `保存失败：${e.message}` })
+    notify({ type: 'error', text: `没能保存成功，出了点小状况：${e.message}` })
   }
 }
 
@@ -761,7 +766,7 @@ function onSettingsSaved(newMode) {
     // 保存后重新判断是否仍缺 Key，角标高亮才会及时消失
     needsKey.value = newMode.mode !== 'mock' && !newMode.has_key
   }
-  notify({ type: 'success', text: '运行模式已更新' })
+  notify({ type: 'success', text: '运行模式换好啦，随时准备出发！' })
   finishSettingsOnboard()
 }
 
@@ -784,15 +789,15 @@ const degradedBanner = computed(() => {
     return {
       tone: 'info',
       icon: '📦',
-      title: '当前为 Mock 模式，方案由内置模板生成',
-      detail: `兜底节点：${agents}。章节来自课程分类模板，资源来自内置 20 门课程资源库，不消耗任何 API 额度。`,
+      title: '当前在 Mock 模式，这是我用内置模板拼出来的方案哦',
+      detail: `兜底节点：${agents}。章节和资源都来自我的小金库，不需要消耗任何魔法（API 额度）啦。`,
     }
   }
   return {
     tone: 'warn',
     icon: '⚠',
-    title: '本次方案并非大模型生成',
-    detail: `${agents} 走了内置模板兜底（原因：${d.error}）。请检查 API Key / 网络 / 账户余额后重新生成。`,
+    title: '呜...这次的方案不是大模型生成的',
+    detail: `${agents} 走内置模板兜底啦（因为：${d.error}）。请主人检查下 API Key、网络或者账户余额，然后再让我试一次吧！`,
   }
 })
 
@@ -823,6 +828,7 @@ const degradedBanner = computed(() => {
       @open-mindmap="goMindMap"
       @open-study="goStudy"
       @open-progress="goProgress"
+      @open-manual="goManual"
       @open-settings="openSettings"
       @open-history="openHistory"
       @open-trace="openLogs"
@@ -831,7 +837,7 @@ const degradedBanner = computed(() => {
     <LoginDialog :open="showLogin" @close="showLogin = false" />
 
     <AppHeader
-      v-show="!showWelcome"
+      v-show="!showGuide"
       :mode="mode"
       :has-result="!!result"
       :busy="busy"
@@ -852,14 +858,17 @@ const degradedBanner = computed(() => {
       @open-mindmap="goMindMap"
       @open-study="goStudy"
       @open-progress="goProgress"
+      @open-manual="goManual"
     />
 
     <main class="main" :class="{ 'under-wins': !showWelcome && appView !== 'study', 'study-main': appView === 'study' }">
       <KnowledgePage
         v-if="appView === 'knowledge'"
+        :section="knowledgeSection"
         @back="goCourse"
         @open-import="goImport"
         @go-course="goCourse"
+        @notify="notify"
       />
       <ImportPage
         v-else-if="appView === 'import'"
@@ -891,6 +900,10 @@ const degradedBanner = computed(() => {
         @back="goCourse"
         @open-course="onOpenCourseFromProgress"
         @notify="notify"
+      />
+      <HandbookPage
+        v-else-if="appView === 'manual'"
+        @back="goCourse"
       />
       <MindMapPage
         v-else-if="appView === 'mindmap'"
@@ -1076,6 +1089,9 @@ const degradedBanner = computed(() => {
 
 .main.under-wins {
   padding-top: 56px;
+  /* 左右缘竖签宽 36px，主区原来只有 26px，标题和说明会被切掉。 */
+  padding-left: 52px;
+  padding-right: 52px;
 }
 
 .main.study-main {

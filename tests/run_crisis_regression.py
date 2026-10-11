@@ -30,6 +30,16 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.dirname(HERE)
 SERVER_DIR = os.path.join(REPO_ROOT, "server")
 
+# Windows 控制台默认 GBK（cp936），结论行里的 ✅ / ❌ 是 U+2705 / U+274C，
+# GBK 编不出来 —— 断言全绿时偏偏在最后一行的 print 上抛 UnicodeEncodeError，
+# 进程 rc=1，看起来像「危机回归红」。这里把 stdout/stderr 切成 UTF-8，
+# 原有输出一字不改（仓库其它脚本不必动）。
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
+
 sys.path.insert(0, SERVER_DIR)
 
 from crisis import (                                    # noqa: E402

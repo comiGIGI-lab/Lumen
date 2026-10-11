@@ -157,7 +157,7 @@ if SOURCE_DIR not in sys.path:
 
 # quiz 顶层 from core.paths / core.agent_loop（core 仅 vendor/study-liu 有），
 # 必须放在 sys.path.insert 之后，否则 `python server/api_server.py` 直接崩
-# `ModuleNotFoundError: No module named 'core'`。
+# `ModuleNotFoundError: No module named 'core'`（回归 #rLRaaT 修复）。
 import quiz as quiz_mod                                             # noqa: E402
 
 
@@ -223,17 +223,11 @@ from tools.user_profile import (                                    # noqa: E402
 )
 from tools.markdown_export import render_plan_markdown, suggest_filename   # noqa: E402
 from tools.docx_export import render_plan_docx, suggest_docx_filename      # noqa: E402
-# 用户系统存储层（MySQL 主，JSON 兜底）：用同名别名替换 vendor store，
-# 使下方 _wrongbook_items / mindmap_store_list_many / 进度路由无需改动。
-import storage_progress as progress_store                           # noqa: E402
-import storage_wrongbook as wrong_book_store                        # noqa: E402
-import storage_mindmap as mindmap_store                             # noqa: E402
-import storage_profiles                                              # noqa: E402
-import storage_ratelimit                                              # noqa: E402
-import db                                                            # noqa: E402
+from tools import progress_store                                    # noqa: E402
+from tools import wrong_book_store                                  # noqa: E402
+from tools import mindmap_store                                     # noqa: E402
 import error_text                                                    # noqa: E402
 import accounts                                                      # noqa: E402
-import data_scope                                                    # noqa: E402
 from tools import cache_store                                       # noqa: E402
 from tools.knowledge_store import KnowledgeStore                    # noqa: E402
 from core.paths import data_dir as _data_dir                        # noqa: E402
@@ -256,14 +250,6 @@ DATA_DIR = _data_dir()
 
 # 账号体系：账号文件放 data/ 下（与其它运行数据一起，备份即整体搬走）。
 # 首次启动若一个管理员都没有，自动建 admin/admin123 —— 上线后请立刻改密。
-# 用户系统存储层：MySQL 初始化（连接参数来自 .env 的 STUDY_LIU_MYSQL_*，
-# 由 _load_dotenv_stdlib 在 import 前注入 os.environ）。MySQL 不可用时静默降级，
-# accounts / data_scope 会自动退回 JSON 兜底，服务仍可启动。
-db.configure()
-try:
-    db.ensure_schema()
-except Exception as _schema_err:  # 数据库不可用时不影响启动，仅记录
-    sys.stderr.write("[api] MySQL schema 初始化失败（将退回 JSON 兜底）：%s\n" % _schema_err)
 accounts.configure(DATA_DIR)
 _created_admin, _admin_msg = accounts.ensure_default_admin()
 # 内容安全命中明细的落盘位置（JSONL），与 client_history.json 同目录；
@@ -301,90 +287,22 @@ def save_client_history(d: dict) -> None:
 
 
 def record_client_course(client_id: str, course: str) -> None:
-    """生成方案成功后，把课程记到该归属桶名下（MySQL course_access）。"""
-    try:
-        progress_store.record_course(client_id, course)
-    except Exception:
-        pass
+    """生成方案成功后，把课程记到该客户端名下（置顶 + 去重 + 截断）。"""
+    if not client_id or not course:
+        return
+    d = load_client_history()
+    lst = d.get(client_id, [])
+    if course in lst:
+        lst.remove(course)
+    lst.insert(0, course)
+    d[client_id] = lst[:_MAX_CLIENT_COURSES]
+    save_client_history(d)
 
 
 def client_courses(client_id: str) -> set:
     if not client_id:
         return set()
-    try:
-        return progress_store.courses_of(client_id)
-    except Exception:
-        return set()
-
-
-def client_courses_many(keys) -> set:
-    """聚合多个归属桶的课程（登录 = 用户名桶 + 绑定浏览器桶；匿名 = 单桶）。"""
-    out = set()
-    for k in keys or []:
-        out |= client_courses(k)
-    return out
-
-
-# ---------- 错题本 / 导图的多桶聚合读 ----------
-#
-# wrong_book_store / mindmap_store 按 client_id 过滤全局文件，这里把
-# 「登录用户名桶 + 绑定浏览器桶」的结果合并（错题按 id 去重，id 全局唯一）。
-
-def _wrongbook_items(keys, course=None, keyword=None, status=None):
-    items, seen = [], set()
-    for k in keys or []:
-        for it in wrong_book_store.list_items(
-                k, course=course, keyword=keyword, status=status):
-            iid = it.get("id")
-            if iid in seen:
-                continue
-            seen.add(iid)
-            items.append(it)
-    return items
-
-
-def _wrongbook_stats(items):
-    """与 wrong_book_store.stats() 同口径，但直接对聚合后的条目计算。"""
-    total = len(items)
-    mastered = sum(1 for it in items if it.get("mastered"))
-    by_course = {}
-    for it in items:
-        c = it.get("course") or "未归类"
-        slot = by_course.setdefault(c, {"course": c, "total": 0, "mastered": 0})
-        slot["total"] += 1
-        if it.get("mastered"):
-            slot["mastered"] += 1
-    due = sum(1 for it in items
-              if not it.get("mastered") and int(it.get("review_count") or 0) < 3)
-    return {
-        "total": total,
-        "mastered": mastered,
-        "unmastered": total - mastered,
-        "due": due,
-        "ratio": round(mastered / total, 4) if total else 0.0,
-        "by_course": sorted(by_course.values(), key=lambda x: -x["total"]),
-    }
-
-
-def _wrongbook_courses(items):
-    seen = []
-    for it in items:
-        c = it.get("course") or "未归类"
-        if c not in seen:
-            seen.append(c)
-    return seen
-
-
-def mindmap_store_list_many(keys):
-    out, seen = [], set()
-    for k in keys or []:
-        for entry in mindmap_store.list_maps(k):
-            course = entry.get("course")
-            if course in seen:
-                continue
-            seen.add(course)
-            out.append(entry)
-    return out
+    return set(load_client_history().get(client_id, []))
 
 
 # ============================================================
@@ -627,16 +545,10 @@ def mode_info() -> dict:
     }
 
 
-def bootstrap(client_id: str = "", owner_keys=None, profile_file=None) -> dict:
-    """一次性返回前端启动所需的全部元信息。
-
-    owner_keys / profile_file 由调用方按登录态传入：
-    登录用户画像读 profiles/<用户名>.json、历史读「用户名桶 + 绑定浏览器桶」；
-    未登录两者都是 None/[client_id]，行为与旧版完全一致。
-    """
-    profile = load_profile(filepath=profile_file)
-    allowed = client_courses_many(owner_keys) if owner_keys is not None \
-        else client_courses(client_id)
+def bootstrap(client_id: str = "") -> dict:
+    """一次性返回前端启动所需的全部元信息。"""
+    profile = load_profile()
+    allowed = client_courses(client_id)
     return {
         "app": "study-liu-web",
         "version": "1.0.0",
@@ -1070,18 +982,24 @@ class ApiHandler(BaseHTTPRequestHandler):
         return self._send_json(r)
 
     def log_message(self, fmt, *args):  # 收敛控制台噪音
-        if self.path.startswith("/api/plan/stream"):
+        if self.path.startswith("/api/plan/stream") or self.path.startswith("/api/quiz/stream"):
             return
         sys.stderr.write("[api] %s\n" % (fmt % args))
 
-    def _auth(self):
-        """取当前登录用户；未登录返回 None。"""
-        return accounts.check_token(self.headers.get("X-Auth-Token") or "")
+    def _auth(self, query=None):
+        """取当前登录用户；未登录返回 None。
+
+        SSE（EventSource）不能自定义请求头，token 回落到查询参数 token。
+        """
+        token = (self.headers.get("X-Auth-Token") or "").strip()
+        if not token and query:
+            token = (query.get("token") or [""])[0].strip()
+        return accounts.check_token(token)
 
     def _knowledge_scope(self, raw):
         """上传空间只接受三档；缺省或非法值都落到本人私有空间。"""
         scope = str(raw or "").strip().lower()
-        return scope if scope in ("private", "shared", "public") else "private"
+        return scope if scope in ("private", "public") else "private"
 
     def _require_admin(self):
         """管理员校验。
@@ -1103,7 +1021,8 @@ class ApiHandler(BaseHTTPRequestHandler):
         """写接口登录校验（与 _require_admin 同语义：账号体系未启用时放行）。
 
         返回 None 表示放行；否则返回 (响应体, HTTP 状态码)。
-        auth 启用时要求登录，未登录 401。profile 不走这里：首次访问会自动保存画像。
+        用于 mindmap / wrongbook / chat / plan / export / settings / quiz /
+        profile / progress / cache 等写接口：auth 启用时要求登录，未登录 401。
         """
         if not accounts.auth_enabled():
             return None
@@ -1117,87 +1036,6 @@ class ApiHandler(BaseHTTPRequestHandler):
         if not cid and query:
             cid = (query.get("client_id") or [""])[0].strip()
         return cid[:64] or "anonymous"
-
-    # ---------- 登录态与数据归属 ----------
-    #
-    # 数据身份原本只有 client_id（随机浏览器 ID），登录账号与之无关：
-    # 换浏览器数据就"丢"了，同浏览器换账号数据混在一起。现在分两条轨道：
-    #   写（POST/DELETE）：登录 → 「u:<用户名>」桶（顺带把当前浏览器惰性绑定到
-    #                     账号）；匿名 → client_id 桶（旧行为完全不变）。
-    #   读（GET）：登录 → 用户名桶 + 该账号绑定过的所有浏览器桶的并集；
-    #             匿名 → 仅当前浏览器桶。
-
-    def _auth_any(self, query=None):
-        """登录态：优先 X-Auth-Token 头；SSE（EventSource 不能带自定义头）
-        回落 auth_token 查询参数。"""
-        token = (self.headers.get("X-Auth-Token") or "").strip()
-        if not token and query:
-            token = (query.get("auth_token") or [""])[0].strip()
-        return accounts.check_token(token or "")
-
-    def _owner_id(self, query=None) -> str:
-        """写路径的归属桶名。"""
-        user = self._auth_any(query)
-        if user:
-            try:
-                data_scope.bind_client(self._client_id(query), user["username"])
-            except Exception:
-                pass
-            return data_scope.owner_key(user["username"])
-        return self._client_id(query)
-
-    def _owner_keys(self, query=None) -> list:
-        """读路径的桶列表。"""
-        user = self._auth_any(query)
-        if user:
-            try:
-                return data_scope.owner_keys_for(user["username"], self._client_id(query))
-            except Exception:
-                return [data_scope.owner_key(user["username"])]
-        cid = self._client_id(query)
-        return [cid] if cid else ["anonymous"]
-
-    def _profile_file(self, query=None):
-        """按用户隔离的画像文件路径；未登录返回 None（走全局 profile.json 旧行为）。"""
-        user = self._auth_any(query)
-        if not user:
-            return None
-        try:
-            return data_scope.profile_path(DATA_DIR, user["username"])
-        except Exception:
-            return None
-
-    # ---------- 匿名 LLM 调用限速（防团队 token 被刷完）----------
-    #
-    # 双闸：每浏览器每日上限 (anon:<client_id>) + 全局匿名每日池 (anon:global)。
-    # 仅对消耗 LLM token 的端点生效：/api/chat、/api/plan、/api/plan/stream、
-    # /api/quiz/generate。登录用户视为可信队友，直接放行。MySQL 异常时 fail-open。
-    def _enforce_anon_llm_quota(self, query=None):
-        """返回 True 表示已拦截（已发出 429），调用方应 return。"""
-        user = self._auth_any(query)
-        if user:
-            return False
-        cid = self._client_id(query)
-        day = storage_ratelimit._today()
-        # 1) 全局匿名池：最防「刷完」——所有匿名用户共享一个每日总上限
-        if not storage_ratelimit.check_and_incr(
-                "anon:global", day, storage_ratelimit.anon_global_limit()):
-            self._send_json({
-                "ok": False,
-                "error": "今日匿名体验额度已用完，登录后即可不限次使用全部 AI 功能。",
-                "code": "ANON_LIMIT_GLOBAL",
-            }, 429)
-            return True
-        # 2) 每浏览器每日：防单个匿名访客猛刷
-        if not storage_ratelimit.check_and_incr(
-                "anon:" + cid, day, storage_ratelimit.anon_per_browser_limit()):
-            self._send_json({
-                "ok": False,
-                "error": "今日该浏览器的匿名体验额度已用完，登录后即可不限次使用全部 AI 功能。",
-                "code": "ANON_LIMIT_CLIENT",
-            }, 429)
-            return True
-        return False
 
     # ---------- SSE ----------
     def _sse_open(self):
@@ -1265,11 +1103,7 @@ class ApiHandler(BaseHTTPRequestHandler):
                 })
 
             if path == "/api/bootstrap":
-                return self._send_json(bootstrap(
-                    self._client_id(query),
-                    owner_keys=self._owner_keys(query),
-                    profile_file=self._profile_file(query),
-                ))
+                return self._send_json(bootstrap(self._client_id(query)))
 
             if path == "/api/mode":
                 return self._send_json(mode_info())
@@ -1279,7 +1113,7 @@ class ApiHandler(BaseHTTPRequestHandler):
                 return self._send_json({"lines": tail_trace(limit)})
 
             if path == "/api/history":
-                allowed = client_courses_many(self._owner_keys(query))
+                allowed = client_courses(self._client_id(query))
                 courses = [
                     c for c in progress_store.list_courses()
                     if c.get("course") in allowed
@@ -1288,7 +1122,7 @@ class ApiHandler(BaseHTTPRequestHandler):
 
             if path.startswith("/api/history/"):
                 course = urllib.parse.unquote(path[len("/api/history/"):])
-                if course not in client_courses_many(self._owner_keys(query)):
+                if course not in client_courses(self._client_id(query)):
                     return self._send_json(
                         {"ok": False, "error": "该课程不在你的历史记录中"}, 404)
                 result = progress_store.load_result(course)
@@ -1299,10 +1133,9 @@ class ApiHandler(BaseHTTPRequestHandler):
                 return self._send_json(payload)
 
             if path == "/api/progress/overview":
-                # 学情面板：该归属名下所有课程的勾选完成度汇总。
-                # progress.json 全局共享，所以仍要按归属过滤（登录 = 账号桶 +
-                # 绑定浏览器桶；匿名 = 浏览器桶，同 /api/history）。
-                allowed = client_courses_many(self._owner_keys(query))
+                # 学情面板：该浏览器名下所有课程的勾选完成度汇总。
+                # progress.json 全局共享，所以仍要按 client 过滤（同 /api/history）。
+                allowed = client_courses(self._client_id(query))
                 rows = []
                 for c in progress_store.list_courses():
                     name = c.get("course")
@@ -1331,9 +1164,9 @@ class ApiHandler(BaseHTTPRequestHandler):
                 })
 
             if path == "/api/wrongbook":
-                keys = self._owner_keys(query)
-                items = _wrongbook_items(
-                    keys,
+                cid = self._client_id(query)
+                items = wrong_book_store.list_items(
+                    cid,
                     course=(query.get("course") or [""])[0].strip() or None,
                     keyword=(query.get("q") or [""])[0].strip() or None,
                     status=(query.get("status") or [""])[0].strip() or None,
@@ -1342,8 +1175,8 @@ class ApiHandler(BaseHTTPRequestHandler):
                     "ok": True,
                     "items": items,
                     "total": len(items),
-                    "stats": _wrongbook_stats(items),
-                    "courses": _wrongbook_courses(items),
+                    "stats": wrong_book_store.stats(cid),
+                    "courses": wrong_book_store.courses(cid),
                 })
 
             if path == "/api/asr":
@@ -1355,16 +1188,12 @@ class ApiHandler(BaseHTTPRequestHandler):
                 # 列表：只给「课程 / 更新时间 / 节点数」，不带节点，列表页够用
                 return self._send_json({
                     "ok": True,
-                    "items": mindmap_store_list_many(self._owner_keys(query)),
+                    "items": mindmap_store.list_maps(self._client_id(query)),
                 })
 
             if path.startswith("/api/mindmap/"):
                 course = urllib.parse.unquote(path[len("/api/mindmap/"):])
-                entry = None
-                for k in self._owner_keys(query):
-                    entry = mindmap_store.get_map(k, course)
-                    if entry:
-                        break
+                entry = mindmap_store.get_map(self._client_id(query), course)
                 if not entry:
                     return self._send_json({"ok": False, "error": "该课程还没有思维导图"}, 404)
                 out = dict(entry)
@@ -1393,7 +1222,7 @@ class ApiHandler(BaseHTTPRequestHandler):
                 store = KnowledgeStore()
                 if not q:
                     items = store.visible(username)
-                    if scope in ("private", "shared", "public"):
+                    if scope in ("private", "public"):
                         items = [item for item in items if item.get("scope") == scope]
                     if category:
                         items = [item for item in items if item.get("category") == category]
@@ -1416,7 +1245,11 @@ class ApiHandler(BaseHTTPRequestHandler):
                     hits = store.retrieve_visible(q, username, top_k=top_k)
                 items = []
                 for note, score, detail in hits:
-                    it = dict(note)
+                    it = store.normalize(note)
+                    if scope in ("private", "public") and it.get("scope") != scope:
+                        continue
+                    if category and it.get("category") != category:
+                        continue
                     it["_score"] = round(score, 2)
                     it["_match"] = detail
                     items.append(it)
@@ -1426,6 +1259,9 @@ class ApiHandler(BaseHTTPRequestHandler):
 
             if path == "/api/plan/stream":
                 return self._handle_stream(query)
+
+            if path == "/api/quiz/stream":
+                return self._handle_quiz_stream(query)
 
             return self._send_json({"ok": False, "error": f"未知接口 {path}"}, 404)
         except Exception as e:
@@ -1479,21 +1315,6 @@ class ApiHandler(BaseHTTPRequestHandler):
                     "role": user["role"],
                 })
 
-            if path == "/api/password":
-                # 自助改密：登录态 + 旧密码校验（token 只证明登录，不证明本人）
-                user = self._auth()
-                if not user:
-                    return self._send_json(
-                        {"ok": False, "error": "请先登录后再修改密码"}, 401)
-                ok, msg = accounts.change_password(
-                    user["username"],
-                    body.get("old_password") or "",
-                    body.get("new_password") or "",
-                )
-                if not ok:
-                    return self._send_json({"ok": False, "error": msg}, 400)
-                return self._send_json({"ok": True, "message": msg})
-
             if path == "/api/accounts":
                 guard = self._require_admin()
                 if guard:
@@ -1532,6 +1353,29 @@ class ApiHandler(BaseHTTPRequestHandler):
                     "ok": True, "id": note_id, "category": category,
                     "categories": store.categories(user["username"]),
                 })
+
+            if path == "/api/knowledge/share":
+                user = self._auth()
+                if not user:
+                    return self._send_json({"ok": False, "error": "请先登录后再分享"}, 401)
+                raw_ids = body.get("ids") or []
+                if not isinstance(raw_ids, list):
+                    return self._send_json({"ok": False, "error": "ids 必须是数组"}, 400)
+                store = KnowledgeStore()
+                code = store.issue_share(raw_ids, user["username"])
+                if not code:
+                    return self._send_json({"ok": False, "error": "只能分享自己的笔记"}, 403)
+                return self._send_json({"ok": True, "code": code})
+
+            if path == "/api/knowledge/redeem":
+                user = self._auth()
+                if not user:
+                    return self._send_json({"ok": False, "error": "请先登录后再兑换"}, 401)
+                store = KnowledgeStore()
+                created = store.redeem_share(body.get("code"), user["username"])
+                if not created:
+                    return self._send_json({"ok": False, "error": "口令无效或笔记已删除"}, 404)
+                return self._send_json({"ok": True, "ids": created, "count": len(created)})
 
             if path == "/api/knowledge":
                 # 粘贴文本入库（与上传导入共用分块 + 内容安全逻辑）
@@ -1581,28 +1425,14 @@ class ApiHandler(BaseHTTPRequestHandler):
                 return self._send_json(r, 200 if r.get("ok") else 400)
 
             if path == "/api/profile":
-                # 画像按用户隔离：登录用户走 MySQL（storage_profiles），未登录退回
-                # 全局 profile.json 旧行为（vendor user_profile）。
                 profile = {
                     "level": body.get("level", DEFAULT_PROFILE["level"]),
                     "daily_hours": body.get("daily_hours", DEFAULT_PROFILE["daily_hours"]),
                     "goal": body.get("goal", DEFAULT_PROFILE["goal"]),
                     "deadline": body.get("deadline", ""),
                 }
-                user = self._auth_any()
-                if user:
-                    try:
-                        storage_profiles.save(user["username"], profile)
-                        saved = storage_profiles.load(user["username"]) or profile
-                    except Exception:
-                        # MySQL 不可用时退回文件兜底
-                        pf = self._profile_file()
-                        save_profile(profile, filepath=pf)
-                        saved = load_profile(filepath=pf)
-                else:
-                    pf = self._profile_file()
-                    save_profile(profile, filepath=pf)
-                    saved = load_profile(filepath=pf)
+                save_profile(profile)
+                saved = load_profile()
                 return self._send_json({
                     "ok": True,
                     "profile": saved,
@@ -1626,17 +1456,13 @@ class ApiHandler(BaseHTTPRequestHandler):
                 guard = self._require_user()
                 if guard:
                     return self._send_json(guard[0], guard[1])
-                profile = body.get("profile") or load_profile(
-                    filepath=self._profile_file())
+                profile = body.get("profile") or load_profile()
                 use_cache = bool(body.get("use_cache", True))
                 t0 = time.time()
-                # 匿名 LLM 限速双闸
-                if self._enforce_anon_llm_quota():
-                    return
                 result = run_plan_pipeline(course, profile=profile, use_cache=use_cache)
                 try:
                     progress_store.save_result(course, result)
-                    record_client_course(self._owner_id(), course)
+                    record_client_course(self._client_id(), course)
                 except Exception:
                     pass
                 payload = build_payload(course, result, int((time.time() - t0) * 1000))
@@ -1667,9 +1493,6 @@ class ApiHandler(BaseHTTPRequestHandler):
                         "answer": "该输入看起来是「生成方案」请求，请点击「生成方案」。",
                         "source": "intent",
                     })
-                # 匿名 LLM 限速双闸（登录用户已在方法内直接放行）
-                if self._enforce_anon_llm_quota():
-                    return
                 res = run_chat_pipeline(
                     question,
                     history=body.get("history") or [],
@@ -1726,30 +1549,30 @@ class ApiHandler(BaseHTTPRequestHandler):
                 guard = self._require_user()
                 if guard:
                     return self._send_json(guard[0], guard[1])
-                # 匿名 LLM 限速双闸
-                if self._enforce_anon_llm_quota():
-                    return
                 res = quiz_mod.generate_quiz(
                     course,
                     difficulty=body.get("difficulty") or "medium",
                     count=body.get("count") or 5,
                     types=body.get("types") or None,
                     web_search=body.get("web_search", True),
+                    lively=body.get("lively", False),
                     client_id=self._client_id(),
                 )
                 return self._send_json(res)
 
             if path == "/api/quiz/grade":
                 # 服务端判分：correct/answer/explanation 从缓存的标准答案对照得出
-                quiz_id = (body.get("quiz_id") or "").strip()
-                question_id = (body.get("question_id") or "").strip()
-                selected = (body.get("selected") or "").strip()
-                if not quiz_id or not question_id:
-                    return self._send_json(
-                        {"ok": False, "error": "缺少 quiz_id 或 question_id"}, 400)
                 guard = self._require_user()
                 if guard:
                     return self._send_json(guard[0], guard[1])
+                quiz_id = (body.get("quiz_id") or "").strip()
+                question_id = (body.get("question_id") or "").strip()
+                # 多选是数组。对 list 做 .strip() 会直接 500，整卷流式答题时必须保留原值。
+                raw_sel = body.get("selected")
+                selected = raw_sel.strip() if isinstance(raw_sel, str) else raw_sel
+                if not quiz_id or not question_id:
+                    return self._send_json(
+                        {"ok": False, "error": "缺少 quiz_id 或 question_id"}, 400)
                 try:
                     g = quiz_mod.grade_quiz(quiz_id, question_id, selected)
                 except KeyError:
@@ -1760,6 +1583,9 @@ class ApiHandler(BaseHTTPRequestHandler):
             if path == "/api/quiz/report":
                 # 选择题闯关复盘（Day6）：与 /api/chat 同一套安全闸，作用于本局课程名。
                 # run_id 取 POST body 或查询串 ?run_id=，二选一。
+                guard = self._require_user()
+                if guard:
+                    return self._send_json(guard[0], guard[1])
                 run_id = (body.get("run_id") or "").strip()
                 if not run_id:
                     _q = urllib.parse.parse_qs(parsed.query)
@@ -1781,19 +1607,16 @@ class ApiHandler(BaseHTTPRequestHandler):
                         log_safety_hit("quiz", course, detail, self._client_id())
                         return self._send_json(
                             {"ok": False, "error": SAFETY_ERROR_MESSAGE}, 400)
+                return self._send_json(rep)
+            if path == "/api/export":
                 guard = self._require_user()
                 if guard:
                     return self._send_json(guard[0], guard[1])
-                return self._send_json(rep)
-            if path == "/api/export":
                 course = (body.get("course") or "").strip()
                 fmt = (body.get("format") or "markdown").strip().lower()
                 result = body.get("result") or progress_store.load_result(course)
                 if not result:
                     return self._send_json({"ok": False, "error": "没有可导出的方案"}, 400)
-                guard = self._require_user()
-                if guard:
-                    return self._send_json(guard[0], guard[1])
                 # Word：直接回二进制流（浏览器按 Content-Disposition 落盘），
                 # 不走 JSON——docx 是 zip，塞进 JSON 还得 base64，白白涨 33%。
                 if fmt in ("docx", "word"):
@@ -1823,9 +1646,6 @@ class ApiHandler(BaseHTTPRequestHandler):
                 return self._send_json(test_llm_connection(body))
 
             if path == "/api/settings":
-                guard = self._require_user()
-                if guard:
-                    return self._send_json(guard[0], guard[1])
                 # 「留空 = 保持现有 Key」。
                 # 前端出于安全不回填明文 Key（桌面版会回填），若这里照搬
                 # save_settings 的「空值即清空」语义，用户只是切一下模式
@@ -1833,6 +1653,9 @@ class ApiHandler(BaseHTTPRequestHandler):
                 #   clear_key=true  → 主动清空
                 #   api_key 非空     → 更新
                 #   其余（含 api_key=""）→ 沿用 settings.json 里已有的 Key
+                guard = self._require_user()
+                if guard:
+                    return self._send_json(guard[0], guard[1])
                 provider = body.get("provider") or "mock"
                 base_url = body.get("base_url") or "https://api.deepseek.com"
                 model = body.get("model") or "deepseek-chat"
@@ -1853,14 +1676,14 @@ class ApiHandler(BaseHTTPRequestHandler):
             if path == "/api/progress/done":
                 # 勾选/取消勾选大纲或计划里的某一项。
                 # 底层 progress_store.set_done() 在桌面版就写好了，只是从来没有路由调它。
+                guard = self._require_user()
+                if guard:
+                    return self._send_json(guard[0], guard[1])
                 course = (body.get("course") or "").strip()
                 kind = (body.get("kind") or "").strip()
                 if not course or kind not in ("outline", "plan"):
                     return self._send_json(
                         {"ok": False, "error": "需要 course 与 kind（outline/plan）"}, 400)
-                guard = self._require_user()
-                if guard:
-                    return self._send_json(guard[0], guard[1])
                 try:
                     index = int(body.get("index"))
                 except (TypeError, ValueError):
@@ -1877,13 +1700,13 @@ class ApiHandler(BaseHTTPRequestHandler):
                 })
 
             if path == "/api/mindmap":
+                # 整张图覆盖保存。前端负责布局与增删，后端只做结构校验：
+                # id 合法唯一、parent 存在、恰好一个根、无环（见 mindmap_store._clean_nodes）
                 guard = self._require_user()
                 if guard:
                     return self._send_json(guard[0], guard[1])
-                # 整张图覆盖保存。前端负责布局与增删，后端只做结构校验：
-                # id 合法唯一、parent 存在、恰好一个根、无环（见 mindmap_store._clean_nodes）
                 entry, err = mindmap_store.save_map(
-                    self._owner_id(),
+                    self._client_id(),
                     (body.get("course") or "").strip(),
                     body.get("nodes"),
                 )
@@ -1895,7 +1718,7 @@ class ApiHandler(BaseHTTPRequestHandler):
                 guard = self._require_user()
                 if guard:
                     return self._send_json(guard[0], guard[1])
-                cid = self._owner_id()
+                cid = self._client_id()
                 try:
                     item = wrong_book_store.add_item(
                         cid,
@@ -1913,15 +1736,15 @@ class ApiHandler(BaseHTTPRequestHandler):
                     return self._send_json({"ok": False, "error": "题干不能为空"}, 400)
                 return self._send_json({
                     "ok": True, "item": item,
-                    "stats": _wrongbook_stats(_wrongbook_items(self._owner_keys())),
-                    "courses": _wrongbook_courses(_wrongbook_items(self._owner_keys())),
+                    "stats": wrong_book_store.stats(cid),
+                    "courses": wrong_book_store.courses(cid),
                 })
 
             if path.startswith("/api/wrongbook/"):
                 guard = self._require_user()
                 if guard:
                     return self._send_json(guard[0], guard[1])
-                cid = self._owner_id()
+                cid = self._client_id()
                 raw_id = urllib.parse.unquote(path[len("/api/wrongbook/"):])
                 try:
                     item_id = int(raw_id)
@@ -1946,7 +1769,7 @@ class ApiHandler(BaseHTTPRequestHandler):
                         {"ok": False, "error": "未找到该错题（或题干被清空）"}, 404)
                 return self._send_json({
                     "ok": True, "item": item,
-                    "stats": _wrongbook_stats(_wrongbook_items(self._owner_keys())),
+                    "stats": wrong_book_store.stats(cid),
                 })
 
             if path == "/api/cache/clear":
@@ -1971,7 +1794,7 @@ class ApiHandler(BaseHTTPRequestHandler):
                 if guard:
                     return self._send_json(guard[0], guard[1])
                 course = urllib.parse.unquote(path[len("/api/mindmap/"):])
-                if not mindmap_store.delete_map(self._owner_id(), course):
+                if not mindmap_store.delete_map(self._client_id(), course):
                     return self._send_json({"ok": False, "error": "未找到该思维导图"}, 404)
                 return self._send_json({"ok": True, "course": course})
 
@@ -1979,7 +1802,7 @@ class ApiHandler(BaseHTTPRequestHandler):
                 guard = self._require_user()
                 if guard:
                     return self._send_json(guard[0], guard[1])
-                cid = self._owner_id()
+                cid = self._client_id()
                 raw_id = urllib.parse.unquote(path[len("/api/wrongbook/"):])
                 try:
                     item_id = int(raw_id)
@@ -2061,10 +1884,7 @@ class ApiHandler(BaseHTTPRequestHandler):
             return self._send_json(
                 {"ok": False, "error": SAFETY_ERROR_MESSAGE}, 400)
 
-        # 匿名 LLM 限速双闸（必须在 _sse_open 之前判定，否则已发流无法回 429）
-        if self._enforce_anon_llm_quota(query):
-            return
-        profile = load_profile(filepath=self._profile_file(query))
+        profile = load_profile()
         if query.get("level"):
             profile["level"] = query["level"][0]
         if query.get("daily_hours"):
@@ -2074,7 +1894,7 @@ class ApiHandler(BaseHTTPRequestHandler):
         if "deadline" in query:
             profile["deadline"] = query["deadline"][0]
         try:
-            save_profile(profile, filepath=self._profile_file(query))
+            save_profile(profile)
         except Exception:
             pass
 
@@ -2102,7 +1922,7 @@ class ApiHandler(BaseHTTPRequestHandler):
             })
             stream_pipeline(course, profile, use_cache, emit)
             try:
-                record_client_course(self._owner_id(query), course)
+                record_client_course(client_id, course)
             except Exception:
                 pass
             emit("done", {"ok": True, "duration_ms": int((time.time() - started) * 1000)})
@@ -2112,6 +1932,67 @@ class ApiHandler(BaseHTTPRequestHandler):
             try:
                 emit("error", {"ok": False, "error": error_text.internal_error(e)})
                 emit("done", {"ok": False, "error": error_text.internal_error(e)})
+            except Exception:
+                pass
+        finally:
+            self._sse_close()
+
+    def _handle_quiz_stream(self, query):
+        """GET /api/quiz/stream —— 第一题校验通过即推，后续题继续推。
+
+        事件：meta / question / error / done。question 不含 answer。
+        安全闸与 POST /api/quiz/generate 相同。EventSource 只能 GET，登录 token 走查询参数。
+        """
+        course = (query.get("course") or [""])[0].strip()
+        if not course:
+            return self._send_json({"ok": False, "error": "缺少 course 参数"}, 400)
+        client_id = self._client_id(query)
+        if detect_crisis(course):
+            log_crisis("quiz_stream", course, client_id)
+            self._sse_open()
+            self.close_connection = True
+            self._sse_send("error", _crisis_response_chat(course))
+            self._sse_send("done", {"ok": False, "type": "crisis"})
+            return self._sse_close()
+        detail = check_detail(course)
+        if detail["action"] == "BLOCK":
+            log_safety_hit("quiz_stream", course, detail, client_id)
+            return self._send_json({"ok": False, "error": SAFETY_ERROR_MESSAGE}, 400)
+        if accounts.auth_enabled() and not self._auth(query):
+            return self._send_json({"ok": False, "error": "请先登录后再操作"}, 401)
+
+        difficulty = (query.get("difficulty") or ["medium"])[0]
+        types = (query.get("types") or ["mixed"])[0]
+        raw_count = (query.get("count") or ["5"])[0]
+        raw_web = (query.get("web_search") or ["1"])[0]
+        web_search = raw_web not in ("0", "false", "False")
+        raw_lively = (query.get("lively") or ["0"])[0]
+        lively = raw_lively in ("1", "true", "True")
+
+        self._sse_open()
+        self.close_connection = True
+
+        def emit(event, data):
+            self._sse_send(event, data)
+
+        try:
+            for event, data in quiz_mod.iter_generate_quiz(
+                course,
+                difficulty=difficulty,
+                count=raw_count,
+                types=types,
+                web_search=web_search,
+                lively=lively,
+                client_id=client_id,
+            ):
+                emit(event, data)
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+        except Exception as e:
+            traceback.print_exc()
+            try:
+                emit("error", {"ok": False, "error": error_text.internal_error(e)})
+                emit("done", {"ok": False})
             except Exception:
                 pass
         finally:

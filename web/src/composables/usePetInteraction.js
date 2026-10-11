@@ -9,9 +9,9 @@
 import { onBeforeUnmount, reactive, ref } from 'vue'
 
 export const DEFAULT_ACTIONS = [
-  { id: 'pet', name: '摸摸', exp: 2, cooldown: 30, bubble: '蹭了蹭你的手指~' },
-  { id: 'feed', name: '喂食', exp: 5, cooldown: 30, bubble: '吃饱啦，谢谢！' },
-  { id: 'play', name: '玩耍', exp: 8, cooldown: 30, bubble: '玩得超开心！' },
+  { id: 'pet', nameKey: 'pet.act.pet', exp: 2, cooldown: 30, bubbleKey: 'pet.bubble.pet' },
+  { id: 'feed', nameKey: 'pet.act.feed', exp: 5, cooldown: 30, bubbleKey: 'pet.bubble.feed' },
+  { id: 'play', nameKey: 'pet.act.play', exp: 8, cooldown: 30, bubbleKey: 'pet.bubble.play' },
 ]
 
 export const DEFAULT_LONG_PRESS_MS = 1000

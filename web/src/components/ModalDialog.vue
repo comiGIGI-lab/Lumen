@@ -44,7 +44,8 @@ const emit = defineEmits(['close'])
   inset: 0;
   background: rgba(15, 23, 42, 0.42);
   backdrop-filter: blur(2px);
-  z-index: 120;
+  /* 必须高于顶栏 128 与侧边悬浮窗 140，否则移动端设置层被挡住。 */
+  z-index: 200;
   display: flex;
   align-items: center;
   justify-content: center;

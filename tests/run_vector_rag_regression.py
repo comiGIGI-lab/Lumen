@@ -343,6 +343,13 @@ def test_kb_ingest_hook():
 
     embeddings.embed_texts = failing_embed
     vector_store.upsert_chunk = counting_upsert
+
+    # 让「向量层不可用」这条短路不成立：不管本机装没装 chromadb，都应当真的走到
+    # embeddings.embed_texts 挂钩。生产侧 kb_ingest._vectorize_notes 在
+    # vector_store.AVAILABLE 为假时 early-return 是设计如此（秒退、不阻塞导入），
+    # 不是 bug —— 所以这里临时置 True 把这条路径打开，测完立刻还原。
+    orig_available = vector_store.AVAILABLE
+    vector_store.AVAILABLE = True
     try:
         out = kb_ingest.ingest(src, "note.md", store=store,
                                owner="alice", scope="public")
@@ -354,6 +361,8 @@ def test_kb_ingest_hook():
         check("kb_ingest_hook_actually_called",
               hook_calls["embed"] >= 1 and hook_calls["upsert"] == 0,
               "embed=%d upsert=%d" % (hook_calls["embed"], hook_calls["upsert"]))
+        # 还原后再往下走，让「成功路径」那条判定仍按本机真实可用性分流
+        vector_store.AVAILABLE = orig_available
 
         # 成功路径：embed 返回向量 → upsert_chunk 被调（真 chromadb 时）
         if vector_store.AVAILABLE:
@@ -371,6 +380,7 @@ def test_kb_ingest_hook():
     finally:
         embeddings.embed_texts = orig
         vector_store.upsert_chunk = orig_upsert
+        vector_store.AVAILABLE = orig_available
 
 
 # ============================================================

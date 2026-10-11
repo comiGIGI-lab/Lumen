@@ -317,17 +317,6 @@ function onResize() {
 
 let tapTimer = null
 const showActionMenu = ref(false)
-const centerBubbleText = ref('')
-let centerBubbleTimer = null
-
-function showCenterToast(text, duration = 3000) {
-  centerBubbleText.value = text
-  clearTimeout(centerBubbleTimer)
-  centerBubbleTimer = setTimeout(() => {
-    centerBubbleText.value = ''
-    centerBubbleTimer = null
-  }, duration)
-}
 
 onMounted(() => {
   syncNarrow()
@@ -344,7 +333,6 @@ onBeforeUnmount(() => {
   clearTimeout(bubbleTimer)
   if (hudTimer) clearTimeout(hudTimer)
   if (tapTimer) clearTimeout(tapTimer)
-  if (centerBubbleTimer) clearTimeout(centerBubbleTimer)
   if (hintTimer) clearTimeout(hintTimer)
 })
 
@@ -412,32 +400,31 @@ const interaction = usePetInteraction({
   getPetName: () => displayName.value,
   onAction(action, exp) {
     if (typeof logExp === 'function') {
-      logExp(`学伴互动·${action.name}`, exp)
+      logExp(`学伴互动·${action.id}`, exp)
     } else if (typeof grantExp === 'function') {
       grantExp(exp)
     }
-    showBubble(action.bubble, 'action')
-    showCenterToast(`学伴互动 +${exp} 经验`, 1800)
+    showBubble(t(action.bubbleKey), 'action')
+    showBubble(t('pet.toast.exp', { n: exp }), 'action', 1800)
   },
   onCozyBubble(name) {
-    showCenterToast(`${name} 蹭了蹭你的手指`, 3000)
+    showBubble(t('pet.toast.cozy', { name }), 'cozy', 3000)
   },
   onIdleBubble() {
-    const bubbles = [
-      '要不要去自习一会儿？我陪你。',
-      '学习累了吗？来做几道「选择题闯关」放松下吧！',
-      '记得把最新的课程资料传给我，我才能帮你出好题哦！',
-      '无聊的话，可以双击我玩耍一下~'
-    ]
-    const text = bubbles[Math.floor(Math.random() * bubbles.length)]
-    showCenterToast(text, 4000)
+    const keys = ['pet.idle.1', 'pet.idle.2', 'pet.idle.3', 'pet.idle.4']
+    const text = t(keys[Math.floor(Math.random() * keys.length)])
+    showBubble(text, 'idle', 4000)
   },
 })
+
+function actionLabel(action) {
+  return t(action.nameKey)
+}
 
 function handleMenuAction(action) {
   const res = interaction.runAction(action)
   if (!res.success) {
-    showCenterToast(`「${action.name}」冷却中，${res.remaining}s 后再试`, 1500)
+    showBubble(t('pet.toast.cooldown', { name: actionLabel(action), s: res.remaining }), 'cooldown', 1500)
   }
 }
 </script>
@@ -482,16 +469,16 @@ function handleMenuAction(action) {
       >
         <PetSprite :pet-id="pet.id" :form="pet.form" :size="spriteSize" />
       </div>
-      <p v-if="showTuckHint && !dock" class="tuck-hint" role="status">拖到左右缘可收成探头。浮窗点 − 、空间钮点 ‹ 收到边签。</p>
+      <p v-if="showTuckHint && !dock" class="tuck-hint" role="status">{{ t('pet.tuck') }}</p>
       <!-- 双击互动菜单：摸摸 / 喂食 / 玩耍 -->
       <div
         v-if="!dock && showActionMenu"
         class="interaction-menu"
         role="menu"
-        aria-label="学伴互动"
+        :aria-label="t('pet.menu.label')"
       >
         <div class="menu-head">
-          <span class="menu-title">互动 · {{ displayName }}</span>
+          <span class="menu-title">{{ t('pet.menu.title', { name: displayName }) }}</span>
           <button type="button" class="menu-x" @click.stop="showActionMenu = false">×</button>
         </div>
         <div class="menu-list">
@@ -503,7 +490,7 @@ function handleMenuAction(action) {
             :class="{ disabled: !interaction.canRun(act.id) }"
             @click.stop="handleMenuAction(act)"
           >
-            <span class="item-name">{{ act.name }}</span>
+            <span class="item-name">{{ actionLabel(act) }}</span>
             <span class="item-exp">+{{ act.exp }} exp</span>
             <span v-if="!interaction.canRun(act.id)" class="item-cd">
               {{ interaction.getRemainingCooldown(act.id) }}s
@@ -511,29 +498,15 @@ function handleMenuAction(action) {
           </button>
         </div>
       </div>
-      <!-- 互动气泡：双击/长按/闲置反馈。贴边探头时不显示（缝里塞不下）。
-           数据：usePetInteraction 的 bubble 状态。-->
+      <!-- 提醒气泡跟着立绘走。贴左缘时翻到右侧，贴右缘时翻到左侧，避免挤进边缝。 -->
       <div
-        v-if="!dock && bubbleText"
+        v-if="bubbleText"
         class="bubble"
-        :class="'bubble-' + bubbleKind"
+        :class="['bubble-' + bubbleKind, dock ? 'bubble-dock' : '']"
         role="status"
         aria-live="polite"
       >{{ bubbleText }}</div>
     </aside>
-
-    <!-- 屏幕中央气泡：长按撒娇模式 / 5分钟空闲提醒自习 -->
-    <div
-      v-if="centerBubbleText"
-      class="center-bubble-toast"
-      role="status"
-      aria-live="polite"
-    >
-      <div class="center-bubble-content">
-        <span class="center-bubble-icon">✨</span>
-        <span class="center-bubble-msg">{{ centerBubbleText }}</span>
-      </div>
-    </div>
 
     <div
       v-if="visible && hasPet && showEvolve"
@@ -695,21 +668,30 @@ function handleMenuAction(action) {
    出现时由下往上轻微浮入（不用 transform: scale 那种大动作，免得遮 HUD）。 */
 .bubble {
   pointer-events: none;
-  align-self: flex-end;
-  max-width: 200px;
-  margin-bottom: 4px;
-  padding: 6px 10px;
+  position: absolute;
+  right: calc(100% + 4px);
+  bottom: 0;
+  width: max-content;
+  max-width: min(220px, calc(100vw - 96px));
+  margin: 0;
+  padding: 1px 3px;
   background: rgba(var(--bg-app-rgb), 0.96);
   border: 1px solid var(--border);
   border-left: 2px solid #e51520;
-  border-radius: 4px;
+  border-radius: 3px;
   color: var(--text-primary);
-  font-size: 12px;
-  line-height: 1.4;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.25;
   white-space: normal;
   word-break: break-all;
   box-shadow: 0 2px 6px rgba(25, 25, 25, 0.08);
   animation: bubble-in 0.18s ease-out;
+}
+/* 贴左缘时翻到右侧，否则气泡会伸到屏幕外面。贴右缘沿用左侧默认位置。 */
+.buddy.dock-left .bubble.bubble-dock {
+  right: auto;
+  left: calc(100% + 4px);
 }
 .bubble-cozy {
   border-left-color: #d36b7a; /* 撒娇用粉，避免每次都是红 */
@@ -894,49 +876,6 @@ p {
 .ok:focus-visible {
   outline: 2px solid #e51520;
   outline-offset: 3px;
-}
-
-/* ---------- 屏幕中央弹出气泡（长按撒娇 / 闲置提醒自习） ---------- */
-.center-bubble-toast {
-  position: fixed;
-  top: 45%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  z-index: 160;
-  pointer-events: none;
-  animation: center-bubble-fade 0.22s cubic-bezier(0.16, 1, 0.3, 1);
-}
-.center-bubble-content {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  padding: 12px 24px;
-  background: rgba(25, 23, 22, 0.88);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  color: #fff;
-  border-radius: 999px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  font-size: 14px;
-  line-height: 1.4;
-}
-.center-bubble-icon {
-  font-size: 16px;
-}
-.center-bubble-msg {
-  font-weight: 500;
-  letter-spacing: 0.2px;
-}
-@keyframes center-bubble-fade {
-  from {
-    opacity: 0;
-    transform: translate(-50%, -40%) scale(0.94);
-  }
-  to {
-    opacity: 1;
-    transform: translate(-50%, -50%) scale(1);
-  }
 }
 
 /* ---------- 双击互动菜单 ---------- */

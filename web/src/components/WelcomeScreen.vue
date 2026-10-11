@@ -2,7 +2,7 @@
 /**
  * WelcomeScreen —— 首访欢迎层（全屏覆盖，关闭后进入工具界面）
  *
- * 结构：HERO → 三项功能卡 → CTA → 页脚（联系方式 + 隐私说明）
+ * 结构：HERO → 四项功能卡 → CTA → 页脚（联系方式 + 隐私说明）
  * HERO：全幅书桌摄影（/hero-desk.jpg 本地文件）+ 遮罩 + LUMEN 刊名
  * 功能卡：CSS 3D 纵深叠卡（perspective / translateZ / rotateY），不引入 React
  * 视觉令牌：米底 #FBF9F6 / 衬线 / 强调色 #E51520 / 胶囊按钮
@@ -11,7 +11,6 @@
  */
 import { ref } from 'vue'
 import { useI18n } from '@/i18n'
-import TopNav from './TopNav.vue'
 
 defineProps({
   needsKey: { type: Boolean, default: false },
@@ -27,38 +26,45 @@ const emit = defineEmits([
   'open-mindmap',
   'open-study',
   'open-progress',
+  'open-manual',
   'open-settings',
   'open-history',
   'open-trace',
   'go-home',
 ])
-const { t } = useI18n()
+const { t, isEn } = useI18n()
 const showPrivacy = ref(false)
 const activeCard = ref(0)
 
-// 01→02→03→04 是一条完整链路：两种输入（图文 / 语音）→ 结构化 → 答疑。
-// 语音那一张刻意排在「图文解析」之后、结构抽取之前，别挪到最后，
-// 否则读起来像三个阶段的流水线后面挂了个附件。
+// 与顶栏主入口一致：学习方案、知识库、课程问答闯关、自习空间。
 const cards = [
   {
     num: '01',
-    title: '图文素材智能解析',
-    body: '课件 PDF、Markdown 讲义与板书照片统一导入，PDF 抽文本层、图片走多模态模型识图，切成可检索的内容块',
+    title: '学习方案生成',
+    enTitle: 'Study plan',
+    body: '输入课程名，选好水平和每日时长。系统给出课程大纲、推荐资源和可以勾选的每日计划。',
+    enBody: 'Enter a course name, then choose your level and daily time. You get an outline, recommended resources, and a day-by-day plan you can check off.',
   },
   {
     num: '02',
-    title: '语音离线转写',
-    body: '讲课录音、语音笔记直接转成文字。识别用离线中文模型跑在自己的服务器上，音频不经过任何第三方接口，转完可一键存进知识库参与后续问答',
+    title: '知识库',
+    enTitle: 'Knowledge base',
+    body: '笔记、导入的资料、语音转写和思维导图都收在这里。之后的提问和闯关先从这些内容里找依据。',
+    enBody: 'Notes, imported files, transcripts, and mind maps stay here. Later questions and quizzes look in this material first.',
   },
   {
     num: '03',
-    title: '知识点结构化抽取',
-    body: '从解析结果中抽取知识点，整理为课程大纲与知识结构，并标注薄弱环节',
+    title: '课程问答闯关',
+    enTitle: 'Q&A and quiz',
+    body: '围绕当前课程提问，回答会标出参考资料。闯关按题判分，答错记进错题本。',
+    enBody: 'Ask about the current course and see which material the answer used. Quizzes are scored question by question, and misses go to the wrong-answer book.',
   },
   {
     num: '04',
-    title: '交互式答疑辅导',
-    body: '先在你的材料里做相关性检索，再把命中的片段交给模型作答，答案标注出处，可以继续追问与逐条核对',
+    title: '自习空间',
+    enTitle: 'Study space',
+    body: '进来就展开自习坞。电脑端场景和专注设置左右并排，窄屏上下排列。完整计时结束才计入经验。',
+    enBody: 'The study dock opens when you enter. On a computer, scenes and focus settings sit side by side; on a narrow screen they stack. Only a finished timer counts toward experience.',
   },
 ]
 
@@ -85,26 +91,7 @@ function cardStyle(i) {
 
 <template>
   <div class="welcome" role="dialog" :aria-label="t('welcomeScreen.1')">
-    <Teleport to="body">
-      <div class="wl-nav">
-        <TopNav
-          current=""
-          :needs-key="needsKey"
-          @go-course="onStart"
-          @go-home="emit('go-home')"
-          @open-knowledge="emit('open-knowledge')"
-          @open-import="emit('open-import')"
-          @open-chat="emit('open-chat')"
-          @open-wrongbook="emit('open-wrongbook')"
-          @open-mindmap="emit('open-mindmap')"
-          @open-study="emit('open-study')"
-          @open-progress="emit('open-progress')"
-          @open-settings="emit('open-settings')"
-          @open-history="emit('open-history')"
-          @open-trace="emit('open-trace')"
-        />
-      </div>
-    </Teleport>
+    <!-- 顶栏由 App.vue 的那一份负责。欢迎层自己再挂一份会盖住首页按钮，点了进不去。 -->
     <!-- ① HERO：全幅书桌摄影 + 遮罩 + LUMEN 刊名 -->
     <section class="wl-hero">
       <div class="wl-hero-photo" aria-hidden="true">
@@ -119,13 +106,13 @@ function cardStyle(i) {
         <div class="wl-actions">
           <button class="wl-btn wl-btn-light" type="button" @click="onStart">{{ t('welcomeScreen.6') }}</button>
           <button class="wl-btn wl-btn-light" type="button" @click="emit('open-knowledge')">{{ t('welcomeScreen.7') }}</button>
-          <button class="wl-btn wl-btn-light" type="button" @click="emit('open-import')">{{ t('welcomeScreen.8') }}</button>
-          <button class="wl-btn wl-btn-light" type="button" @click="emit('open-transcribe')">{{ t('nav.transcribe') }}</button>
+          <button class="wl-btn wl-btn-light" type="button" @click="emit('open-chat')">{{ t('welcomeScreen.8') }}</button>
+          <button class="wl-btn wl-btn-light" type="button" @click="emit('open-study')">{{ t('nav.study') }}</button>
         </div>
       </div>
     </section>
 
-    <!-- ② 三项功能：CSS 3D 纵深叠卡 -->
+    <!-- ② 四项功能：CSS 3D 纵深叠卡 -->
     <section class="wl-band">
       <div class="wl-inner">
         <p class="wl-eyebrow">Core capabilities</p>
@@ -147,8 +134,8 @@ function cardStyle(i) {
               tabindex="0"
             >
               <div class="wl-num">{{ card.num }}</div>
-              <h3>{{ card.title }}</h3>
-              <p>{{ card.body }}</p>
+              <h3>{{ isEn ? card.enTitle : card.title }}</h3>
+              <p>{{ isEn ? card.enBody : card.body }}</p>
             </article>
           </div>
         </div>
@@ -159,7 +146,7 @@ function cardStyle(i) {
             type="button"
             class="wl-dot"
             :class="{ on: activeCard === i }"
-            :aria-label="card.title"
+            :aria-label="isEn ? card.enTitle : card.title"
             @click="activeCard = i"
           />
         </div>
@@ -174,8 +161,8 @@ function cardStyle(i) {
         <div class="wl-actions">
           <button class="wl-btn" type="button" @click="onStart">{{ t('welcomeScreen.13') }}</button>
           <button class="wl-btn" type="button" @click="emit('open-knowledge')">{{ t('welcomeScreen.14') }}</button>
-          <button class="wl-btn" type="button" @click="emit('open-import')">{{ t('welcomeScreen.15') }}</button>
-          <button class="wl-btn" type="button" @click="emit('open-transcribe')">{{ t('nav.transcribe') }}</button>
+          <button class="wl-btn" type="button" @click="emit('open-chat')">{{ t('welcomeScreen.15') }}</button>
+          <button class="wl-btn" type="button" @click="emit('open-study')">{{ t('nav.study') }}</button>
         </div>
       </div>
     </section>
@@ -230,6 +217,8 @@ function cardStyle(i) {
   position: fixed;
   inset: 0;
   z-index: 90;
+  width: 100%;
+  height: 100%;
   overflow-y: auto;
   overflow-x: hidden;
   background: var(--bg);

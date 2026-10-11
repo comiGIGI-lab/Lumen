@@ -2,10 +2,8 @@
  * 自习计时器单例：自习坞标题栏与正文共用 remaining / running。
  * 场景 UI 仍在自习坞；混音也挂在这里，关掉自习坞时声音不会断。
  */
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, reactive, ref } from 'vue'
 import { MUSIC, SCENES, SOUNDS, musicSrc, scenePoster, sceneVideo, soundSrc } from '@/study/catalog'
-import { useAuth } from '@/composables/useAuth'
-import { keyedStorage } from '@/composables/ownerTag'
 
 export const FOCUS_PRESETS = [5, 10, 15, 25, 50]
 const MIN_MIN = 1
@@ -220,58 +218,6 @@ const ratio = computed(() => {
   if (durationSec.value <= 0) return 0
   return Math.min(1, Math.max(0, remaining.value / durationSec.value))
 })
-
-// ---------- 自习设置持久化（按账号分档，只存浏览器本地） ----------
-//
-// 用户诉求：上次选的自习音乐 / 音量 / 场景，刷新浏览器后依然是这个设定。
-// 全部存 localStorage（zjxt.study.<u:用户名|anon>），不占服务器空间（2G 机器
-// 压力点在内存与知识库文件，这类个性化小状态坚决不上传）。
-// 登录态变化时自动换档重载（token 里的用户名变了 → 存储 key 变）。
-
-const STUDY_KEY = 'zjxt.study'
-
-function studyKey() {
-  return keyedStorage(STUDY_KEY)
-}
-
-function saveStudyPrefs() {
-  try {
-    localStorage.setItem(studyKey(), JSON.stringify({
-      sceneId: sceneId.value,
-      musicId: musicId.value,
-      musicVolume: musicVolume.value,
-      volumes: { ...volumes },
-    }))
-  } catch (_) {
-    /* 隐私模式写不进去就算了 */
-  }
-}
-
-function loadStudyPrefs() {
-  let data = null
-  try {
-    data = JSON.parse(localStorage.getItem(studyKey()) || 'null')
-  } catch (_) {
-    /* 损坏就当没存过 */
-  }
-  sceneId.value = data && typeof data.sceneId === 'string' ? data.sceneId : ''
-  musicId.value = data && typeof data.musicId === 'string' ? data.musicId : ''
-  const mv = data && Number(data.musicVolume)
-  musicVolume.value = Number.isFinite(mv) ? Math.min(100, Math.max(0, mv)) : 50
-  for (const s of SOUNDS) {
-    const v = data && data.volumes ? Number(data.volumes[s.id]) : 0
-    volumes[s.id] = Number.isFinite(v) ? Math.min(100, Math.max(0, v)) : 0
-  }
-}
-
-loadStudyPrefs()
-watch([sceneId, musicId, musicVolume], saveStudyPrefs)
-watch(() => JSON.stringify(volumes), saveStudyPrefs)
-// 登录 / 登出后换档重载（useAuth 的 user 在 /me 回来后才填上用户名）
-{
-  const { user } = useAuth()
-  watch(() => user.value.username, loadStudyPrefs)
-}
 
 export function useStudyTimer() {
   return {
