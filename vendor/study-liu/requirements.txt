@@ -13,6 +13,12 @@ Pillow>=10.0.0
 pypdf>=4.0.0
 pdfplumber>=0.11.0
 
+# ---------- markitdown 兜底（保结构解析 xlsx/html/epub/zip/音频/视频字幕，2026-10-11 加）----------
+# 安装到 server/ 旁的解释器；体积约 30-80MB（按选装 extras 计）。
+# doc_parse/office_parse 是首选项；markitdown 仅当扩展名不在 DOC_EXTS/IMAGE_EXTS 时接管。
+# 缺包时 server/markitdown_fallback.is_available() 返回 False，kb_ingest.ingest() 静默回退到「不支持」提示。
+markitdown[docx,pptx,xlsx,xls,html,audio-transcription,youtube-transcription]>=0.1.0
+
 # ---------- 开发 / 测试 ----------
 pytest>=7.0.0
 

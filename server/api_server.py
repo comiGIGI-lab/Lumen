@@ -73,7 +73,6 @@ from crisis import (                                                 # noqa: E40
 # 离线语音转写。asr 内部默认 Vosk（延迟 import），whisper.cpp 是可选侧车；
 # 引擎/模型缺失只让 /api/asr 返回明确的中文提示，不会拖垮整个服务。
 import asr as asr_mod                                               # noqa: E402
-import quiz as quiz_mod                                             # noqa: E402
 
 
 def _looks_like_source(path: str) -> bool:
@@ -155,6 +154,11 @@ def _find_source() -> str:
 SOURCE_DIR = _find_source()
 if SOURCE_DIR not in sys.path:
     sys.path.insert(0, SOURCE_DIR)
+
+# quiz 顶层 from core.paths / core.agent_loop（core 仅 vendor/study-liu 有），
+# 必须放在 sys.path.insert 之后，否则 `python server/api_server.py` 直接崩
+# `ModuleNotFoundError: No module named 'core'`。
+import quiz as quiz_mod                                             # noqa: E402
 
 
 # ------------------------------------------------------------
@@ -1095,6 +1099,18 @@ class ApiHandler(BaseHTTPRequestHandler):
             return {"ok": False, "error": "需要管理员权限"}, 403
         return None
 
+    def _require_user(self):
+        """写接口登录校验（与 _require_admin 同语义：账号体系未启用时放行）。
+
+        返回 None 表示放行；否则返回 (响应体, HTTP 状态码)。
+        auth 启用时要求登录，未登录 401。profile 不走这里：首次访问会自动保存画像。
+        """
+        if not accounts.auth_enabled():
+            return None
+        if not self._auth():
+            return {"ok": False, "error": "请先登录后再操作"}, 401
+        return None
+
     def _client_id(self, query=None) -> str:
         """取客户端标识：优先 X-Client-Id 请求头，SSE 场景回落 client_id 查询参数。"""
         cid = (self.headers.get("X-Client-Id") or "").strip()
@@ -1607,6 +1623,9 @@ class ApiHandler(BaseHTTPRequestHandler):
                     log_safety_hit("plan", course, detail, self._client_id())
                     return self._send_json(
                         {"ok": False, "error": SAFETY_ERROR_MESSAGE}, 400)
+                guard = self._require_user()
+                if guard:
+                    return self._send_json(guard[0], guard[1])
                 profile = body.get("profile") or load_profile(
                     filepath=self._profile_file())
                 use_cache = bool(body.get("use_cache", True))
@@ -1636,6 +1655,9 @@ class ApiHandler(BaseHTTPRequestHandler):
                     log_safety_hit("chat", question, detail, self._client_id())
                     return self._send_json(
                         {"ok": False, "error": SAFETY_ERROR_MESSAGE}, 400)
+                guard = self._require_user()
+                if guard:
+                    return self._send_json(guard[0], guard[1])
                 intent = parse_intent(question)
                 if intent.get("type") == "generate":
                     return self._send_json({
@@ -1701,6 +1723,9 @@ class ApiHandler(BaseHTTPRequestHandler):
                     log_safety_hit("quiz", course, detail, self._client_id())
                     return self._send_json(
                         {"ok": False, "error": SAFETY_ERROR_MESSAGE}, 400)
+                guard = self._require_user()
+                if guard:
+                    return self._send_json(guard[0], guard[1])
                 # 匿名 LLM 限速双闸
                 if self._enforce_anon_llm_quota():
                     return
@@ -1722,6 +1747,9 @@ class ApiHandler(BaseHTTPRequestHandler):
                 if not quiz_id or not question_id:
                     return self._send_json(
                         {"ok": False, "error": "缺少 quiz_id 或 question_id"}, 400)
+                guard = self._require_user()
+                if guard:
+                    return self._send_json(guard[0], guard[1])
                 try:
                     g = quiz_mod.grade_quiz(quiz_id, question_id, selected)
                 except KeyError:
@@ -1753,6 +1781,9 @@ class ApiHandler(BaseHTTPRequestHandler):
                         log_safety_hit("quiz", course, detail, self._client_id())
                         return self._send_json(
                             {"ok": False, "error": SAFETY_ERROR_MESSAGE}, 400)
+                guard = self._require_user()
+                if guard:
+                    return self._send_json(guard[0], guard[1])
                 return self._send_json(rep)
             if path == "/api/export":
                 course = (body.get("course") or "").strip()
@@ -1760,6 +1791,9 @@ class ApiHandler(BaseHTTPRequestHandler):
                 result = body.get("result") or progress_store.load_result(course)
                 if not result:
                     return self._send_json({"ok": False, "error": "没有可导出的方案"}, 400)
+                guard = self._require_user()
+                if guard:
+                    return self._send_json(guard[0], guard[1])
                 # Word：直接回二进制流（浏览器按 Content-Disposition 落盘），
                 # 不走 JSON——docx 是 zip，塞进 JSON 还得 base64，白白涨 33%。
                 if fmt in ("docx", "word"):
@@ -1783,9 +1817,15 @@ class ApiHandler(BaseHTTPRequestHandler):
                 })
 
             if path == "/api/settings/test":
+                guard = self._require_user()
+                if guard:
+                    return self._send_json(guard[0], guard[1])
                 return self._send_json(test_llm_connection(body))
 
             if path == "/api/settings":
+                guard = self._require_user()
+                if guard:
+                    return self._send_json(guard[0], guard[1])
                 # 「留空 = 保持现有 Key」。
                 # 前端出于安全不回填明文 Key（桌面版会回填），若这里照搬
                 # save_settings 的「空值即清空」语义，用户只是切一下模式
@@ -1818,6 +1858,9 @@ class ApiHandler(BaseHTTPRequestHandler):
                 if not course or kind not in ("outline", "plan"):
                     return self._send_json(
                         {"ok": False, "error": "需要 course 与 kind（outline/plan）"}, 400)
+                guard = self._require_user()
+                if guard:
+                    return self._send_json(guard[0], guard[1])
                 try:
                     index = int(body.get("index"))
                 except (TypeError, ValueError):
@@ -1834,6 +1877,9 @@ class ApiHandler(BaseHTTPRequestHandler):
                 })
 
             if path == "/api/mindmap":
+                guard = self._require_user()
+                if guard:
+                    return self._send_json(guard[0], guard[1])
                 # 整张图覆盖保存。前端负责布局与增删，后端只做结构校验：
                 # id 合法唯一、parent 存在、恰好一个根、无环（见 mindmap_store._clean_nodes）
                 entry, err = mindmap_store.save_map(
@@ -1846,6 +1892,9 @@ class ApiHandler(BaseHTTPRequestHandler):
                 return self._send_json({"ok": True, "map": entry})
 
             if path == "/api/wrongbook":
+                guard = self._require_user()
+                if guard:
+                    return self._send_json(guard[0], guard[1])
                 cid = self._owner_id()
                 try:
                     item = wrong_book_store.add_item(
@@ -1869,6 +1918,9 @@ class ApiHandler(BaseHTTPRequestHandler):
                 })
 
             if path.startswith("/api/wrongbook/"):
+                guard = self._require_user()
+                if guard:
+                    return self._send_json(guard[0], guard[1])
                 cid = self._owner_id()
                 raw_id = urllib.parse.unquote(path[len("/api/wrongbook/"):])
                 try:
@@ -1898,6 +1950,9 @@ class ApiHandler(BaseHTTPRequestHandler):
                 })
 
             if path == "/api/cache/clear":
+                guard = self._require_user()
+                if guard:
+                    return self._send_json(guard[0], guard[1])
                 n = cache_store.clear_cache(body.get("course") or None)
                 return self._send_json({"ok": True, "cleared": n})
 
@@ -1912,12 +1967,18 @@ class ApiHandler(BaseHTTPRequestHandler):
         path = parsed.path.rstrip("/") or "/"
         try:
             if path.startswith("/api/mindmap/"):
+                guard = self._require_user()
+                if guard:
+                    return self._send_json(guard[0], guard[1])
                 course = urllib.parse.unquote(path[len("/api/mindmap/"):])
                 if not mindmap_store.delete_map(self._owner_id(), course):
                     return self._send_json({"ok": False, "error": "未找到该思维导图"}, 404)
                 return self._send_json({"ok": True, "course": course})
 
             if path.startswith("/api/wrongbook/"):
+                guard = self._require_user()
+                if guard:
+                    return self._send_json(guard[0], guard[1])
                 cid = self._owner_id()
                 raw_id = urllib.parse.unquote(path[len("/api/wrongbook/"):])
                 try:
