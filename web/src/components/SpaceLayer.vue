@@ -81,8 +81,8 @@ function tuckFab() {
         v-if="!fabDocked"
         type="button"
         class="space-tuck"
-        title="收到边签"
-        aria-label="把空间钮收到左边"
+        :title="t('spaceLayer.tuckTitle')"
+        :aria-label="t('spaceLayer.tuckAria')"
         @click="tuckFab"
       >‹</button>
     </div>

@@ -140,7 +140,7 @@ function markClearKey() {
   form.api_key = ''
   ui.wantClearKey = true
   ui.tone = ''
-  ui.msg = '已标记清空密钥，点「保存设置」后生效'
+  ui.msg = t('settingsDialog.clearKeyPending')
 }
 
 /** 选平台 → 自动填 Base URL 与模型名（「自定义」不覆盖用户已填内容） */
@@ -161,12 +161,14 @@ function pickMode(v) {
 }
 
 const keyPlaceholder = computed(() =>
-  hasSavedKey.value ? `已保存 ${savedKeyMasked.value}（留空则保持不变）` : 'sk-…',
+  hasSavedKey.value
+    ? t('settingsDialog.keySavedHint', { mask: savedKeyMasked.value })
+    : t('settingsDialog.keyPlaceholder'),
 )
 
 async function testConnection() {
   ui.testing = true
-  ui.testMsg = '连接中…'
+  ui.testMsg = t('settingsDialog.testing')
   ui.testTone = ''
   try {
     const res = await api.testSettings({
@@ -176,14 +178,16 @@ async function testConnection() {
     })
     if (res.ok) {
       ui.testTone = 'ok'
-      ui.testMsg = `✓ 连接成功（${res.ms}ms）`
+      ui.testMsg = t('settingsDialog.testOk', { ms: res.ms })
     } else {
       ui.testTone = 'err'
-      ui.testMsg = `✗ ${res.error || '连接失败'}`
+      ui.testMsg = t('settingsDialog.testFail', {
+        error: res.error || t('settingsDialog.testFailFallback'),
+      })
     }
   } catch (e) {
     ui.testTone = 'err'
-    ui.testMsg = `✗ ${e.message}`
+    ui.testMsg = t('settingsDialog.testFail', { error: e.message })
   } finally {
     ui.testing = false
   }
@@ -211,7 +215,7 @@ function validateLLM() {
 async function save() {
   if (isLLM.value && !validateLLM()) {
     ui.tone = 'err'
-    ui.msg = `LLM 模式下 ${ui.missingFields.join(' / ')} 必填，已自动展开高亮`
+    ui.msg = t('settingsDialog.requiredHint', { fields: ui.missingFields.join(' / ') })
     return
   }
   ui.busy = true
@@ -229,11 +233,11 @@ async function save() {
     ui.wantClearKey = false
     form.api_key = ''
     ui.tone = 'ok'
-    ui.msg = `✓ 已保存，当前模式：${res.mode?.label || ''}`
+    ui.msg = t('settingsDialog.savedOk', { mode: res.mode?.label || '' })
     emit('saved', res.mode)
   } catch (e) {
     ui.tone = 'err'
-    ui.msg = `保存失败：${e.message}`
+    ui.msg = t('settingsDialog.saveFailed', { msg: e.message })
   } finally {
     ui.busy = false
   }
@@ -244,10 +248,10 @@ async function clearCache() {
   try {
     const res = await api.clearCache(null)
     ui.tone = 'ok'
-    ui.msg = `已清空结果缓存（${res.cleared} 条）`
+    ui.msg = t('settingsDialog.cacheCleared', { count: res.cleared })
   } catch (e) {
     ui.tone = 'err'
-    ui.msg = `清空失败：${e.message}`
+    ui.msg = t('settingsDialog.cacheClearFailed', { msg: e.message })
   } finally {
     ui.busy = false
   }
@@ -260,7 +264,7 @@ async function clearCache() {
     <section class="block">
       <div class="block-head">
         <h4>{{ t('settingsDialog.3') }}</h4>
-        <span class="block-sub">{{ isLLM ? t('settingsDialog.4') : '内置模板，适合先体验' }}</span>
+        <span class="block-sub">{{ isLLM ? t('settingsDialog.4') : t('settingsDialog.mockInline') }}</span>
       </div>
       <div class="seg">
         <button
@@ -276,14 +280,14 @@ async function clearCache() {
           @click="pickMode('llm')"
         >{{ t('settingsDialog.6') }}</button>
       </div>
-      <p class="mode-note">离线 Mock 使用内置模板，不消耗额度，适合先体验。选中后再点「保存设置」才会切换。</p>
+      <p class="mode-note">{{ t('settingsDialog.mockNote') }}</p>
     </section>
 
     <!-- ============ 模型配置：默认收起，在线模式才需要展开 ============ -->
     <section class="block" :class="{ 'llm-collapsed': !showLlmForm }">
       <button type="button" class="block-head llm-toggle" :aria-expanded="showLlmForm" @click="showLlmForm = !showLlmForm">
         <h4>{{ t('settingsDialog.7') }}</h4>
-        <span class="block-sub">{{ showLlmForm ? '收起' : (isLLM ? '填写后才会调用在线模型' : '体验模式用不到，需要时再展开') }}</span>
+        <span class="block-sub">{{ showLlmForm ? t('settingsDialog.collapse') : (isLLM ? t('settingsDialog.expandNeedKey') : t('settingsDialog.expandUnused')) }}</span>
       </button>
 
       <template v-if="showLlmForm">
@@ -299,7 +303,7 @@ async function clearCache() {
       <details class="llm-fold" :class="{ 'llm-fold-missing': isMissing('base_url') }" :open="openBase">
         <summary @click.prevent="ui.foldOpen.base = !ui.foldOpen.base">
           API Base URL
-          <span class="fold-meta">{{ form.base_url || '未填' }}</span>
+          <span class="fold-meta">{{ form.base_url || t('settingsDialog.unset') }}</span>
         </summary>
         <div class="field fold-inner">
           <label class="lbl">API Base URL</label>
@@ -318,7 +322,7 @@ async function clearCache() {
       <details class="llm-fold" :class="{ 'llm-fold-missing': isMissing('api_key') }" :open="openKey">
         <summary @click.prevent="ui.foldOpen.key = !ui.foldOpen.key">
           API Key
-          <span class="fold-meta">{{ hasSavedKey && !ui.wantClearKey ? '已保存密钥' : (form.api_key ? '已填' : '未填') }}</span>
+          <span class="fold-meta">{{ hasSavedKey && !ui.wantClearKey ? t('settingsDialog.keySaved') : (form.api_key ? t('settingsDialog.keyFilled') : t('settingsDialog.unset')) }}</span>
         </summary>
         <div class="field fold-inner key-field">
           <label class="lbl">API Key</label>
@@ -345,7 +349,7 @@ async function clearCache() {
           </div>
         </div>
         <p class="req" :class="{ dim: !isLLM }">{{ t('settingsDialog.11') }}<span v-if="hasSavedKey && !ui.wantClearKey" class="req-note">
-            · 留空则保持已保存的 {{ savedKeyMasked }}
+            · {{ t('settingsDialog.keepSavedPrefix') }} {{ savedKeyMasked }}
           </span>
           <span v-if="ui.wantClearKey" class="req-warn">{{ t('settingsDialog.12') }}</span>
         </p>
@@ -354,7 +358,7 @@ async function clearCache() {
       <details class="llm-fold" :class="{ 'llm-fold-missing': isMissing('model') }" :open="openModel">
         <summary @click.prevent="ui.foldOpen.model = !ui.foldOpen.model">
           {{ t('settingsDialog.13') }}
-          <span class="fold-meta">{{ form.model || '未填' }}</span>
+          <span class="fold-meta">{{ form.model || t('settingsDialog.unset') }}</span>
         </summary>
         <div class="field fold-inner">
           <label class="lbl">{{ t('settingsDialog.13') }}</label>

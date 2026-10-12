@@ -143,6 +143,58 @@ const MANUAL = {
       export: '导出方案',
       generate: '生成方案',
     },
+    // 设置弹窗 / 引导气泡的长尾文案（2026-10-12 补齐）
+    settingsDialog: {
+      clearKeyPending: '已标记清空密钥，点「保存设置」后生效',
+      keySavedHint: '已保存 {mask}（留空则保持不变）',
+      keyPlaceholder: 'sk-…',
+      testing: '连接中…',
+      testOk: '✓ 连接成功（{ms}ms）',
+      testFail: '✗ {error}',
+      testFailFallback: '连接失败',
+      requiredHint: 'LLM 模式下 {fields} 必填，已自动展开高亮',
+      savedOk: '✓ 已保存，当前模式：{mode}',
+      saveFailed: '保存失败：{msg}',
+      cacheCleared: '已清空结果缓存（{count} 条）',
+      cacheClearFailed: '清空失败：{msg}',
+      mockInline: '内置模板，适合先体验',
+      mockNote: '离线 Mock 使用内置模板，不消耗额度，适合先体验。选中后再点「保存设置」才会切换。',
+      collapse: '收起',
+      expandNeedKey: '填写后才会调用在线模型',
+      expandUnused: '体验模式用不到，需要时再展开',
+      unset: '未填',
+      keySaved: '已保存密钥',
+      keyFilled: '已填',
+      keepSavedPrefix: '留空则保持已保存的',
+    },
+    tourBubble: {
+      defaultTitle: '小提示',
+    },
+    // 课程表单的选项文案：值保持中文（后端契约），只有显示走这里
+    courseForm: {
+      levelBeginner: '入门',
+      levelMid: '进阶',
+      levelHigh: '熟练',
+      goalExam: '考试',
+      goalProject: '项目',
+      goalInterest: '兴趣',
+      goalPostgrad: '考研',
+      goalCert: '考证',
+      goalOther: '其他',
+      minutes: '{n} 分',
+      hours: '{n} 小时',
+      customTime: '自定义',
+    },
+    resultsGrid: {
+      unitChapter: '章',
+      unitItem: '项',
+      unitDay: '天',
+      chapterFallback: '第 {n} 章',
+    },
+    spaceLayer: {
+      tuckTitle: '收到边签',
+      tuckAria: '把空间钮收到左边',
+    },
   },
 
   'en-US': {
@@ -270,6 +322,56 @@ const MANUAL = {
       export: 'Export',
       generate: 'Generate',
     },
+    settingsDialog: {
+      clearKeyPending: 'Marked for clearing \u2014 click "Save settings" to apply.',
+      keySavedHint: 'Saved {mask} (leave blank to keep it)',
+      keyPlaceholder: 'sk-\u2026',
+      testing: 'Connecting\u2026',
+      testOk: '\u2713 Connected ({ms}ms)',
+      testFail: '\u2717 {error}',
+      testFailFallback: 'Connection failed',
+      requiredHint: 'In LLM mode {fields} is required \u2014 expanded and highlighted',
+      savedOk: '\u2713 Saved. Current mode: {mode}',
+      saveFailed: 'Save failed: {msg}',
+      cacheCleared: 'Result cache cleared ({count} entries)',
+      cacheClearFailed: 'Clear failed: {msg}',
+      mockInline: 'Built-in templates, good for a first look',
+      mockNote: 'Offline Mock uses built-in templates and spends no quota \u2014 good for a first look. Select it, then click "Save settings" to switch.',
+      collapse: 'Collapse',
+      expandNeedKey: 'The online model is called only after you fill these in',
+      expandUnused: 'Not needed in trial mode \u2014 expand when required',
+      unset: 'Not set',
+      keySaved: 'Key saved',
+      keyFilled: 'Filled',
+      keepSavedPrefix: 'Leave blank to keep the saved',
+    },
+    tourBubble: {
+      defaultTitle: 'Hint',
+    },
+    courseForm: {
+      levelBeginner: 'Beginner',
+      levelMid: 'Intermediate',
+      levelHigh: 'Advanced',
+      goalExam: 'Exam',
+      goalProject: 'Project',
+      goalInterest: 'Interest',
+      goalPostgrad: 'Postgrad exam',
+      goalCert: 'Certificate exam',
+      goalOther: 'Other',
+      minutes: '{n} min',
+      hours: '{n} h',
+      customTime: 'Custom',
+    },
+    resultsGrid: {
+      unitChapter: 'chapters',
+      unitItem: 'items',
+      unitDay: 'days',
+      chapterFallback: 'Chapter {n}',
+    },
+    spaceLayer: {
+      tuckTitle: 'Collapse to edge tab',
+      tuckAria: 'Collapse the space button to the left edge',
+    },
   },
 }
 
@@ -357,10 +459,24 @@ export function useI18n() {
 }
 
 /**
- * 尚未抽取的文案（长尾部分），列在这里便于后续补齐：
- * - TourDialog / TourBubble（新手引导气泡）
- * - SettingsDialog（模型设置弹窗内部字段）
- * - WelcomeScreen 的三张介绍卡
- * - 各页面的空态提示、错误提示详情
+ * 尚未抽取的文案（长尾部分）—— 2026-10-12 大幅收敛。
+ *
+ * 已完成（原 TODO 已过期，勿重复劳动）：
+ *   - TourDialog：本来就全走 i18n（tour.greeting 等），无需处理。
+ *   - WelcomeScreen：四张功能卡自带 enTitle / enBody，本来就是双语。
+ *   - SettingsDialog / TourBubble / CourseForm / ResultsGrid / SpaceLayer：
+ *     已抽到 MANUAL 的同名分组（settingsDialog / tourBubble / courseForm /
+ *     resultsGrid / spaceLayer），含 {n} 形式的插值。
+ *   - CourseForm 的选项**值**仍是中文（后端契约 + localStorage 里的既有数据），
+ *     只有「显示文案」走 i18n —— 别把值也改了，会改变数据契约。
+ *
+ * ⚠️ 校验口径与盲区（重要，别被 green 骗了）：
+ *   - 唯一硬验证是 `node .preview/check-en.mjs`（17 个组件 SSR 渲染后扫残留中文）。
+ *   - 该脚本**只能看到首屏渲染出来的文案**。App.vue 里运行时才产生的提示
+ *     （toast 通知、状态栏文本、降级弹窗、复制成功文案等，约 25 条，集中在
+ *     App.vue 的 notify() / statusText 赋值处）**扫不到**，英文界面下仍是中文。
+ *   - 脚本 2026-10-12 已修正：先剥掉全部标签再扫文本节点，另单独扫
+ *     title / aria-label / placeholder / alt，避免 <option value="考试"> 这类
+ *     **程序用属性值**被误报成「残留中文」。
  */
 export const TO_BE_TRANSLATED = '见 i18n/index.js 文件末尾注释'

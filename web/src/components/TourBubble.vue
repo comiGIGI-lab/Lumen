@@ -20,7 +20,7 @@ import { useI18n } from '@/i18n'
  */
 const props = defineProps({
   open: { type: Boolean, default: false },
-  title: { type: String, default: '小提示' },
+  title: { type: String, default: '' },
   body: { type: String, default: '' },
   storageKey: { type: String, required: true },
   position: {
@@ -56,7 +56,7 @@ function onDismiss() {
       <div class="card">
         <div class="head">
           <span class="dot" aria-hidden="true" />
-          <b class="title">{{ title }}</b>
+          <b class="title">{{ title || t('tourBubble.defaultTitle') }}</b>
           <button
             class="x"
             type="button"

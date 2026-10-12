@@ -42,13 +42,13 @@ const canExport = computed(
 const outlineItems = computed(() =>
   outline.value.map((ch, i) => {
     if (ch && typeof ch === 'object' && !Array.isArray(ch)) {
-      const title = String(ch.title || ch.name || `第 ${i + 1} 章`).trim()
+      const title = String(ch.title || ch.name || `${t('resultsGrid.chapterFallback', { n: i + 1 })}`).trim()
       const points = (ch.points || ch.items || [])
         .map((p) => String(p).trim())
         .filter(Boolean)
       return { title, points }
     }
-    return { title: String(ch || '').trim() || `第 ${i + 1} 章`, points: [] }
+    return { title: String(ch || '').trim() || `${t('resultsGrid.chapterFallback', { n: i + 1 })}`, points: [] }
   }),
 )
 
@@ -135,7 +135,7 @@ const dayNo = (item, i) => item?.day ?? i + 1
     <ResultPanel
       :title="t('resultsGrid.1')"
       icon="📑"
-      unit="章"
+      :unit="t('resultsGrid.unitChapter')"
       :count="outline.length"
       :loading="loading"
       :empty-text="t('stage.plannerEmpty')"
@@ -174,7 +174,7 @@ const dayNo = (item, i) => item?.day ?? i + 1
     <ResultPanel
       :title="t('resultsGrid.3')"
       icon="🔗"
-      unit="项"
+      :unit="t('resultsGrid.unitItem')"
       :count="resources.length"
       :loading="loading"
       :empty-text="t('stage.searcherEmpty')"
@@ -214,7 +214,7 @@ const dayNo = (item, i) => item?.day ?? i + 1
     <ResultPanel
       :title="t('resultsGrid.4')"
       icon="📅"
-      unit="天"
+      :unit="t('resultsGrid.unitDay')"
       :count="planItems.length"
       :loading="loading"
       :empty-text="t('stage.writerEmpty')"

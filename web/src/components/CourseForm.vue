@@ -33,6 +33,31 @@ const isCustomTime = ref(!DAILY_CHIPS.includes(Number(profile.value?.daily_minut
 const GOAL_OPTIONS = ['考试', '项目', '兴趣', '考研', '考证', '其他']
 const showGoalOther = computed(() => profile.value?.goal === '其他')
 
+// 选项值保持中文（是后端契约与 localStorage 里的既有数据），只把**显示文案**走 i18n。
+// 找不到映射时原样回落，保证接口对不上也不会显示成空白。
+const LEVEL_LABELS = {
+  入门: 'courseForm.levelBeginner',
+  进阶: 'courseForm.levelMid',
+  熟练: 'courseForm.levelHigh',
+}
+const GOAL_LABELS = {
+  考试: 'courseForm.goalExam',
+  项目: 'courseForm.goalProject',
+  兴趣: 'courseForm.goalInterest',
+  考研: 'courseForm.goalPostgrad',
+  考证: 'courseForm.goalCert',
+  其他: 'courseForm.goalOther',
+}
+function levelLabel(v) {
+  return LEVEL_LABELS[v] ? t(LEVEL_LABELS[v]) : v
+}
+function goalLabel(v) {
+  return GOAL_LABELS[v] ? t(GOAL_LABELS[v]) : v
+}
+function timeChipLabel(m) {
+  return m < 60 ? t('courseForm.minutes', { n: m }) : t('courseForm.hours', { n: m / 60 })
+}
+
 function selectDailyPreset(m) {
   isCustomTime.value = false
   profile.value.daily_minutes = m
@@ -188,7 +213,7 @@ const deadlineHint = computed(() => {
             :class="{ on: profile.level === v }"
             :disabled="busy"
             @click="profile.level = v"
-          >{{ v }}</button>
+          >{{ levelLabel(v) }}</button>
         </div>
       </div>
 
@@ -203,14 +228,14 @@ const deadlineHint = computed(() => {
             :class="{ on: Number(profile.daily_minutes) === m }"
             :disabled="busy"
             @click="selectDailyPreset(m)"
-          >{{ m < 60 ? m + ' 分' : (m / 60) + ' 小时' }}</button>
+          >{{ timeChipLabel(m) }}</button>
           <button
             type="button"
             class="chip-btn chip-time"
             :class="{ on: isCustomTime }"
             :disabled="busy"
             @click="enableCustomTime"
-          >自定义</button>
+          >{{ t('courseForm.customTime') }}</button>
         </div>
         <input
           v-if="isCustomTime"
@@ -228,7 +253,7 @@ const deadlineHint = computed(() => {
       <div class="field">
         <label class="field-label">{{ t('courseForm.9') }}</label>
         <select v-model="profile.goal" class="select" :disabled="busy">
-          <option v-for="v in GOAL_OPTIONS" :key="v" :value="v">{{ v }}</option>
+          <option v-for="v in GOAL_OPTIONS" :key="v" :value="v">{{ goalLabel(v) }}</option>
         </select>
         <input
           v-if="showGoalOther"
