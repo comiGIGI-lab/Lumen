@@ -7,6 +7,7 @@
  * 本仓库主表单仍由 CourseForm 承载；本组件挂在 CourseForm 顶部，对应看板里的 PlanPanel。
  */
 import { computed } from 'vue'
+import { useI18n } from '@/i18n'
 import { usePlanHistory } from '@/composables/usePlanHistory'
 
 defineProps({
@@ -14,6 +15,7 @@ defineProps({
 })
 
 const emit = defineEmits(['replay'])
+const { t } = useI18n()
 
 const { history } = usePlanHistory()
 const recent = computed(() => [...history.value].sort((a, b) => (b.ts || 0) - (a.ts || 0)).slice(0, 12))
@@ -55,8 +57,8 @@ function onReplay(entry) {
 </script>
 
 <template>
-  <div v-if="recent.length" class="recent-strip" aria-label="最近学过的课程">
-    <span class="recent-label">最近学过</span>
+  <div v-if="recent.length" class="recent-strip" :aria-label="t('planPanel.2')">
+    <span class="recent-label">{{ t('planPanel.1') }}</span>
     <button
       v-for="r in recent"
       :key="r.name + '::' + r.ts"

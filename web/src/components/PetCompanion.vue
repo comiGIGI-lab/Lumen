@@ -582,7 +582,7 @@ function handleMenuAction(action) {
             <span v-else>{{ bit.text }}</span>
           </template>
         </span>
-        <button type="button" class="bubble-x" aria-label="关闭" @pointerdown.stop @click.stop="dismissBubble">×</button>
+        <button type="button" class="bubble-x" :aria-label="t('petCompanion.8')" @pointerdown.stop @click.stop="dismissBubble">×</button>
       </div>
     </aside>
 

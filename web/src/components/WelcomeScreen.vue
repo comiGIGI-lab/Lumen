@@ -123,7 +123,7 @@ function cardStyle(i) {
     <!-- ② 四项功能：CSS 3D 纵深叠卡 -->
     <section class="wl-band">
       <div class="wl-inner">
-        <p class="wl-eyebrow">Core capabilities</p>
+        <p class="wl-eyebrow">{{ t('welcomeScreen.25') }}</p>
         <h2 class="wl-h2">{{ t('welcomeScreen.9') }}</h2>
         <p class="wl-lead">{{ t('welcomeScreen.10') }}</p>
         <div

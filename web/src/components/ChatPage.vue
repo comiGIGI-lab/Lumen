@@ -32,13 +32,13 @@ const tab = ref('ask')
   <div class="chat-page">
     <div class="bar">
       <div>
-        <p class="eyebrow">Ask</p>
+        <p class="eyebrow">{{ t('chatPage.4') }}</p>
         <h2>{{ t('chatPage.1') }}</h2>
         <p class="lead">{{ t('chatPage.2') }}</p>
       </div>
       <button type="button" class="ghost" @click="emit('go-course')">{{ t('chatPage.3') }}</button>
     </div>
-    <div class="tabs" role="tablist" aria-label="问答与闯关">
+    <div class="tabs" role="tablist" :aria-label="t('chatPage.5')">
       <button
         type="button"
         role="tab"

@@ -140,7 +140,7 @@ function markClearKey() {
   form.api_key = ''
   ui.wantClearKey = true
   ui.tone = ''
-  ui.msg = t('settingsDialog.clearKeyPending')
+  ui.msg = '已标记清空密钥，点「保存设置」后生效'
 }
 
 /** 选平台 → 自动填 Base URL 与模型名（「自定义」不覆盖用户已填内容） */
@@ -161,14 +161,12 @@ function pickMode(v) {
 }
 
 const keyPlaceholder = computed(() =>
-  hasSavedKey.value
-    ? t('settingsDialog.keySavedHint', { mask: savedKeyMasked.value })
-    : t('settingsDialog.keyPlaceholder'),
+  hasSavedKey.value ? `已保存 ${savedKeyMasked.value}（留空则保持不变）` : 'sk-…',
 )
 
 async function testConnection() {
   ui.testing = true
-  ui.testMsg = t('settingsDialog.testing')
+  ui.testMsg = '连接中…'
   ui.testTone = ''
   try {
     const res = await api.testSettings({
@@ -178,16 +176,14 @@ async function testConnection() {
     })
     if (res.ok) {
       ui.testTone = 'ok'
-      ui.testMsg = t('settingsDialog.testOk', { ms: res.ms })
+      ui.testMsg = `✓ 连接成功（${res.ms}ms）`
     } else {
       ui.testTone = 'err'
-      ui.testMsg = t('settingsDialog.testFail', {
-        error: res.error || t('settingsDialog.testFailFallback'),
-      })
+      ui.testMsg = `✗ ${res.error || '连接失败'}`
     }
   } catch (e) {
     ui.testTone = 'err'
-    ui.testMsg = t('settingsDialog.testFail', { error: e.message })
+    ui.testMsg = `✗ ${e.message}`
   } finally {
     ui.testing = false
   }
@@ -215,7 +211,7 @@ function validateLLM() {
 async function save() {
   if (isLLM.value && !validateLLM()) {
     ui.tone = 'err'
-    ui.msg = t('settingsDialog.requiredHint', { fields: ui.missingFields.join(' / ') })
+    ui.msg = `LLM 模式下 ${ui.missingFields.join(' / ')} 必填，已自动展开高亮`
     return
   }
   ui.busy = true
@@ -233,11 +229,11 @@ async function save() {
     ui.wantClearKey = false
     form.api_key = ''
     ui.tone = 'ok'
-    ui.msg = t('settingsDialog.savedOk', { mode: res.mode?.label || '' })
+    ui.msg = `✓ 已保存，当前模式：${res.mode?.label || ''}`
     emit('saved', res.mode)
   } catch (e) {
     ui.tone = 'err'
-    ui.msg = t('settingsDialog.saveFailed', { msg: e.message })
+    ui.msg = `保存失败：${e.message}`
   } finally {
     ui.busy = false
   }
@@ -248,10 +244,10 @@ async function clearCache() {
   try {
     const res = await api.clearCache(null)
     ui.tone = 'ok'
-    ui.msg = t('settingsDialog.cacheCleared', { count: res.cleared })
+    ui.msg = `已清空结果缓存（${res.cleared} 条）`
   } catch (e) {
     ui.tone = 'err'
-    ui.msg = t('settingsDialog.cacheClearFailed', { msg: e.message })
+    ui.msg = `清空失败：${e.message}`
   } finally {
     ui.busy = false
   }
@@ -264,7 +260,7 @@ async function clearCache() {
     <section class="block">
       <div class="block-head">
         <h4>{{ t('settingsDialog.3') }}</h4>
-        <span class="block-sub">{{ isLLM ? t('settingsDialog.4') : t('settingsDialog.mockInline') }}</span>
+        <span class="block-sub">{{ isLLM ? t('settingsDialog.4') : '内置模板，适合先体验' }}</span>
       </div>
       <div class="seg">
         <button
@@ -280,14 +276,14 @@ async function clearCache() {
           @click="pickMode('llm')"
         >{{ t('settingsDialog.6') }}</button>
       </div>
-      <p class="mode-note">{{ t('settingsDialog.mockNote') }}</p>
+      <p class="mode-note">{{ t('settingsDialog.38') }}</p>
     </section>
 
     <!-- ============ 模型配置：默认收起，在线模式才需要展开 ============ -->
     <section class="block" :class="{ 'llm-collapsed': !showLlmForm }">
       <button type="button" class="block-head llm-toggle" :aria-expanded="showLlmForm" @click="showLlmForm = !showLlmForm">
         <h4>{{ t('settingsDialog.7') }}</h4>
-        <span class="block-sub">{{ showLlmForm ? t('settingsDialog.collapse') : (isLLM ? t('settingsDialog.expandNeedKey') : t('settingsDialog.expandUnused')) }}</span>
+        <span class="block-sub">{{ showLlmForm ? '收起' : (isLLM ? '填写后才会调用在线模型' : '体验模式用不到，需要时再展开') }}</span>
       </button>
 
       <template v-if="showLlmForm">
@@ -303,7 +299,7 @@ async function clearCache() {
       <details class="llm-fold" :class="{ 'llm-fold-missing': isMissing('base_url') }" :open="openBase">
         <summary @click.prevent="ui.foldOpen.base = !ui.foldOpen.base">
           API Base URL
-          <span class="fold-meta">{{ form.base_url || t('settingsDialog.unset') }}</span>
+          <span class="fold-meta">{{ form.base_url || '未填' }}</span>
         </summary>
         <div class="field fold-inner">
           <label class="lbl">API Base URL</label>
@@ -322,7 +318,7 @@ async function clearCache() {
       <details class="llm-fold" :class="{ 'llm-fold-missing': isMissing('api_key') }" :open="openKey">
         <summary @click.prevent="ui.foldOpen.key = !ui.foldOpen.key">
           API Key
-          <span class="fold-meta">{{ hasSavedKey && !ui.wantClearKey ? t('settingsDialog.keySaved') : (form.api_key ? t('settingsDialog.keyFilled') : t('settingsDialog.unset')) }}</span>
+          <span class="fold-meta">{{ hasSavedKey && !ui.wantClearKey ? '已保存密钥' : (form.api_key ? '已填' : '未填') }}</span>
         </summary>
         <div class="field fold-inner key-field">
           <label class="lbl">API Key</label>
@@ -349,7 +345,7 @@ async function clearCache() {
           </div>
         </div>
         <p class="req" :class="{ dim: !isLLM }">{{ t('settingsDialog.11') }}<span v-if="hasSavedKey && !ui.wantClearKey" class="req-note">
-            · {{ t('settingsDialog.keepSavedPrefix') }} {{ savedKeyMasked }}
+            · 留空则保持已保存的 {{ savedKeyMasked }}
           </span>
           <span v-if="ui.wantClearKey" class="req-warn">{{ t('settingsDialog.12') }}</span>
         </p>
@@ -358,7 +354,7 @@ async function clearCache() {
       <details class="llm-fold" :class="{ 'llm-fold-missing': isMissing('model') }" :open="openModel">
         <summary @click.prevent="ui.foldOpen.model = !ui.foldOpen.model">
           {{ t('settingsDialog.13') }}
-          <span class="fold-meta">{{ form.model || t('settingsDialog.unset') }}</span>
+          <span class="fold-meta">{{ form.model || '未填' }}</span>
         </summary>
         <div class="field fold-inner">
           <label class="lbl">{{ t('settingsDialog.13') }}</label>
@@ -418,6 +414,7 @@ async function clearCache() {
       <p>{{ t('settingsDialog.34') }}</p>
     </div>
 
+    <p class="cache-hint">{{ t('settingsDialog.39') }}</p>
     <div v-if="ui.msg" class="feedback" :class="ui.tone">{{ ui.msg }}</div>
 
     <template #footer>
@@ -425,7 +422,13 @@ async function clearCache() {
         {{ ui.showHelp ? t('settingsDialogX.6') : t('settingsDialogX.7') }}
       </button>
       <button class="btn btn-ghost desk-only" type="button" @click="emit('show-tour')">{{ t('settingsDialog.35') }}</button>
-      <button class="btn btn-ghost desk-only" type="button" :disabled="ui.busy" @click="clearCache">{{ t('settingsDialog.36') }}</button>
+      <button
+        class="btn btn-ghost desk-only"
+        type="button"
+        :disabled="ui.busy"
+        :title="t('settingsDialog.39')"
+        @click="clearCache"
+      >{{ t('settingsDialog.36') }}</button>
       <button v-if="onboarding" class="btn btn-ghost" type="button" @click="emit('close')">{{ t('settingsDialog.tryFirst') }}</button>
       <button v-else class="btn btn-ghost" type="button" @click="emit('close')">{{ t('settingsDialog.37') }}</button>
       <button class="btn btn-primary" type="button" :disabled="ui.busy" @click="save">
@@ -457,6 +460,12 @@ async function clearCache() {
 .mode-note {
   margin: 8px 0 0;
   color: var(--text-secondary);
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+.cache-hint {
+  margin: 0 0 10px;
+  color: var(--text-muted);
   font-size: 12.5px;
   line-height: 1.6;
 }

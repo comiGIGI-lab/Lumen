@@ -81,8 +81,8 @@ function tuckFab() {
         v-if="!fabDocked"
         type="button"
         class="space-tuck"
-        :title="t('spaceLayer.tuckTitle')"
-        :aria-label="t('spaceLayer.tuckAria')"
+        :title="t('spaceLayer.4')"
+        :aria-label="t('spaceLayer.5')"
         @click="tuckFab"
       >‹</button>
     </div>

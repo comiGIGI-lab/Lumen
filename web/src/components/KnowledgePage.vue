@@ -348,7 +348,7 @@ onBeforeUnmount(() => {
   <div class="kb">
     <div class="kb-bar">
       <div>
-        <p class="eyebrow">Knowledge</p>
+        <p class="eyebrow">{{ t('knowledgePage.52') }}</p>
         <h2>{{ t('knowledgePage.5') }}</h2>
         <p class="lead">{{ sectionLead }}</p>
       </div>

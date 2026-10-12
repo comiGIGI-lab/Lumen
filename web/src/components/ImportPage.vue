@@ -257,7 +257,7 @@ onBeforeUnmount(() => {
       <span>/</span>
       <em>{{ t('importPage.3') }}</em>
     </p>
-    <p class="eyebrow">Step 1 · Upload</p>
+    <p class="eyebrow">{{ t('importPage.30') }}</p>
     <h2>{{ t('importPage.4') }}</h2>
     <p class="lead">{{ t('importPage.5') }}</p>
 

@@ -427,7 +427,7 @@ function reset() {
         <span v-if="current && current.source === 'web'" class="badge-web">
           {{ t('quizPage.webSource') }}
         </span>
-        <span v-if="current && seenBefore(current.stem)" class="badge-past">曾经的错题</span>
+        <span v-if="current && seenBefore(current.stem)" class="badge-past">{{ t('quizPage.seenBefore') }}</span>
       </div>
       <p v-if="waitingNext" class="muted">{{ t('quizPage.moreComing') }}</p>
       <p v-else-if="current" class="q-stem">{{ current.stem }}</p>
@@ -517,7 +517,7 @@ function reset() {
           >
             <p class="r-stem">{{ i + 1 }}. {{ it.stem }}
               <span class="badge-web" v-if="it.source === 'web'">{{ t('quizPage.webSource') }}</span>
-              <span v-if="seenBefore(it.stem)" class="badge-past">曾经的错题</span>
+              <span v-if="seenBefore(it.stem)" class="badge-past">{{ t('quizPage.seenBefore') }}</span>
             </p>
             <p class="r-line">
               <span :class="it.correct ? 'good' : 'bad'">{{ it.correct ? t('quizPage.right') : t('quizPage.wrong') }}</span>
