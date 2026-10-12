@@ -75,7 +75,8 @@ def capabilities():
     except Exception:
         office = {"available": False, "engine": "", "fallback": "ooxml", "extensions": [".docx", ".pptx"], "note": "office_parse 模块不可用"}
 
-    # 兜底层：xlsx / xls / html / epub / zip / 音频 / 视频字幕——doc_parse+office_parse 不覆盖的格式。
+    # 兜底层：xlsx / xls / html / epub / zip / csv / json / xml——doc_parse+office_parse 不覆盖的格式。
+    # 音频不在此列（缺 speech_recognition 且无 ffmpeg），语音走 /api/asr。
     # 进程级惰性 import（markitdown 缺包时静默 available=False，不让 api_server 起不来）。
     try:
         import markitdown_fallback
@@ -463,7 +464,7 @@ def ingest(path, filename, tags=None, store=None, data_dir=None, title=None,
             default_tags.append("#%s" % parse_engine)
         out["engine"] = parse_engine
     else:
-        # 兜底层：xlsx / xls / html / epub / zip / 音频 等 doc_parse+office_parse 不覆盖的格式走 markitdown。
+        # 兜底层：xlsx / xls / html / epub / zip / csv / json / xml 等 doc_parse+office_parse 不覆盖的格式走 markitdown。
         # 它是补盲，不替换任何现网解析器；缺包时静默回落到 unsupported 提示。
         out["kind"] = "document"
         parse_engine = ""

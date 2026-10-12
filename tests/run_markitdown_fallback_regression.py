@@ -3,7 +3,8 @@
 
 契约：
     PDF / Word / PPT / 图片 / Markdown / txt 不进 markitdown。
-    xlsx / xls / html / epub / zip / csv / json / xml / 音频才进兜底。
+    xlsx / xls / html / epub / zip / csv / json / xml 才进兜底。
+    音频（.mp3 / .wav / .m4a）不进兜底：缺 speech_recognition 且本机无 ffmpeg，语音走 /api/asr。
     markitdown 未安装或被环境变量禁用时，导入接口返回明确错误，不能抛异常。
 
 用法：
@@ -87,9 +88,12 @@ def test_extension_boundary():
     for ext in primary:
         check("primary_not_supported_%s" % ext.lstrip("."), not m.supports(ext), ext)
     fallback = (".xlsx", ".xls", ".html", ".htm", ".epub", ".zip",
-                ".csv", ".json", ".xml", ".mp3", ".wav", ".m4a")
+                ".csv", ".json", ".xml")
     for ext in fallback:
         check("fallback_supported_%s" % ext.lstrip("."), m.supports(ext), ext)
+    # 音频刻意不接管：缺 speech_recognition、本机无 ffmpeg，转了只有空内容（2026-10-12 线上实测）
+    for ext in (".mp3", ".wav", ".m4a"):
+        check("audio_not_routed_%s" % ext.lstrip("."), not m.supports(ext), ext)
     check("blank_extension_rejected", not m.supports(""))
     check("uppercase_normalized", m.supports(".XLSX"))
 

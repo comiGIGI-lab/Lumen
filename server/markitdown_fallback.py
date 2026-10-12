@@ -1,5 +1,9 @@
 # -*- coding: utf-8 -*-
-"""markitdown 兜底解析：xlsx / html / epub / zip 等 doc_parse+office_parse 不覆盖的格式。
+"""markitdown 兜底解析：xlsx / xls / html / epub / zip / csv / json / xml 等 doc_parse+office_parse 不覆盖的格式。
+
+⚠️ 不接管音频（.mp3 / .wav / .m4a）：markitdown 的音频转写依赖 speech_recognition + 在线语音接口，
+本机既无 ffmpeg 也未装 `audio-transcription` extra，实测只能返回「解析后内容为空」。
+语音转写一律走 `/api/asr`（Vosk 侧车）。
 
 硬约束
 ------
@@ -131,14 +135,14 @@ def status() -> dict:
 # 转换
 # ============================================================
 # markitdown 支持的扩展名（除了 doc_parse/office_parse 已经覆盖的 .pdf/.docx/.pptx）
-# 按 _EXTRAS 反推：xlsx / xls / html / epub / zip + 一些冷门格式
+# 逐项实测过（2026-10-12 线上）：xlsx / xls / html / htm / epub / zip / csv / json / xml 都能转出正文。
+# 音频三项刻意不收：缺 speech_recognition + 无 ffmpeg，转了也是空内容（详见模块 docstring）。
 SUPPORTED_EXTS = (
     ".xlsx", ".xls",                # Excel
     ".html", ".htm",                # HTML
     ".epub",                        # 电子书
     ".zip",                         # 压缩包
     ".csv", ".json", ".xml",        # 数据
-    ".mp3", ".wav", ".m4a",         # 音频
 )
 
 
