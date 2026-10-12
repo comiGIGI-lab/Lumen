@@ -106,8 +106,11 @@ const { user, isLoggedIn, isAdmin } = useAuth()
 }
 
 .hero {
-  position: relative;
-  z-index: 128;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 150;
   overflow: visible;
   background: rgba(var(--bg-app-rgb), 0.92);
   color: var(--text-primary);
@@ -160,10 +163,33 @@ const { user, isLoggedIn, isAdmin } = useAuth()
   }
 }
 
+@media (max-width: 860px) {
+  .hero-inner {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+  }
+  .hero-left {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .login-entry {
+    grid-column: 2;
+    grid-row: 1;
+    margin-left: 0;
+  }
+  :deep(.top-nav) {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    width: 100%;
+    justify-content: flex-start;
+  }
+}
+
 @media (max-width: 430px) {
   .hero-inner {
     padding: 12px;
-    align-items: flex-start;
+    align-items: center;
   }
   .hero-title {
     font-size: 16px;
@@ -171,9 +197,6 @@ const { user, isLoggedIn, isAdmin } = useAuth()
   .wordmark {
     font-size: 11px;
     padding: 8px 8px 6px;
-  }
-  .hero-left {
-    width: 100%;
   }
 }
 </style>

@@ -48,7 +48,7 @@ const boxStyle = computed(() => {
   const compact = viewW.value <= 430
   if (w.collapsed) {
     const stack = Math.max(0, WIN_IDS.indexOf(props.id))
-    const topSafe = compact ? 52 : 64
+    const topSafe = compact ? 168 : viewW.value <= 860 ? 168 : 64
     const top = Math.min(
       topSafe + stack * (PEEK_H + PEEK_GAP),
       Math.max(topSafe, viewH.value - PEEK_H - 56),

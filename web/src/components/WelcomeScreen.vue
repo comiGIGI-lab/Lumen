@@ -224,7 +224,7 @@ function cardStyle(i) {
 
   position: fixed;
   inset: 0;
-  z-index: 90;
+  z-index: 140;
   width: 100%;
   height: 100%;
   overflow-y: auto;

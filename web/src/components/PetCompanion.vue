@@ -1,6 +1,6 @@
 <script setup>
 /**
- * 主界面右下常驻学伴（头脑的化身）。z-index 低于弹窗（120+），高于正文。
+ * 主界面右下常驻学伴（头脑的化身）。高于欢迎层（90），低于自习浮窗（140）和弹窗。
  * 不挡顶栏、不挡左下「空间」、不挡自习大窗；窄屏再小一档。
  *
  * 指针：只有立绘 .sprite-in 接收指针，aside 与 HUD 的占位区域一律点穿，
@@ -15,7 +15,7 @@ import PetSprite from './PetSprite.vue'
 import { usePet } from '@/composables/usePet'
 import { usePetInteraction } from '@/composables/usePetInteraction'
 
-defineProps({
+const props = defineProps({
   visible: { type: Boolean, default: true },
 })
 
@@ -323,20 +323,33 @@ function onPetSay(e) {
   if (!text) return
   showBubble(text, e?.detail?.kind || 'thought')
 }
+function onPetHush(e) {
+  const text = e?.detail?.text
+  if (!text || bubbleText.value === text) dismissBubble()
+}
 
+function announceReady() {
+  if (!props.visible || !hasPet.value) return
+  nextTick(() => window.dispatchEvent(new CustomEvent('zjxt:pet-ready')))
+}
+watch(() => props.visible && hasPet.value, (on) => {
+  if (on) announceReady()
+})
 onMounted(() => {
   syncNarrow()
   // 刷新不恢复上次拖动 / 贴边；会话内拖动仍走 savePos，导航和「恢复默认位置」靠事件清掉。
   window.addEventListener('resize', onResize)
   window.addEventListener('zjxt:reset-layout', onSpaceReset)
   window.addEventListener('zjxt:pet-say', onPetSay)
-  window.dispatchEvent(new CustomEvent('zjxt:pet-ready'))
+  window.addEventListener('zjxt:pet-hush', onPetHush)
+  announceReady()
   maybeShowTuckHint()
 })
 onBeforeUnmount(() => {
   window.removeEventListener('resize', onResize)
   window.removeEventListener('zjxt:reset-layout', onSpaceReset)
   window.removeEventListener('zjxt:pet-say', onPetSay)
+  window.removeEventListener('zjxt:pet-hush', onPetHush)
   clearTimeout(bubbleTimer)
   if (hudTimer) clearTimeout(hudTimer)
   if (tapTimer) clearTimeout(tapTimer)
@@ -596,7 +609,7 @@ function handleMenuAction(action) {
   position: fixed;
   right: 16px;
   bottom: 56px;
-  z-index: 80;
+  z-index: 110;
   display: flex;
   flex-direction: column;
   align-items: flex-end;

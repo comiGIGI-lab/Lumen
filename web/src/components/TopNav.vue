@@ -5,7 +5,7 @@
  * 欢迎层与工具页共用。更多：个人空间、AI 模型设置、历史、日志。
  * 不恢复「原型」。
  */
-import { onBeforeUnmount, ref } from 'vue'
+import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useSpace } from '@/composables/useSpace'
 import { useTheme } from '@/composables/useTheme'
 import { useI18n } from '@/i18n'
@@ -34,6 +34,8 @@ const emit = defineEmits([
 ])
 
 const openMore = ref(false)
+const moreWrap = ref(null)
+const menuAlign = ref('right')
 const { panelOpen } = useSpace()
 const { isDark, toggle: toggleTheme } = useTheme()
 const { t, isEn, toggle: toggleLang } = useI18n()
@@ -44,6 +46,17 @@ function doLogout() {
   logout()
   openMore.value = false
 }
+
+function placeMenu() {
+  const el = moreWrap.value
+  if (!el) return
+  const r = el.getBoundingClientRect()
+  // 按钮靠右时菜单向左展开，靠左时向右展开，两边都别画出屏幕。
+  menuAlign.value = r.left + r.width / 2 > window.innerWidth / 2 ? 'right' : 'left'
+}
+watch(openMore, (on) => {
+  if (on) nextTick(placeMenu)
+})
 
 function pick(action) {
   openMore.value = false
@@ -102,7 +115,7 @@ onBeforeUnmount(() => {
       :class="{ on: current === 'study' }"
       @click="emit('open-study')"
     >{{ t('nav.study') }}</button>
-    <div class="more-wrap">
+    <div ref="moreWrap" class="more-wrap">
       <button
         type="button"
         class="nav-link more-btn"
@@ -112,7 +125,7 @@ onBeforeUnmount(() => {
         :aria-expanded="openMore"
         @click.stop="openMore = !openMore"
       >{{ t('topNav.3') }}</button>
-      <div v-if="openMore" class="more-menu" role="menu">
+      <div v-if="openMore" class="more-menu" :class="'align-' + menuAlign" role="menu">
         <!-- 账号：登录后显示「退出登录」，未登录显示「登录」 -->
         <button v-if="isLoggedIn" type="button" role="menuitem" class="menu-account" @click="doLogout">
           <span>{{ t('auth.logout') }}</span>
@@ -182,7 +195,14 @@ onBeforeUnmount(() => {
 .more-menu {
   position: absolute;
   top: calc(100% + 8px);
+}
+.more-menu.align-right {
   right: 0;
+}
+.more-menu.align-left {
+  left: 0;
+}
+.more-menu {
   min-width: 176px;
   background: var(--bg-card);
   border: 1px solid var(--border);
@@ -215,7 +235,7 @@ onBeforeUnmount(() => {
   font-size: 11px;
 }
 
-@media (max-width: 430px) {
+@media (max-width: 860px) {
   .top-nav {
     width: 100%;
     /* 8 个入口在 390px 下原来要换 3 行、吃掉约 140px 高度

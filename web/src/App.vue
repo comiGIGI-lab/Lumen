@@ -112,7 +112,8 @@ function skipOnboardSettings() {
 
 function enterWelcome() {
   showWelcome.value = shouldShowWelcome()
-  if (showWelcome.value) notify({ type: 'success', text: '我准备好陪你学习啦！' })
+  // 欢迎层本身不再出右上角 toast：学伴和气泡都在这一层，问候交给气泡。
+  if (showWelcome.value) sayWelcome()
 }
 
 function isPhone() {
@@ -142,6 +143,8 @@ function onWelcomeDone() {
     /* 存不上也不阻塞进入 */
   }
   showWelcome.value = false
+  // 欢迎问候只停在欢迎层；进功能页后把这句收掉，别跟到方案页。
+  window.dispatchEvent(new CustomEvent('zjxt:pet-hush', { detail: { text: t('pet.welcome') } }))
   // 首访进主应用：宠物已选且没看过指引才弹（每次加载只自动弹一次）
   maybeShowTour()
 }
@@ -212,6 +215,12 @@ const pendingTips = []
 function sayTip(text) {
   window.dispatchEvent(new CustomEvent('zjxt:pet-say', { detail: { text } }))
 }
+function sayWelcome() {
+  const text = t('pet.welcome')
+  // 选伴后学伴下一帧才挂上，先进队列等 pet-ready；点「首页」时学伴已在，直接说。
+  if (!document.querySelector('.buddy')) pendingTips.push(text)
+  else sayTip(text)
+}
 function flushTips() {
   const queued = pendingTips.splice(0)
   queued.forEach((text) => sayTip(text))
@@ -246,6 +255,7 @@ function goHome() {
   showGuide.value = false
   appView.value = 'course'
   showWelcome.value = true
+  sayWelcome()
 }
 
 function goCourse() {
@@ -782,7 +792,7 @@ const degradedBanner = computed(() => {
     <SceneBackdrop v-if="appView !== 'study'" :scene="activeScene" />
     <SpaceLayer v-show="!showGuide" />
     <PetCompanion
-      :visible="!showGuide && !showWelcome"
+      :visible="!showGuide"
       @open-profile="openProfile"
     />
 
@@ -810,13 +820,14 @@ const degradedBanner = computed(() => {
 
     <LoginDialog :open="showLogin" @close="showLogin = false" />
 
+    <Teleport to="body" :disabled="!showWelcome">
     <AppHeader
       v-show="!showGuide"
       :mode="mode"
       :has-result="!!result"
       :busy="busy"
       :needs-key="needsKey"
-      :current="appView"
+      :current="showWelcome ? 'home' : appView"
       @export="onExport"
       @go-course="goCourse"
         @go-home="goHome"
@@ -834,6 +845,7 @@ const degradedBanner = computed(() => {
       @open-progress="goProgress"
       @open-manual="goManual"
     />
+    </Teleport>
 
     <main class="main" :class="{ 'under-wins': !showWelcome && appView !== 'study', 'study-main': appView === 'study' }">
       <KnowledgePage
@@ -1046,14 +1058,13 @@ const degradedBanner = computed(() => {
   z-index: 1;
   max-width: 1360px;
   margin: 0 auto;
-  padding: 16px 26px 26px;
+  padding: 78px 26px 26px;
   display: flex;
   flex-direction: column;
   gap: 14px;
 }
 
 .main.under-wins {
-  padding-top: 56px;
   /* 左右缘竖签宽 36px，主区原来只有 26px，标题和说明会被切掉。 */
   padding-left: 52px;
   padding-right: 52px;
@@ -1062,7 +1073,7 @@ const degradedBanner = computed(() => {
 .main.study-main {
   max-width: none;
   margin: 0;
-  padding: 16px 26px 26px;
+  padding: 78px 26px 26px;
   gap: 0;
 }
 
@@ -1194,13 +1205,10 @@ const degradedBanner = computed(() => {
     right: 12px;
   }
   .main {
-    padding: 14px 16px 22px;
-  }
-  .main.under-wins {
-    padding-top: 56px;
+    padding: 170px 16px 22px;
   }
   .main.study-main {
-    padding: 14px 16px 22px;
+    padding: 170px 16px 22px;
   }
   .src-path {
     display: none;

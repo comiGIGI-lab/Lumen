@@ -20,6 +20,16 @@ function confirm() {
   choosePet(picked.value)
   emit('done')
 }
+
+function petName(p) {
+  return t('pet.' + p.id + '.name')
+}
+function petTrait(p) {
+  return t('pet.' + p.id + '.personality') + ' · ' + t('pet.' + p.id + '.tagline')
+}
+function petEvolved(p) {
+  return t('pet.' + p.id + '.evolved')
+}
 </script>
 
 <template>
@@ -45,52 +55,52 @@ function confirm() {
               @dblclick="picked = p.id; confirm()"
             >
               <PetSprite :pet-id="p.id" form="base" :size="88" />
-              <b>{{ p.name }}</b>
-              <span>{{ p.personality }}：{{ p.tagline }}</span>
+              <b>{{ petName(p) }}</b>
+              <span>{{ petTrait(p) }}</span>
               <details class="evo" @click.stop @dblclick.stop @pointerdown.stop>
-                <summary>升级路径</summary>
-                <p class="evo-sec">Lv1 到 Lv5</p>
+                <summary>{{ t('petGuide.evo') }}</summary>
+                <p class="evo-sec">{{ t('petGuide.lv15') }}</p>
                 <ol class="evo-path evo-lv15">
                   <li class="evo-stage">
                     <PetSprite :pet-id="p.id" form="base" :size="28" />
                     <em>Lv1</em>
-                    <em>{{ p.name }}</em>
+                    <em>{{ petName(p) }}</em>
                   </li>
                   <li class="evo-stage">
                     <PetSprite :pet-id="p.id" form="base" :size="32" />
                     <em>Lv2</em>
-                    <em>成长</em>
+                    <em>{{ t('petGuide.grow') }}</em>
                   </li>
                   <li class="evo-stage">
                     <PetSprite :pet-id="p.id" form="base" :size="36" />
                     <em>Lv3</em>
-                    <em>成长</em>
+                    <em>{{ t('petGuide.grow') }}</em>
                   </li>
                   <li class="evo-stage">
                     <PetSprite :pet-id="p.id" form="base" :size="40" />
                     <em>Lv4</em>
-                    <em>成长</em>
+                    <em>{{ t('petGuide.grow') }}</em>
                   </li>
                   <li class="evo-stage">
                     <PetSprite :pet-id="p.id" form="evolved" :size="44" />
                     <em>Lv5</em>
-                    <em>{{ p.evolvedName || p.name }}</em>
+                    <em>{{ petEvolved(p) }}</em>
                   </li>
                 </ol>
-                <p class="evo-sec">Lv30 二段进化</p>
+                <p class="evo-sec">{{ t('petGuide.lv30') }}</p>
                 <div class="evo-path evo-lv30">
                   <span class="evo-stage">
                     <PetSprite :pet-id="p.id" form="evolved" :size="48" />
                     <em>Lv30</em>
-                    <em>{{ p.evolvedName || p.name }} · 究极</em>
+                    <em>{{ petEvolved(p) }} · {{ t('petGuide.ultimate') }}</em>
                   </span>
                 </div>
-                <p class="evo-sec">经验获取</p>
+                <p class="evo-sec">{{ t('petGuide.xp') }}</p>
                 <ul class="evo-xp">
-                  <li>自习每分钟 1 点</li>
-                  <li>当天首次自习加 10 点</li>
-                  <li>方案生成前两次每日加 40 点上限</li>
-                  <li>互动动作：摸摸加 2、喂食加 5、玩耍加 8，各 30 秒冷却</li>
+                  <li>{{ t('petGuide.xp1') }}</li>
+                  <li>{{ t('petGuide.xp2') }}</li>
+                  <li>{{ t('petGuide.xp3') }}</li>
+                  <li>{{ t('petGuide.xp4') }}</li>
                 </ul>
               </details>
             </button>
