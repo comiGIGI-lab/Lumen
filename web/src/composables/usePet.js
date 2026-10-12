@@ -1,6 +1,8 @@
 /**
  * 学伴：网页右下角的学习伙伴，头脑的化身。
- * 形象 / 等级 / 经验 / 形态只存本地 localStorage（zjxt.pet），不上传、不登录；
+ * 形象 / 等级 / 经验 / 形态只存本地 localStorage，按当前登录账号分档
+ * （zjxt.pet.u:用户名；未登录是 zjxt.pet.anon）。不上传服务器。
+ * 登录、退出后 reloadForOwner() 换成这一档，避免沿用上一个身份的学伴和经验。
  * zjxt.welcomed 归欢迎层，两边互不相干。
  */
 import { computed, reactive, ref } from 'vue'
@@ -219,7 +221,7 @@ function loadPet() {
   }
 }
 
-const pet = reactive(loadPet() || {
+const EMPTY_PET = {
   id: '',
   form: 'base',
   level: 1,
@@ -236,7 +238,9 @@ const pet = reactive(loadPet() || {
   tagline: '',
   expLog: [],
   evolvedAt: '',
-})
+}
+
+const pet = reactive(loadPet() || { ...EMPTY_PET, expLog: [] })
 // 知识产权兼容：旧侵权 id 已清空，立即把清空结果写回存储。
 // 这样首屏 hasPetSaved() 读到空 id → PetGuide 重新出现，用户重选化身时等级 / 经验 / 连签等成长由 choosePet 原样保留。
 if (clearedInfringe) persist()
@@ -276,6 +280,19 @@ function persist() {
   } catch (_) {
     /* 存不上不阻塞 */
   }
+}
+
+/**
+ * 登录、退出或刷新后身份变了：换成当前账号自己的学伴。
+ * 这一档还没选过就清空，调用方据此再打开选伴页。
+ */
+function reloadForOwner() {
+  const next = loadPet() || { ...EMPTY_PET, expLog: [] }
+  Object.keys(EMPTY_PET).forEach((k) => {
+    pet[k] = next[k]
+  })
+  hasPet.value = !!pet.id
+  showEvolve.value = false
 }
 
 function speciesOf(id) {
@@ -458,6 +475,7 @@ export function usePet() {
     nextEvolveLevel,
     expNeed,
     choosePet,
+    reloadForOwner,
     grantExp,
     logExp,
     grantStudyExp,

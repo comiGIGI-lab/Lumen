@@ -23,6 +23,8 @@ import { api } from '@/api/client'
 
 const TOKEN_KEY = 'zjxt.auth.token'
 const user = ref({ username: '', role: '' })
+/** 每次写入或清除 token 加一。学伴据此换成当前身份的存档。 */
+const authEpoch = ref(0)
 const authEnabled = ref(false)
 const ready = ref(false)
 let inited = false
@@ -39,6 +41,7 @@ function writeToken(token) {
   try {
     if (token) localStorage.setItem(TOKEN_KEY, token)
     else localStorage.removeItem(TOKEN_KEY)
+    authEpoch.value += 1
   } catch (_) {
     /* 隐私模式下写不了，本次会话仍然可用 */
   }
@@ -106,5 +109,5 @@ export function useAuth() {
     refresh()
   }
 
-  return { user, isLoggedIn, isAdmin, authEnabled, ready, login, register, logout, refresh }
+  return { user, isLoggedIn, isAdmin, authEnabled, ready, authEpoch, login, register, logout, refresh }
 }

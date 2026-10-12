@@ -39,6 +39,8 @@ import { usePlanStream } from './composables/usePlanStream'
 import { useSpace } from './composables/useSpace'
 import { useStudyTimer } from './composables/useStudyTimer'
 import { usePet } from './composables/usePet'
+import { keyedStorage } from './composables/ownerTag'
+import { useAuth } from './composables/useAuth'
 import { usePlanHistory } from './composables/usePlanHistory'
 import { api } from './api/client'
 import PetGuide from './components/PetGuide.vue'
@@ -50,11 +52,15 @@ import TourDialog from './components/TourDialog.vue'
 const booted = ref(false)
 
 // ---------- 角色引导 + 首访欢迎层 ----------
-// 没选过宠物（zjxt.pet）先出 PetGuide；选完再出 WelcomeScreen。
+// 没选过宠物先出 PetGuide；选完再出 WelcomeScreen。
+// 宠物按当前登录账号分档（zjxt.pet.u:用户名 / zjxt.pet.anon），不能只看旧的 zjxt.pet。
 // zjxt.welcomed 只归欢迎层。?welcome=1 强制欢迎层，不让引导页挡住拍摄。
 function hasPetSaved() {
   try {
-    const raw = localStorage.getItem('zjxt.pet')
+    const key = keyedStorage('zjxt.pet')
+    let raw = localStorage.getItem(key)
+    // 未登录时才认升级前那把不分档的钥匙，避免登成别的账号却读到游客的学伴
+    if (!raw && key === 'zjxt.pet.anon') raw = localStorage.getItem('zjxt.pet')
     if (!raw) return false
     const data = JSON.parse(raw)
     return !!(data && data.id)
@@ -190,7 +196,24 @@ function onProfileChangePet() {
   spacePanelOpen.value = true
 }
 
-const { displayName, logExp, grantStudyExp, grantPlanExp } = usePet()
+const { displayName, logExp, grantStudyExp, grantPlanExp, reloadForOwner } = usePet()
+const { authEpoch } = useAuth()
+// 登录、注册、退出、token 失效都会加一。换成这一档自己的学伴和经验；没选过就重新选。
+// 拍摄用的 ?welcome=1 不改层，避免登录校验把欢迎层盖掉。
+watch(authEpoch, () => {
+  if (!authEpoch.value) return
+  reloadForOwner()
+  showProfile.value = false
+  try {
+    if (new URLSearchParams(window.location.search).get('welcome') === '1') return
+  } catch (_) { /* 继续按是否已选决定 */ }
+  if (hasPetSaved()) {
+    showGuide.value = false
+  } else {
+    showWelcome.value = false
+    showGuide.value = true
+  }
+})
 const { record: recordPlan } = usePlanHistory()
 
 const { applyLayout, panelOpen: spacePanelOpen } = useSpace()
