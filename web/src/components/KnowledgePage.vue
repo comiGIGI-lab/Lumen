@@ -80,6 +80,8 @@ const shareCode = ref('')
 const redeemCode = ref('')
 const shareNote = ref('')
 const savedHint = ref(false)
+const recatName = ref('')
+const recatHint = ref('')
 const picked = ref([])
 const dragOn = ref(false)
 const running = ref(false)
@@ -205,10 +207,20 @@ async function redeemShare() {
   }
 }
 
-async function copyCode() {
-  if (!shareCode.value || !navigator.clipboard) return
-  await navigator.clipboard.writeText(shareCode.value)
-  shareNote.value = t('kb.copied')
+
+async function saveCategory() {
+  const name = recatName.value.trim()
+  const ids = current.value?.entryIds || []
+  if (!name || !ids.length) return
+  recatHint.value = ''
+  try {
+    await api.knowledgeSetCategory(ids, name)
+    recatHint.value = t('knowledgePage.51', { name })
+    await loadCategories()
+    await refresh(keyword.value.trim(), listOptions())
+  } catch (e) {
+    recatHint.value = e.message || String(e)
+  }
 }
 
 async function addCategory() {
@@ -508,6 +520,17 @@ onBeforeUnmount(() => {
           <div><dt>{{ t('knowledgePage.27') }}</dt><dd>{{ current.created }}</dd></div>
           <div><dt>{{ t('knowledgePage.28') }}</dt><dd>{{ current.updated }}</dd></div>
           <div><dt>{{ t('knowledgePage.29') }}</dt><dd>{{ current.topics && current.topics.length ? current.topics.join(' · ') : tagLabel(current.tag) }}</dd></div>
+          <div class="recat">
+            <dt>{{ t('knowledgePage.48') }}</dt>
+            <dd>
+              <input v-model="recatName" type="text" maxlength="40" list="kb-recat-names" :placeholder="current.category ? categoryLabel(current.category) : t('knowledgePage.49')" />
+              <datalist id="kb-recat-names">
+                <option v-for="item in categories" :key="`recat-${item}`" :value="item" />
+              </datalist>
+              <button type="button" class="ok" @click="saveCategory">{{ t('knowledgePage.50') }}</button>
+              <em v-if="recatHint">{{ recatHint }}</em>
+            </dd>
+          </div>
           <div><dt>{{ t('knowledgePage.30') }}</dt><dd>{{ currentDocs.length }}</dd></div>
         </dl>
 
@@ -578,8 +601,7 @@ onBeforeUnmount(() => {
           <p class="modal-hint">{{ t('kb.shareHint') }}</p>
           <div class="share-row">
             <button type="button" class="ok" @click="makeShare">{{ t('kb.makeShare') }}</button>
-            <strong v-if="shareCode">{{ shareCode }}</strong>
-            <button v-if="shareCode" type="button" class="ghost" @click="copyCode">{{ t('kb.copy') }}</button>
+            <strong v-if="shareCode" class="share-code">{{ shareCode }}</strong>
             <button type="button" class="ghost" @click="downloadNote">{{ t('kb.download') }}</button>
           </div>
           <label class="redeem">
@@ -753,6 +775,11 @@ h2 {
   gap: 6px;
   flex-wrap: wrap;
 }
+.share-code {
+  user-select: text;
+  letter-spacing: 0.08em;
+  font-family: ui-monospace, Consolas, monospace;
+}
 .seg button,
 .cats button {
   border: 1px solid var(--border);
@@ -897,6 +924,23 @@ dt {
   color: var(--text-muted);
   font-size: 12px;
 }
+.recat { grid-column: 1 / -1; }
+.recat dd {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin: 6px 0 0;
+}
+.recat input {
+  height: 34px;
+  min-width: 180px;
+  flex: 1;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  padding: 0 10px;
+}
+.recat em { font-style: normal; font-size: 12px; color: var(--text-muted); }
 .table-wrap {
   overflow-x: auto;
   background: var(--bg-card);

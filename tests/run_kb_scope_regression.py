@@ -18,6 +18,26 @@ def check(name, ok):
     return ok
 
 
+def test_share_reissue():
+    path = os.path.join(tempfile.mkdtemp(prefix="kb-share-"), "knowledge.json")
+    store = KnowledgeStore(path)
+    note_id = store.add("可分享", "正文", owner="alice", scope="private")
+    first = store.issue_share([note_id], "alice")
+    second = store.issue_share([note_id], "alice")
+    shares = store._load_shares()
+    ok = check("短时间重复生成交回同一口令", bool(first) and first == second)
+    ok = check("重复生成不新写口令", len(shares) == 1) and ok
+    other = store.add("另一份", "别的正文", owner="alice", scope="private")
+    third = store.issue_share([other], "alice")
+    ok = check("不同笔记仍可新发口令", third and third != first and len(store._load_shares()) == 2) and ok
+    stale = dict(shares[first])
+    stale["created_at"] = "2020-01-01 00:00:00"
+    store._save_shares({first: stale})
+    fresh = store.issue_share([note_id], "alice")
+    ok = check("超过窗口后可以重新生成", fresh and fresh != first) and ok
+    return ok
+
+
 def test_store():
     path = os.path.join(tempfile.mkdtemp(prefix="kb-scope-"), "knowledge.json")
     with open(path, "w", encoding="utf-8") as f:
@@ -60,7 +80,11 @@ def test_http():
     thread.start()
     try:
         status, payload = request("POST", "/api/knowledge", {"title": "未登录", "content": "x"})
-        ok = check("未登录写入返回 401", status == 401)
+        ok = check("未登录可限量写入且记为游客", status == 200 and payload.get("ok") is True)
+        status, listed = request("GET", "/api/knowledge")
+        ok = check("未登录列表看得到游客自己的资料", any(item.get("title") == "未登录" for item in listed.get("items") or [])) and ok
+        status, _denied = request("POST", "/api/knowledge/share", {"ids": [1]})
+        ok = check("未登录仍不能分享", status == 401) and ok
         status, alice = request("POST", "/api/login", {"username": "alice", "password": "secret1"})
         token = alice["token"]
         request("POST", "/api/knowledge/categories", {"category": "高数"}, token)
@@ -94,5 +118,5 @@ def test_http():
 
 
 if __name__ == "__main__":
-    passed = test_store() and test_http()
+    passed = test_store() and test_share_reissue() and test_http()
     raise SystemExit(0 if passed else 1)

@@ -6,7 +6,7 @@ import json
 import os
 import secrets
 import threading
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from core.paths import data_dir as _resolve_data_dir
 from core.paths import ensure_seed_file
@@ -16,6 +16,8 @@ _DATA_DIR = _resolve_data_dir()
 _KNOWLEDGE_FILE = os.path.join(_DATA_DIR, "knowledge.json")
 _SHARE_FILE = os.path.join(_DATA_DIR, "knowledge_shares.json")
 _SHARE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+# 同一用户、同一组笔记在这个窗口内再点生成，只交回已有口令，不新开一条。
+SHARE_REISSUE_SECONDS = 600
 
 
 class KnowledgeStore:
@@ -87,6 +89,22 @@ class KnowledgeStore:
             data.append(note)
             self._save(data)
             return next_id
+
+    def set_category(self, note_id, category):
+        """把已有笔记改到用户指定的分类。找不到返回 False。"""
+        category = str(category or "").strip()
+        try:
+            note_id = int(note_id)
+        except (TypeError, ValueError):
+            return False
+        with self._lock:
+            data = self._load()
+            for item in data:
+                if item.get("id") == note_id:
+                    item["category"] = category
+                    self._save(data)
+                    return True
+        return False
 
     def normalize(self, item):
         """给旧条目补齐归属字段，只补读取结果，不回写文件。"""
@@ -211,8 +229,36 @@ class KnowledgeStore:
         with open(path, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
 
+    def _recent_share(self, shares, ids, owner, now):
+        """窗口内已经给同一组笔记发过口令，就交回那一条。"""
+        window = timedelta(seconds=SHARE_REISSUE_SECONDS)
+        wanted = list(ids)
+        found = ""
+        found_at = None
+        for code, ticket in (shares or {}).items():
+            if not isinstance(ticket, dict):
+                continue
+            if str(ticket.get("owner") or "").strip() != owner:
+                continue
+            if list(ticket.get("ids") or []) != wanted:
+                continue
+            try:
+                created = datetime.strptime(str(ticket.get("created_at") or ""), "%Y-%m-%d %H:%M:%S")
+            except ValueError:
+                continue
+            if now - created > window:
+                continue
+            if found_at is None or created > found_at:
+                found = code
+                found_at = created
+        return found
+
     def issue_share(self, note_ids, owner):
-        """给一组条目发一个口令。接收方兑换时复制到自己的私有笔记。"""
+        """给一组条目发一个口令。接收方兑换时复制到自己的私有笔记。
+
+        同一用户对同一组笔记在 SHARE_REISSUE_SECONDS 内再请求，
+        返回已有口令，不新写一条。
+        """
         owner = str(owner or "").strip()
         ids = []
         for raw in note_ids or []:
@@ -232,6 +278,10 @@ class KnowledgeStore:
             if not ids:
                 return ""
             shares = self._load_shares()
+            now = datetime.now()
+            existing = self._recent_share(shares, ids, owner, now)
+            if existing:
+                return existing
             for _ in range(8):
                 code = "".join(secrets.choice(_SHARE_ALPHABET) for _ in range(8))
                 if code not in shares:
@@ -241,7 +291,7 @@ class KnowledgeStore:
             shares[code] = {
                 "ids": ids,
                 "owner": owner,
-                "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "created_at": now.strftime("%Y-%m-%d %H:%M:%S"),
             }
             self._save_shares(shares)
             return code
