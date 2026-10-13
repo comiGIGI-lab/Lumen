@@ -3,7 +3,7 @@
  * TraceDrawer —— 日志回放抽屉
  * 直接展示后端 data/trace.log 的内容（与桌面版「📜 历史 / trace 回放」同源）。
  */
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from '@/i18n'
 
 const props = defineProps({
@@ -44,6 +44,25 @@ function dataText(d) {
 }
 
 const fileBase = computed(() => (props.traceFile || '').split(/[\\/]/).pop() || 'trace.log')
+
+/**
+ * Esc 关闭：给「关闭」多一条不依赖鼠标命中的出口。
+ * 起因：抽屉头部原来被固定顶栏（z-index 150 > 抽屉 60）盖住，关闭按钮点不到。
+ */
+function onKeydown(e) {
+  if (e.key === 'Escape') emit('close')
+}
+watch(
+  () => props.open,
+  (v) => {
+    if (typeof window === 'undefined') return
+    if (v) window.addEventListener('keydown', onKeydown)
+    else window.removeEventListener('keydown', onKeydown)
+  },
+)
+onBeforeUnmount(() => {
+  if (typeof window !== 'undefined') window.removeEventListener('keydown', onKeydown)
+})
 </script>
 
 <template>
@@ -109,7 +128,11 @@ const fileBase = computed(() => (props.traceFile || '').split(/[\\/]/).pop() || 
   width: min(560px, 92vw);
   background: #191919;
   color: #e4ded5;
-  z-index: 60;
+  /* ⚠️ 必须高于固定顶栏 .hero（z-index 150）。以前是 60 ⇒ 顶栏盖住抽屉头部，
+     「刷新 / 关闭」看得见却点不到（.hero 没有 pointer-events:none，会吃掉点击）。
+     取 180：高于顶栏 150 / 悬浮窗与总览 160 / 宠物档案 155 / 引导 175，
+     低于真·模态（ModalDialog 200、ExportPreview 220）。 */
+  z-index: 180;
   display: flex;
   flex-direction: column;
   box-shadow: var(--shadow-lg);

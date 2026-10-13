@@ -275,6 +275,10 @@ function goHome() {
   // 「首页」= 回到初始欢迎层。
   // 注意不能走 shouldShowWelcome()：它读 localStorage 的 zjxt.welcomed，
   // 访问过一次就永远返回 false，点了会没反应。
+  //
+  // 顺手关掉日志回放抽屉：回首页会把顶栏 Teleport 到 body（> .app 整个层叠上下文），
+  // 抽屉会重新被顶栏盖住，出现「关不掉」的同类现象。
+  showTrace.value = false
   showGuide.value = false
   appView.value = 'course'
   showWelcome.value = true
