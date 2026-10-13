@@ -785,7 +785,7 @@ def _parse_trace_line(line: str):
     return {"ts": ts, "event": event, "data": data}
 
 
-def stream_pipeline(course: str, profile: dict, use_cache: bool, emit) -> dict:
+def stream_pipeline(course: str, profile: dict, use_cache: bool, emit, owner: str = "") -> dict:
     """在后台线程跑真实流水线，同时把新写入的 trace 行实时推给前端。
 
     参数：
@@ -847,7 +847,7 @@ def stream_pipeline(course: str, profile: dict, use_cache: bool, emit) -> dict:
 
     # 与桌面版一致：写入 progress.json（历史记录 + 进度清单）
     try:
-        progress_store.save_result(course, result)
+        progress_store.save_result(course, result, owner)
     except Exception:
         pass
 
@@ -1346,11 +1346,11 @@ class ApiHandler(BaseHTTPRequestHandler):
                 if course not in client_courses_many(self._owner_keys(query)):
                     return self._send_json(
                         {"ok": False, "error": "该课程不在你的历史记录中"}, 404)
-                result = progress_store.load_result(course)
+                result = progress_store.load_result(course, self._owner_id(query))
                 if not result:
                     return self._send_json({"ok": False, "error": "未找到该课程"}, 404)
                 payload = build_payload(course, result, 0)
-                payload["progress"] = progress_store.get_progress(course)
+                payload["progress"] = progress_store.get_progress(course, self._owner_id(query))
                 return self._send_json(payload)
 
             if path == "/api/progress/overview":
@@ -1363,7 +1363,7 @@ class ApiHandler(BaseHTTPRequestHandler):
                     name = c.get("course")
                     if name not in allowed:
                         continue
-                    d, t, r = progress_store.get_stats(name)
+                    d, t, r = progress_store.get_stats(name, self._owner_id(query))
                     rows.append({
                         "course": name,
                         "done": d,
@@ -1794,7 +1794,7 @@ class ApiHandler(BaseHTTPRequestHandler):
                     return
                 result = run_plan_pipeline(course, profile=profile, use_cache=use_cache)
                 try:
-                    progress_store.save_result(course, result)
+                    progress_store.save_result(course, result, self._owner_id())
                     record_client_course(self._owner_id(), course)
                 except Exception:
                     pass
@@ -1990,7 +1990,7 @@ class ApiHandler(BaseHTTPRequestHandler):
             if path == "/api/export":
                 course = (body.get("course") or "").strip()
                 fmt = (body.get("format") or "markdown").strip().lower()
-                result = body.get("result") or progress_store.load_result(course)
+                result = body.get("result") or progress_store.load_result(course, self._owner_id())
                 if not result:
                     return self._send_json({"ok": False, "error": "没有可导出的方案"}, 400)
                 guard = self._require_user()
@@ -2068,13 +2068,14 @@ class ApiHandler(BaseHTTPRequestHandler):
                 except (TypeError, ValueError):
                     return self._send_json(
                         {"ok": False, "error": "index 必须是整数"}, 400)
-                if not progress_store.set_done(course, kind, index, bool(body.get("done"))):
+                if not progress_store.set_done(
+                        course, self._owner_id(), kind, index, bool(body.get("done"))):
                     return self._send_json(
                         {"ok": False, "error": "未找到该课程或该项越界"}, 404)
-                done, total, ratio = progress_store.get_stats(course)
+                done, total, ratio = progress_store.get_stats(course, self._owner_id())
                 return self._send_json({
                     "ok": True,
-                    "progress": progress_store.get_progress(course),
+                    "progress": progress_store.get_progress(course, self._owner_id()),
                     "stats": {"done": done, "total": total, "ratio": round(ratio, 4)},
                 })
 
@@ -2094,12 +2095,13 @@ class ApiHandler(BaseHTTPRequestHandler):
                 except (TypeError, ValueError):
                     return self._send_json(
                         {"ok": False, "error": "index / importance 必须是整数"}, 400)
-                if not progress_store.set_importance(course, kind, index, importance):
+                if not progress_store.set_importance(
+                        course, self._owner_id(), kind, index, importance):
                     return self._send_json(
                         {"ok": False, "error": "未找到该课程或该项越界"}, 404)
                 return self._send_json({
                     "ok": True,
-                    "progress": progress_store.get_progress(course),
+                    "progress": progress_store.get_progress(course, self._owner_id()),
                 })
 
             if path == "/api/mindmap":
@@ -2369,7 +2371,7 @@ class ApiHandler(BaseHTTPRequestHandler):
                 "stages": STAGE_ORDER,
                 "started_at": time.strftime("%Y-%m-%d %H:%M:%S"),
             })
-            stream_pipeline(course, profile, use_cache, emit)
+            stream_pipeline(course, profile, use_cache, emit, self._owner_id(query))
             try:
                 record_client_course(self._owner_id(query), course)
             except Exception:

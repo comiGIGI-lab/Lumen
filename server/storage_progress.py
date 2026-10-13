@@ -1,13 +1,16 @@
 # -*- coding: utf-8 -*-
 """方案进度 / 历史 / 课程归属存储（MySQL 主）。
 
-- 进度是**全局**的：一门课一行 plan_courses，outline/plan 勾选项在 plan_items，
-  完整方案 result 在 plan_results（与 vendor progress_store 全局模型一致）。
+- 进度按**归属桶 owner** 隔离：一门课一行 plan_courses（课程级注册表），
+  outline/plan 勾选项在 plan_items（带 owner），完整方案 result 在 plan_results
+  （主键 (course_id, owner)）。这样同一课程名、不同账号/浏览器各自存自己的勾选与方案，
+  勾选进度严格跟随个人账户，不再全局共享（修复：勾选不跟随账户）。
+- owner 取值：登录 = "u:<用户名>"，匿名 = client_id（与 wrongbook / mindmap 一致）。
 - 哪桶（"u:<user>" / "c:<id>"）访问过哪门课，记在 course_access —— 替代旧
   client_history.json，api_server 的 record_client_course / client_courses 转调这里。
 
 接口与 vendor/tools/progress_store.py 对齐（save_result / list_courses / load_result /
-get_progress / set_done / delete_course / get_stats），并新增 record_course / courses_of。
+get_progress / set_done / set_importance / delete_course / get_stats），并新增 record_course / courses_of。
 
 注：本模块不提供文件兜底（进度非回归必测项，MySQL 为系统记录源）；
 数据库不可用时抛 db.DbUnavailable，由调用方降级。
@@ -61,7 +64,13 @@ def _course_id(course):
 
 
 # ---------- 进度 ----------
-def save_result(course, result):
+def save_result(course, result, owner=""):
+    """落库一门课的完整方案 + 该归属的勾选项。
+
+    owner 缺省 "" 时退化为旧全局行为（兼容测试 / 迁移），但线上一律传 self._owner_id()。
+    只替换「当前 owner」的 plan_items，不动其他归属的进度；plan_results 按 (course_id, owner) 存，
+    不同账号各自一份、互不覆盖。
+    """
     if not course:
         return
     now = _now_ts()
@@ -72,14 +81,18 @@ def save_result(course, result):
     new_plan = _plan_to_progress((result or {}).get("plan", []))
 
     if existed:
-        # 保留旧勾选状态（按索引对齐）
-        old = get_progress(course)
+        # 保留当前归属的旧勾选 / 重要度（按索引对齐）
+        old = get_progress(course, owner)
         old_out = [x.get("done", False) for x in old.get("outline", [])]
         old_pl = [x.get("done", False) for x in old.get("plan", [])]
+        old_out_imp = [int(x.get("importance", 0) or 0) for x in old.get("outline", [])]
+        old_pl_imp = [int(x.get("importance", 0) or 0) for x in old.get("plan", [])]
         for i, it in enumerate(new_outline):
             it["done"] = bool(old_out[i]) if i < len(old_out) else False
+            it["importance"] = old_out_imp[i] if i < len(old_out_imp) else 0
         for i, it in enumerate(new_plan):
             it["done"] = bool(old_pl[i]) if i < len(old_pl) else False
+            it["importance"] = old_pl_imp[i] if i < len(old_pl_imp) else 0
 
     conn = db.get_conn()
     try:
@@ -92,20 +105,22 @@ def save_result(course, result):
                     "INSERT INTO plan_courses (course, created_at, last_seen_at) "
                     "VALUES (%s,%s,%s)", (course, now, now))
                 cid = cur.lastrowid
-            # 替换勾选项
-            cur.execute("DELETE FROM plan_items WHERE course_id=%s", (cid,))
+            # 结果（按归属隔离）
+            blob = json.dumps(result, ensure_ascii=False)
+            cur.execute(
+                "INSERT INTO plan_results (course_id, owner, result_json, generated_at) "
+                "VALUES (%s,%s,%s,%s) ON DUPLICATE KEY UPDATE result_json=%s, generated_at=%s",
+                (cid, owner, blob, now, blob, now))
+            # 勾选项：只替换当前归属的行，保留其他归属的进度
+            cur.execute("DELETE FROM plan_items WHERE course_id=%s AND owner=%s", (cid, owner))
             for kind, items in (("outline", new_outline), ("plan", new_plan)):
                 for idx, it in enumerate(items):
                     cur.execute(
-                        "INSERT INTO plan_items (course_id, kind, title, done, sort_order) "
-                        "VALUES (%s,%s,%s,%s,%s)",
-                        (cid, kind, it["title"], 1 if it["done"] else 0, idx))
-            # result
-            blob = json.dumps(result, ensure_ascii=False)
-            cur.execute(
-                "INSERT INTO plan_results (course_id, result_json, generated_at) "
-                "VALUES (%s,%s,%s) ON DUPLICATE KEY UPDATE result_json=%s, generated_at=%s",
-                (cid, blob, now, blob, now))
+                        "INSERT INTO plan_items "
+                        "(course_id, owner, kind, title, done, importance, sort_order) "
+                        "VALUES (%s,%s,%s,%s,%s,%s,%s)",
+                        (cid, owner, kind, it["title"],
+                         1 if it["done"] else 0, int(it.get("importance", 0) or 0), idx))
         conn.commit()
     finally:
         conn.close()
@@ -126,14 +141,16 @@ def list_courses():
              "last_seen_at": _fmt_ts(r[2])} for r in rows]
 
 
-def load_result(course):
+def load_result(course, owner=""):
     cid = _course_id(course)
     if not cid:
         return None
     conn = db.get_conn()
     try:
         with conn.cursor() as cur:
-            cur.execute("SELECT result_json FROM plan_results WHERE course_id=%s", (cid,))
+            cur.execute(
+                "SELECT result_json FROM plan_results WHERE course_id=%s AND owner=%s",
+                (cid, owner))
             r = cur.fetchone()
     finally:
         conn.close()
@@ -145,7 +162,7 @@ def load_result(course):
         return None
 
 
-def get_progress(course):
+def get_progress(course, owner=""):
     cid = _course_id(course)
     if not cid:
         return {"outline": [], "plan": []}
@@ -153,19 +170,20 @@ def get_progress(course):
     try:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT kind, title, done FROM plan_items WHERE course_id=%s "
-                "ORDER BY kind, sort_order", (cid,))
+                "SELECT kind, title, done, importance FROM plan_items "
+                "WHERE course_id=%s AND owner=%s ORDER BY kind, sort_order",
+                (cid, owner))
             rows = cur.fetchall()
     finally:
         conn.close()
     outline, plan = [], []
-    for kind, title, done in rows:
-        item = {"title": title, "done": bool(done)}
+    for kind, title, done, importance in rows:
+        item = {"title": title, "done": bool(done), "importance": int(importance or 0)}
         (outline if kind == "outline" else plan).append(item)
     return {"outline": outline, "plan": plan}
 
 
-def set_done(course, kind, index, done):
+def set_done(course, owner, kind, index, done):
     cid = _course_id(course)
     if not cid or kind not in ("outline", "plan"):
         return False
@@ -173,8 +191,31 @@ def set_done(course, kind, index, done):
     try:
         with conn.cursor() as cur:
             cur.execute(
-                "UPDATE plan_items SET done=%s WHERE course_id=%s AND kind=%s AND sort_order=%s",
-                (1 if done else 0, cid, kind, index))
+                "UPDATE plan_items SET done=%s "
+                "WHERE course_id=%s AND owner=%s AND kind=%s AND sort_order=%s",
+                (1 if done else 0, cid, owner, kind, index))
+            affected = cur.rowcount
+            if affected:
+                cur.execute("UPDATE plan_courses SET last_seen_at=%s WHERE id=%s",
+                            (_now_ts(), cid))
+        conn.commit()
+        return affected > 0
+    finally:
+        conn.close()
+
+
+def set_importance(course, owner, kind, index, importance):
+    """标注大纲/计划某项的重要程度：普通(0)/重点(1)/核心(2)。按归属隔离。"""
+    cid = _course_id(course)
+    if not cid or kind not in ("outline", "plan"):
+        return False
+    conn = db.get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE plan_items SET importance=%s "
+                "WHERE course_id=%s AND owner=%s AND kind=%s AND sort_order=%s",
+                (int(importance or 0), cid, owner, kind, index))
             affected = cur.rowcount
             if affected:
                 cur.execute("UPDATE plan_courses SET last_seen_at=%s WHERE id=%s",
@@ -200,8 +241,8 @@ def delete_course(course):
         conn.close()
 
 
-def get_stats(course):
-    info = get_progress(course)
+def get_stats(course, owner=""):
+    info = get_progress(course, owner)
     outline = info["outline"]
     plan = info["plan"]
     total = len(outline) + len(plan)

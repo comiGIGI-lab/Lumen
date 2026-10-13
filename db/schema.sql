@@ -56,25 +56,30 @@ CREATE TABLE IF NOT EXISTS plan_courses (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ---------- 方案大纲 / 计划勾选项 ----------
+-- owner 归属桶（"u:<用户名>" 或 client_id），保证勾选/重点标注跟随个人账户隔离。
 CREATE TABLE IF NOT EXISTS plan_items (
     id           INT          NOT NULL AUTO_INCREMENT,
     course_id    INT          NOT NULL,
+    owner        VARCHAR(96)  NOT NULL DEFAULT '',
     kind         ENUM('outline','plan') NOT NULL,
     title        VARCHAR(512) NOT NULL DEFAULT '',
     done         TINYINT(1)   NOT NULL DEFAULT 0,
+    importance   TINYINT(1)   NOT NULL DEFAULT 0,
     sort_order   INT          NOT NULL DEFAULT 0,
     PRIMARY KEY (id),
     KEY idx_pi_course (course_id),
+    KEY idx_pi_owner (owner, course_id),
     CONSTRAINT fk_pi_course FOREIGN KEY (course_id)
         REFERENCES plan_courses (id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- ---------- 方案结果（全局，课程级）----------
+-- ---------- 方案结果（按归属隔离：同一课程不同账号/浏览器各自存一份）----------
 CREATE TABLE IF NOT EXISTS plan_results (
     course_id    INT          NOT NULL,
+    owner        VARCHAR(96)  NOT NULL DEFAULT '',
     result_json  LONGTEXT     NULL,
     generated_at BIGINT       NOT NULL DEFAULT 0,
-    PRIMARY KEY (course_id),
+    PRIMARY KEY (course_id, owner),
     CONSTRAINT fk_pr_course FOREIGN KEY (course_id)
         REFERENCES plan_courses (id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

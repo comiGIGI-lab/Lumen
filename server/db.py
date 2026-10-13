@@ -108,6 +108,8 @@ def ensure_schema(schema_path=None):
             for stmt in _split_statements(sql):
                 if stmt.strip():
                     cur.execute(stmt)
+            # 既有库补齐进度归属列（幂等，不破坏已存在结构）
+            _ensure_progress_owner_columns(cur)
         conn.commit()
     finally:
         conn.close()
@@ -127,3 +129,41 @@ def _split_statements(sql):
     if buf:
         out.append("\n".join(buf))
     return out
+
+
+def _ensure_progress_owner_columns(cur):
+    """为既有库补齐进度表的 owner / importance 列与复合主键（幂等）。
+
+    新库由 schema.sql 直接建好，这里对老库做 ALTER：
+      - plan_items 加 owner / importance，并加索引 idx_pi_owner(owner, course_id)
+      - plan_results 加 owner，并把主键改为 (course_id, owner)
+    老库里既有的全局行 owner 留空 ''，新写入按归属隔离，互不影响。
+    """
+    def _has_col(table, col):
+        cur.execute(
+            "SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS "
+            "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME=%s AND COLUMN_NAME=%s",
+            (table, col))
+        return cur.fetchone() is not None
+
+    if not _has_col("plan_items", "owner"):
+        cur.execute(
+            "ALTER TABLE plan_items ADD COLUMN owner VARCHAR(96) NOT NULL DEFAULT ''")
+    if not _has_col("plan_items", "importance"):
+        cur.execute(
+            "ALTER TABLE plan_items ADD COLUMN importance TINYINT(1) NOT NULL DEFAULT 0")
+    cur.execute("SHOW INDEX FROM plan_items WHERE Key_name='idx_pi_owner'")
+    if cur.fetchone() is None:
+        cur.execute(
+            "ALTER TABLE plan_items ADD KEY idx_pi_owner (owner, course_id)")
+
+    if not _has_col("plan_results", "owner"):
+        cur.execute(
+            "ALTER TABLE plan_results ADD COLUMN owner VARCHAR(96) NOT NULL DEFAULT ''")
+        # 旧库 plan_results 主键是 (course_id)；改为复合主键前先卸掉
+        try:
+            cur.execute("ALTER TABLE plan_results DROP PRIMARY KEY")
+        except Exception:
+            pass
+        cur.execute(
+            "ALTER TABLE plan_results ADD PRIMARY KEY (course_id, owner)")
