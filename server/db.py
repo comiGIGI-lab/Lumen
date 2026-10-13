@@ -160,10 +160,36 @@ def _ensure_progress_owner_columns(cur):
     if not _has_col("plan_results", "owner"):
         cur.execute(
             "ALTER TABLE plan_results ADD COLUMN owner VARCHAR(96) NOT NULL DEFAULT ''")
-        # 旧库 plan_results 主键是 (course_id)；改为复合主键前先卸掉
-        try:
-            cur.execute("ALTER TABLE plan_results DROP PRIMARY KEY")
-        except Exception:
-            pass
+
+    # 主键要改成 (course_id, owner)。⚠️ 两个坑（2026-10-13 线上踩过）：
+    #   1) 老库 plan_results 上有外键 fk_pr_course 指着 course_id，而 MySQL
+    #      **不允许删掉外键所依赖的索引**（旧主键就是它）——必须先卸外键。
+    #   2) 原来把 DROP PRIMARY KEY 包在 `except Exception: pass` 里，异常被吞掉后
+    #      紧接的 ADD PRIMARY KEY 报 1068 Multiple primary key defined，
+    #      导致整个 ensure_schema 抛错、**全库退回 JSON 兜底**（静默降级）。
+    # 改成：按 INFORMATION_SCHEMA 判断主键是否已含 owner（幂等 + 可自愈），
+    # 需要改时严格按「卸外键 → 卸主键 → 建复合主键 → 重建外键」四步来，不吞异常。
+    cur.execute(
+        "SELECT GROUP_CONCAT(column_name ORDER BY seq_in_index) "
+        "FROM INFORMATION_SCHEMA.STATISTICS "
+        "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'plan_results' "
+        "AND index_name = 'PRIMARY'")
+    row = cur.fetchone()
+    pk_cols = (row[0] if row and row[0] else "") or ""
+    if "owner" not in pk_cols:
+        cur.execute(
+            "SELECT constraint_name FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE "
+            "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'plan_results' "
+            "AND referenced_table_name IS NOT NULL LIMIT 1")
+        fk_row = cur.fetchone()
+        fk_name = fk_row[0] if fk_row else None
+        if fk_name:
+            cur.execute("ALTER TABLE plan_results DROP FOREIGN KEY %s" % fk_name)
+        cur.execute("ALTER TABLE plan_results DROP PRIMARY KEY")
         cur.execute(
             "ALTER TABLE plan_results ADD PRIMARY KEY (course_id, owner)")
+        if fk_name:
+            cur.execute(
+                "ALTER TABLE plan_results ADD CONSTRAINT fk_pr_course "
+                "FOREIGN KEY (course_id) REFERENCES plan_courses (id) "
+                "ON DELETE CASCADE")
