@@ -163,6 +163,29 @@ const MANUAL = {
       export: '导出方案',
       generate: '生成方案',
     },
+    // ⚠️ 以下两组是 2026-10-13 二次补回：562ba52 首次加入的 MANUAL 条目，
+    //    在本仓库的一次整文件覆盖（numstat +45/-121）中被删除且未迁移到 auto-*，
+    //    导致英文界面回退成中文。改本文件请用增量编辑，**不要拿旧副本整体覆盖**。
+    settingsDialog: {
+      mockInline: '内置模板，适合先体验',
+      collapse: '收起',
+      expandNeedKey: '填写后才会调用在线模型',
+      expandUnused: '体验模式用不到，需要时再展开',
+    },
+    // 选项值仍是中文（后端契约 + localStorage 既有数据），这里只放显示文案
+    courseForm: {
+      levelBeginner: '入门',
+      levelMid: '进阶',
+      levelHigh: '熟练',
+      goalExam: '考试',
+      goalProject: '项目',
+      goalInterest: '兴趣',
+      goalPostgrad: '考研',
+      goalCert: '考证',
+      goalOther: '其他',
+      minutes: '{n} 分',
+      hours: '{n} 小时',
+    },
   },
 
   'en-US': {
@@ -309,6 +332,25 @@ const MANUAL = {
       days: 'Study Plan',
       export: 'Export',
       generate: 'Generate',
+    },
+    settingsDialog: {
+      mockInline: 'Built-in templates, good for a first look',
+      collapse: 'Collapse',
+      expandNeedKey: 'The online model is called only after you fill these in',
+      expandUnused: 'Not needed in trial mode \u2014 expand when required',
+    },
+    courseForm: {
+      levelBeginner: 'Beginner',
+      levelMid: 'Intermediate',
+      levelHigh: 'Advanced',
+      goalExam: 'Exam',
+      goalProject: 'Project',
+      goalInterest: 'Interest',
+      goalPostgrad: 'Postgrad exam',
+      goalCert: 'Certificate exam',
+      goalOther: 'Other',
+      minutes: '{n} min',
+      hours: '{n} h',
     },
   },
 }

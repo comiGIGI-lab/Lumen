@@ -260,7 +260,7 @@ async function clearCache() {
     <section class="block">
       <div class="block-head">
         <h4>{{ t('settingsDialog.3') }}</h4>
-        <span class="block-sub">{{ isLLM ? t('settingsDialog.4') : '内置模板，适合先体验' }}</span>
+        <span class="block-sub">{{ isLLM ? t('settingsDialog.4') : t('settingsDialog.mockInline') }}</span>
       </div>
       <div class="seg">
         <button
@@ -283,7 +283,7 @@ async function clearCache() {
     <section class="block" :class="{ 'llm-collapsed': !showLlmForm }">
       <button type="button" class="block-head llm-toggle" :aria-expanded="showLlmForm" @click="showLlmForm = !showLlmForm">
         <h4>{{ t('settingsDialog.7') }}</h4>
-        <span class="block-sub">{{ showLlmForm ? '收起' : (isLLM ? '填写后才会调用在线模型' : '体验模式用不到，需要时再展开') }}</span>
+        <span class="block-sub">{{ showLlmForm ? t('settingsDialog.collapse') : (isLLM ? t('settingsDialog.expandNeedKey') : t('settingsDialog.expandUnused')) }}</span>
       </button>
 
       <template v-if="showLlmForm">
