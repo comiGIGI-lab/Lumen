@@ -11,11 +11,16 @@ import { keyedStorage } from '@/composables/ownerTag'
 export const PET_KEY = 'zjxt.pet'
 
 /**
- * 经验来源：
- * - 自习计时按分钟给，每分钟 1 经验，完整跑完才结算（暂停 / 放弃不给）；
+ * 经验来源（各模块经验梯度 / 关联强化，见 usePet 导出常量）：
+ * - 自习：每分钟 1 经验，完整跑完才结算；单次时长越长给「聚焦加成」（≥20 分钟 +5，≥40 分钟 +15）；
  *   当天第一次完整自习额外 +10（按本地日期记在 zjxt.pet.bonusDate）。
- * - 生成一次学习方案 +40，每天只有前两次生成给经验，之后不给。
- * - 课程问答不给。
+ * - 方案生成：基础 +40，章节越多「规模梯度」越多（超出 3 章后每章 +2，上限 +20），每天前两次给；
+ *   生成方案同时对「自习」发放一笔「关联强化·自习」聚焦加成。
+ * - 答题闯关：每答对 1 题的基础经验随难度递增（易 2 / 中 3 / 难 4），再乘正确率倍率（≥90% ×1.3，
+ *   ≥70% ×1.1，≥50% ×1.0，更低 ×0.8）。
+ * - 错题巩固（错题本重做）：每答对 1 题 +3（高于新题，鼓励复习）；重做正确率 ≥60% 时对「答题闯关」
+ *   发放「关联强化·答题闯关」加成。
+ * - 课程问答不给（仅留痕）。
  * 升级曲线：第 N 级升 N+1 需要 40 + 20×(N-1)。
  *
  * 进化两段：Lv5 开放进阶形态；首次进化后下一段（究极形态）门槛 Lv30，
@@ -31,6 +36,24 @@ export const XP_PLAN = 40
 export const XP_PLAN_DAILY_CAP = 2
 export const XP_IMPORT_KB = 15
 export const XP_QUIZ_PER_Q = 2
+
+// —— 各模块经验梯度 / 关联强化（Feature D）——
+// 答题：每答对 1 题的基础经验随难度递增
+export const XP_QUIZ_DIFF = { easy: 2, medium: 3, hard: 4 }
+// 错题巩固：重做错题每答对 1 题的经验（高于新题，鼓励复习）
+export const XP_WRONGBOOK_CONSOLIDATE = 3
+// 关联强化：错题重做 → 答题闯关（每答对 1 题）
+export const XP_REINFORCE_QUIZ_PER = 1
+// 关联强化：生成方案 → 自习（规划聚焦加成，每天随前两次方案发放）
+export const XP_REINFORCE_STUDY = 8
+// 方案规模梯度：超出 3 章后每章 +2（上限 +20）
+export const XP_PLAN_CHAPTER_BONUS = 2
+export const XP_PLAN_CHAPTER_BONUS_CAP = 20
+// 自习时长梯度：单次完整自习达到阈值给额外聚焦加成
+export const XP_STUDY_FOCUS_TIERS = [
+  { min: 40, bonus: 15 },
+  { min: 20, bonus: 5 },
+]
 
 /** Lv5 起开放进阶形态；选「保持」后每次升级仍会再问 */
 export const EVOLVE_LEVEL = 5
@@ -136,6 +159,28 @@ export const PETS = [
 /** 升到下一级需要的经验：等级越高要得越多 */
 export function expNeed(level) {
   return 40 + Math.max(0, level - 1) * 20
+}
+
+/** 答题正确率经验倍率：越高给越多，过低则打折，鼓励认真而非刷量 */
+export function quizAccMult(accuracy) {
+  const a = Math.max(0, Math.min(1, Number(accuracy) || 0))
+  if (a >= 0.9) return 1.3
+  if (a >= 0.7) return 1.1
+  if (a >= 0.5) return 1.0
+  return 0.8
+}
+/** 单次完整自习的时长聚焦加成（深度自习额外经验） */
+export function studyFocusBonus(minutes) {
+  const m = Math.max(0, Math.round(Number(minutes) || 0))
+  for (const tier of XP_STUDY_FOCUS_TIERS) {
+    if (m >= tier.min) return tier.bonus
+  }
+  return 0
+}
+/** 方案规模梯度：章节越多规划越细致，经验越多（有上限） */
+export function planScopeBonus(chapters) {
+  const n = Math.max(0, Math.round(Number(chapters) || 0))
+  return Math.min(XP_PLAN_CHAPTER_BONUS_CAP, Math.max(0, n - 3) * XP_PLAN_CHAPTER_BONUS)
 }
 
 /**
@@ -418,8 +463,8 @@ function grantStudyExp(minutes) {
   const gain = Math.max(0, Math.round(Number(minutes) || 0))
   if (gain <= 0) return
   const today = todayStr()
-  // 自习按分钟累加经验
-  logExp('自习', gain * XP_STUDY_PER_MIN)
+  // 自习：每分钟 1 经验 + 时长聚焦加成（深度自习额外给）
+  logExp('自习', gain * XP_STUDY_PER_MIN + studyFocusBonus(gain))
   if (pet.bonusDate !== today) {
     // 当天首次完整自习额外 +10（独立一条成长记录）
     pet.bonusDate = today
@@ -429,7 +474,7 @@ function grantStudyExp(minutes) {
 }
 
 /** 生成一次学习方案：每天前 XP_PLAN_DAILY_CAP 次给经验，之后不给 */
-function grantPlanExp() {
+function grantPlanExp(chapters = 0) {
   if (!hasPet.value) return
   const today = todayStr()
   if (pet.planDate !== today) {
@@ -438,7 +483,9 @@ function grantPlanExp() {
   }
   if (pet.planCount >= XP_PLAN_DAILY_CAP) return
   pet.planCount += 1
-  logExp('方案生成', XP_PLAN)
+  // 方案生成：基础 40 + 规模梯度（章节越多越多）；规划让自习更高效 → 关联强化「自习」
+  logExp('方案生成', XP_PLAN + planScopeBonus(chapters))
+  logExp('关联强化·自习', XP_REINFORCE_STUDY)
 }
 
 function keepForm() {
@@ -489,6 +536,16 @@ export function usePet() {
     XP_PLAN_DAILY_CAP,
     XP_IMPORT_KB,
     XP_QUIZ_PER_Q,
+    XP_QUIZ_DIFF,
+    XP_WRONGBOOK_CONSOLIDATE,
+    XP_REINFORCE_QUIZ_PER,
+    XP_REINFORCE_STUDY,
+    XP_PLAN_CHAPTER_BONUS,
+    XP_PLAN_CHAPTER_BONUS_CAP,
+    XP_STUDY_FOCUS_TIERS,
+    quizAccMult,
+    studyFocusBonus,
+    planScopeBonus,
     EVOLVE_LEVEL,
     EVOLVE2_LEVEL,
     STREAK_POOL_MAX,

@@ -13,12 +13,14 @@
 import { computed, onMounted, ref } from 'vue'
 import { api } from '@/api/client'
 import { useI18n } from '@/i18n'
+import { usePet } from '@/composables/usePet'
 
 const emit = defineEmits(['back', 'go-course', 'notify'])
 defineProps({
   embedded: { type: Boolean, default: false },
 })
 const { t } = useI18n()
+const { logExp, XP_WRONGBOOK_CONSOLIDATE, XP_REINFORCE_QUIZ_PER, quizAccMult } = usePet()
 
 const loading = ref(false)
 const items = ref([])
@@ -192,10 +194,290 @@ function resetFilter() {
   typeFilter.value = ''
   load()
 }
+
+// ---------------- 错题重做 ----------------
+// 取当前筛选出的全部错题，交给后端为每道生成一道同知识点的新题，再复用答题 / 判分 / 复盘。
+const redo = ref({
+  active: false,
+  loading: false,
+  error: '',
+  quiz: null, // { quiz_id, course, difficulty, questions:[...] }（无答案）
+  index: 0,
+  picked: null,
+  judged: null, // api.quizGrade 响应
+  results: [], // [{id, correct, knowledge_point}]
+  finished: false,
+  report: null,
+  awarded: false, // 重做结算经验只发一次
+})
+const redoDiff = ref('medium')
+const RE_DO_DIFFS = [{ key: 'easy' }, { key: 'medium' }, { key: 'hard' }]
+
+const redoCurrent = computed(() =>
+  redo.value.quiz ? redo.value.quiz.questions[redo.value.index] : null)
+const redoTotal = computed(() =>
+  redo.value.quiz ? redo.value.quiz.questions.length : 0)
+
+function redoTypeLabel(q) {
+  const k = QTYPE_KEYS[q]
+  return k ? t(k) : ''
+}
+
+function startRedo() {
+  if (!items.value.length) return
+  redo.value = {
+    active: true, loading: true, error: '', quiz: null,
+    index: 0, picked: null, judged: null, results: [], finished: false, report: null, awarded: false,
+  }
+  const ids = items.value.map((i) => i.id)
+  api.quizFromWrongbook(ids, redoDiff.value)
+    .then((res) => {
+      if (!res.ok) {
+        redo.value.error = res.error || t('wrongBookRedo.genFail')
+        redo.value.loading = false
+        return
+      }
+      redo.value.quiz = res
+      redo.value.loading = false
+    })
+    .catch((e) => {
+      redo.value.error = `${t('wrongBookRedo.genFail')}：${e.message}`
+      redo.value.loading = false
+    })
+}
+
+function redoSelect(key) {
+  if (redo.value.judged) return
+  redo.value.picked = key
+}
+function redoToggleMulti(key) {
+  if (redo.value.judged) return
+  const arr = Array.isArray(redo.value.picked) ? redo.value.picked.slice() : []
+  const i = arr.indexOf(key)
+  if (i >= 0) arr.splice(i, 1)
+  else arr.push(key)
+  redo.value.picked = arr
+}
+function redoIsPicked(key) {
+  const cur = redoCurrent.value
+  if (!cur) return false
+  if (cur.type === 'multi') return Array.isArray(redo.value.picked) && redo.value.picked.includes(key)
+  return redo.value.picked === key
+}
+function redoSelectedForSubmit() {
+  const cur = redoCurrent.value
+  if (!cur) return null
+  if (cur.type === 'multi') return Array.isArray(redo.value.picked) ? redo.value.picked : []
+  return redo.value.picked
+}
+async function redoSubmit() {
+  const cur = redoCurrent.value
+  if (!cur) return
+  const sel = redoSelectedForSubmit()
+  if (cur.type === 'multi') {
+    if (!Array.isArray(sel) || sel.length < 1) {
+      emit('notify', { type: 'warn', text: t('quizPage.errPickAtLeast') })
+      return
+    }
+  } else if (cur.type === 'judge') {
+    if (sel !== '0' && sel !== '1') {
+      emit('notify', { type: 'warn', text: t('quizPage.errPickOne') })
+      return
+    }
+  } else if (!sel) {
+    emit('notify', { type: 'warn', text: t('quizPage.errPickOne') })
+    return
+  }
+  try {
+    const g = await api.quizGrade(redo.value.quiz.quiz_id, cur.id, sel)
+    redo.value.judged = g
+    redo.value.results.push({ id: cur.id, correct: g.correct, knowledge_point: g.knowledge_point })
+  } catch (e) {
+    emit('notify', { type: 'error', text: `${t('quizPage.errGrade')}：${e.message}` })
+  }
+}
+function redoIsCorrectKey(key) {
+  const j = redo.value.judged
+  if (!j) return false
+  const a = j.answer
+  if (Array.isArray(a)) return a.includes(key)
+  return String(a) === String(key)
+}
+function redoFmtAnswer(ans, type) {
+  if (type === 'judge') return ans === 1 ? t('quizPage.judgeWrong') : t('quizPage.judgeRight')
+  if (Array.isArray(ans)) return ans.join('')
+  return ans
+}
+async function redoNext() {
+  redo.value.judged = null
+  redo.value.picked = null
+  const q = redo.value.quiz
+  if (!q) return
+  if (redo.value.index + 1 >= q.questions.length) {
+    if (redo.value.awarded) {
+      redo.value.finished = true
+      return
+    }
+    redo.value.finished = true
+    // 经验梯度 + 关联强化：重做错题按正确率巩固，正确率够高则强化「答题闯关」
+    const totalQ = redo.value.results.length
+    const correctQ = redo.value.results.filter((r) => r.correct).length
+    const acc = totalQ > 0 ? correctQ / totalQ : 0
+    // 错题巩固：复习每答对 1 题的巩固经验（高于新题）
+    logExp('错题巩固', Math.round(correctQ * XP_WRONGBOOK_CONSOLIDATE))
+    // 关联强化：重做错题直接强化「答题闯关」
+    if (acc >= 0.6) {
+      logExp('关联强化·答题闯关', Math.round(correctQ * XP_REINFORCE_QUIZ_PER * quizAccMult(acc)))
+    }
+    redo.value.awarded = true
+    try {
+      redo.value.report = await api.quizReport(q.quiz_id)
+    } catch (e) {
+      redo.value.report = null
+      emit('notify', { type: 'error', text: `${t('quizPage.errReport')}：${e.message}` })
+    }
+    return
+  }
+  redo.value.index += 1
+}
+function exitRedo() {
+  redo.value = {
+    active: false, loading: false, error: '', quiz: null,
+    index: 0, picked: null, judged: null, results: [], finished: false, report: null, awarded: false,
+  }
+  load()
+}
 </script>
 
 <template>
-  <section class="wb">
+  <!-- 错题重做：取当前筛选出的错题，为每道生成同知识点新题并复用答题 / 判分 / 复盘 -->
+  <section v-if="redo.active" class="wb">
+    <header class="wb-head">
+      <div>
+        <p class="kicker">Redo</p>
+        <h1>{{ t('wrongBookRedo.title') }}</h1>
+        <p class="sub">{{ t('wrongBookRedo.countHint', { n: redoTotal }) }}</p>
+      </div>
+      <div class="head-actions">
+        <button type="button" class="btn btn-ghost" @click="exitRedo">{{ t('wrongBookRedo.back') }}</button>
+      </div>
+    </header>
+
+    <div v-if="redo.loading" class="empty">{{ t('wrongBookRedo.loading') }}</div>
+
+    <div v-else-if="redo.error" class="empty">
+      <p class="e-ico">⚠️</p>
+      <p class="e-title">{{ redo.error }}</p>
+      <button type="button" class="btn btn-primary" @click="exitRedo">{{ t('wrongBookRedo.back') }}</button>
+    </div>
+
+    <!-- 答题中 -->
+    <div v-else-if="redo.quiz && !redo.finished" class="quiz-redo">
+      <div class="q-meta">
+        <span>{{ redo.index + 1 }} / {{ redoTotal }}</span>
+        <span>{{ t('quizPage.diff.' + redo.quiz.difficulty) }}</span>
+        <span v-if="redoCurrent" class="q-type">{{ redoTypeLabel(redoCurrent.type) }}</span>
+      </div>
+      <p class="q-stem">{{ redoCurrent && redoCurrent.stem }}</p>
+
+      <template v-if="redoCurrent && redoCurrent.type !== 'multi'">
+        <button
+          v-for="o in redoCurrent.options"
+          :key="o.key"
+          type="button"
+          class="opt"
+          :class="{
+            picked: redoIsPicked(o.key) && !redo.judged,
+            right: redo.judged && redoIsCorrectKey(o.key),
+            wrong: redo.judged && !redo.judged.correct && redoIsPicked(o.key),
+          }"
+          :disabled="!!redo.judged"
+          @click="redoSelect(o.key)"
+        >
+          <b>{{ o.key }}</b> {{ o.text }}
+        </button>
+      </template>
+      <template v-else>
+        <button
+          v-for="o in redoCurrent.options"
+          :key="o.key"
+          type="button"
+          class="opt"
+          :class="{
+            picked: redoIsPicked(o.key) && !redo.judged,
+            right: redo.judged && redoIsCorrectKey(o.key),
+            wrong: redo.judged && !redo.judged.correct && redoIsPicked(o.key),
+          }"
+          :disabled="!!redo.judged"
+          @click="redoToggleMulti(o.key)"
+        >
+          <b>{{ o.key }}</b> {{ o.text }}
+          <span v-if="redoIsPicked(o.key)" class="chk">✓</span>
+        </button>
+      </template>
+
+      <div v-if="redoCurrent && !redo.judged" class="q-actions">
+        <button type="button" class="btn btn-accent" @click="redoSubmit">{{ t('quizPage.submit') }}</button>
+      </div>
+      <div v-else-if="redo.judged" class="verdict" :class="redo.judged.correct ? 'good' : 'bad'">
+        <p class="v-line">
+          <b>{{ redo.judged.correct ? t('quizPage.right') : t('quizPage.wrong') }}</b>
+          <span v-if="!redo.judged.correct"> · {{ t('quizPage.answerIs') }} {{ redoFmtAnswer(redo.judged.answer, redo.judged.type) }}</span>
+        </p>
+        <p class="v-exp">{{ redo.judged.explanation }}</p>
+        <p class="v-kp">{{ t('quizPage.kp') }}：{{ redo.judged.knowledge_point }}</p>
+        <button type="button" class="btn btn-accent" @click="redoNext">
+          {{ redo.index + 1 >= redoTotal ? t('quizPage.finish') : t('quizPage.next') }}
+        </button>
+      </div>
+    </div>
+
+    <!-- 复盘 -->
+    <div v-else-if="redo.finished" class="summary">
+      <p v-if="!redo.report" class="muted">{{ t('quizPage.reportGenerating') }}</p>
+      <template v-else>
+        <div class="report-card">
+          <p class="s-score">{{ t('wrongBookRedo.scoreLine', { score: redo.report.score, total: redo.report.total }) }}</p>
+          <p class="s-sub">{{ t('quizPage.reportAccuracy') }}：{{ Math.round(redo.report.accuracy * 100) }}%</p>
+        </div>
+
+        <div class="replay">
+          <p class="s-label">{{ t('quizPage.reportReplay') }}</p>
+          <div
+            v-for="(it, i) in redo.report.questions"
+            :key="it.id"
+            class="replay-item"
+            :class="it.correct ? 'good' : 'bad'"
+          >
+            <p class="r-stem">{{ i + 1 }}. {{ it.stem }}</p>
+            <p class="r-line">
+              <span :class="it.correct ? 'good' : 'bad'">{{ it.correct ? t('quizPage.right') : t('quizPage.wrong') }}</span>
+              · {{ t('quizPage.reportUser') }}：{{ redoFmtAnswer(it.user_answer, it.type) }}
+              · {{ t('quizPage.reportAnswer') }}：{{ redoFmtAnswer(it.correct_answer, it.type) }}
+            </p>
+            <p class="r-exp">{{ it.explanation }}</p>
+            <p class="r-kp">{{ t('quizPage.kp') }}：{{ it.knowledge_point }}</p>
+          </div>
+        </div>
+
+        <div class="weak" v-if="redo.report.weak_points && redo.report.weak_points.length">
+          <p class="s-label">{{ t('quizPage.reportWeak') }}</p>
+          <ul>
+            <li v-for="w in redo.report.weak_points" :key="w.knowledge_point">
+              {{ w.knowledge_point }}（错 {{ w.wrong }} 次）
+            </li>
+          </ul>
+        </div>
+
+        <div class="q-actions">
+          <button type="button" class="btn btn-accent" @click="exitRedo">{{ t('wrongBookRedo.back') }}</button>
+        </div>
+        <p class="muted centered">{{ t('wrongBookRedo.done') }}</p>
+      </template>
+    </div>
+  </section>
+
+  <section v-if="!redo.active" class="wb">
     <header v-if="!embedded" class="wb-head">
       <div>
         <p class="kicker">Wrong book</p>
@@ -204,6 +486,12 @@ function resetFilter() {
       </div>
       <div class="head-actions">
         <button type="button" class="btn btn-primary" @click="openAdd">{{ t('wrongBookPage.10') }}</button>
+        <template v-if="!embedded && items.length">
+          <select v-model="redoDiff" class="f-select" :title="t('wrongBookRedo.diffLabel')">
+            <option v-for="d in RE_DO_DIFFS" :key="d.key" :value="d.key">{{ t('quizPage.diff.' + d.key) }}</option>
+          </select>
+          <button type="button" class="btn btn-secondary" @click="startRedo">{{ t('wrongBookRedo.title') }}</button>
+        </template>
         <button v-if="!embedded" type="button" class="btn btn-ghost" @click="emit('back')">{{ t('wrongBookPage.11') }}</button>
       </div>
     </header>
@@ -771,6 +1059,197 @@ function resetFilter() {
   gap: 8px;
   justify-content: flex-end;
   margin-top: 6px;
+}
+
+/* ---------- 错题重做（复用答题 / 判分 / 复盘） ---------- */
+.btn-secondary {
+  border: 1px solid var(--primary);
+  background: var(--primary-soft);
+  color: var(--primary-dark);
+  border-radius: 8px;
+  padding: 7px 14px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.btn-secondary:hover {
+  background: var(--primary);
+  color: #fff;
+}
+
+.quiz-redo {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.q-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  flex-wrap: wrap;
+}
+
+.q-type {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 1px 8px;
+}
+
+.q-stem {
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.7;
+}
+
+.opt {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  border-radius: 10px;
+  min-height: 44px;
+  padding: 10px 14px;
+  margin-bottom: 8px;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.opt b {
+  margin-right: 8px;
+}
+
+.opt.picked {
+  border-color: var(--accent);
+}
+
+.opt.right {
+  border-color: #2e7d32;
+  background: rgba(46, 125, 50, 0.08);
+}
+
+.opt.wrong {
+  border-color: #c62828;
+  background: rgba(198, 40, 40, 0.06);
+}
+
+.chk {
+  float: right;
+  color: var(--accent);
+}
+
+.verdict {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.verdict.good b {
+  color: #2e7d32;
+}
+
+.verdict.bad b {
+  color: #c62828;
+}
+
+.v-exp {
+  font-size: 13.5px;
+  line-height: 1.7;
+}
+
+.v-kp {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.summary {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.report-card {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  background: rgba(46, 125, 50, 0.05);
+}
+
+.s-score {
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.s-sub {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.replay {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.replay-item {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 13px;
+}
+
+.replay-item.good {
+  border-left: 3px solid #2e7d32;
+}
+
+.replay-item.bad {
+  border-left: 3px solid #c62828;
+}
+
+.r-stem {
+  font-weight: 500;
+  line-height: 1.6;
+}
+
+.r-line .good {
+  color: #2e7d32;
+}
+
+.r-line .bad {
+  color: #c62828;
+}
+
+.r-exp {
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin-top: 4px;
+}
+
+.r-kp {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.weak ul {
+  margin: 4px 0 0;
+  padding-left: 18px;
+  font-size: 13px;
+}
+
+.weak li {
+  margin-bottom: 2px;
+}
+
+.muted.centered {
+  text-align: center;
 }
 
 @media (max-width: 760px) {

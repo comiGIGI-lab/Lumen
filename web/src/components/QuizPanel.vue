@@ -7,17 +7,19 @@
  * → 答错写错题本（source: 'quiz'）→ 通关后 api.quizReport 复盘
  * → logExp 结算经验。全程 {{ }} 插值，不用 v-html。
  */
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from '@/i18n'
 import { api, quizStreamUrl } from '@/api/client'
 import { usePet } from '@/composables/usePet'
 
 const props = defineProps({
   courseContext: { type: String, default: '' },
+  /** 当前课程的进度：{ outline:[{title,done,importance}], plan:[...] } */
+  outlineProgress: { type: Object, default: () => ({ outline: [] }) },
 })
 const emit = defineEmits(['notify'])
 const { t } = useI18n()
-const { logExp, XP_QUIZ_PER_Q } = usePet()
+const { logExp, XP_QUIZ_PER_Q, XP_QUIZ_DIFF, quizAccMult } = usePet()
 
 const difficulty = ref('medium')
 const count = ref(5)
@@ -41,6 +43,8 @@ let es = null
 
 const current = computed(() => (run.value ? run.value.questions[index.value] : null))
 const pastWrong = ref([])
+// 本课程未掌握错题（用于「历史错题量」驱动推荐题量与出题范围）
+const wrongItems = ref([])
 
 function normStem(text) {
   return String(text || '').replace(/\s+/g, '').slice(0, 24)
@@ -50,13 +54,16 @@ async function loadPastWrong() {
   const course = String(props.courseContext || '').trim()
   if (!course) {
     pastWrong.value = []
+    wrongItems.value = []
     return
   }
   try {
     const data = await api.wrongBookList({ course, status: 'unmastered' })
-    pastWrong.value = (data.items || []).map((item) => normStem(item.question)).filter(Boolean)
+    wrongItems.value = data.items || []
+    pastWrong.value = wrongItems.value.map((item) => normStem(item.question)).filter(Boolean)
   } catch (_) {
     pastWrong.value = []
+    wrongItems.value = []
   }
 }
 
@@ -67,6 +74,44 @@ function seenBefore(stem) {
 }
 
 onMounted(loadPastWrong)
+// 切换课程时重新拉取该课程的未掌握错题，保证「历史错题量」随课程刷新
+watch(() => props.courseContext, loadPastWrong)
+
+// 出题范围：已完成章节集合（topic）。History wrong volume 也会把易错章节优先纳入范围。
+const wrongCount = computed(() => wrongItems.value.length)
+const doneTopics = computed(() => {
+  const list = props.outlineProgress?.outline || []
+  const titles = new Set()
+  for (const it of list) {
+    if (it && it.done) {
+      const t = String(it.title || '').trim()
+      if (t) titles.add(t)
+    }
+  }
+  // 历史错题量驱动：错题原文里命中的大纲章节也纳入范围（易错章节优先练）
+  const blob = wrongItems.value
+    .map((w) => String(w.question || '').toLowerCase())
+    .join(' || ')
+  if (blob) {
+    for (const it of list) {
+      const t = String(it.title || '').trim()
+      if (t && t.length >= 2 && blob.includes(t.toLowerCase())) titles.add(t)
+    }
+  }
+  return [...titles]
+})
+const recommendedCount = computed(() => {
+  const list = props.outlineProgress?.outline || []
+  const done = list.filter((it) => it && it.done)
+  if (!done.length && !wrongCount.value) return 5
+  // 普通(0)记 1 章、重点(1)额外 +1、核心(2)额外 +2
+  const impBonus = done.reduce((s, it) => s + (Number(it.importance) || 0), 0)
+  // 历史错题量：每道未掌握错题 +1（上限 8），让「常错」自动加量
+  const wBonus = Math.min(wrongCount.value, 8)
+  const base = done.length ? done.length + impBonus : 5
+  return Math.max(3, Math.min(20, base + wBonus))
+})
+const scopeDoneOnly = ref(false)
 const waitingNext = computed(() => (
   !!run.value && !finished.value && index.value >= run.value.questions.length && !streamDone.value
 ))
@@ -147,12 +192,14 @@ async function start() {
   picked.value = null
   judged.value = null
 
+  const topics = scopeDoneOnly.value ? doneTopics.value : null
   const url = quizStreamUrl(course, {
     difficulty: difficulty.value,
     count: count.value,
     types: qtype.value,
     webSearch: webSearch.value,
     lively: lively.value,
+    topics,
   })
   es = new EventSource(url)
   es.addEventListener('meta', (ev) => {
@@ -205,7 +252,7 @@ async function start() {
     if (!run.value) {
       // 连接没建立（反代不支持流式）时退回整卷接口，保证还能出题
       closeStream()
-      api.quizGenerate(course, difficulty.value, count.value, qtype.value, webSearch.value, lively.value)
+      api.quizGenerate(course, difficulty.value, count.value, qtype.value, webSearch.value, lively.value, topics)
         .then((res) => {
           if (!res.ok) {
             failStart(res.error || t('quizPage.errGenerate'))
@@ -306,8 +353,13 @@ async function next() {
       return
     }
     finished.value = true
-    // 结算经验：每题 2 点，走既有 logExp 规则
-    logExp('答题闯关', results.value.length * XP_QUIZ_PER_Q)
+    // 经验梯度：基础经验随难度递增；正确率越高加成越大（仅按答对题数结算）
+    const diff = run.value.difficulty || difficulty.value || 'medium'
+    const totalQ = results.value.length
+    const correctQ = results.value.filter((r) => r.correct).length
+    const perQ = XP_QUIZ_DIFF[diff] || XP_QUIZ_PER_Q
+    const acc = totalQ > 0 ? correctQ / totalQ : 0
+    logExp('答题闯关', Math.round(correctQ * perQ * quizAccMult(acc)))
     emit('notify', { type: 'success', text: t('quizPage.done') })
     // 拉复盘
     busy.value = true
@@ -411,6 +463,26 @@ function reset() {
         >
           {{ lively ? t('quizPage.livelyOn') : t('quizPage.livelyOff') }}
         </button>
+      </div>
+      <div class="field">
+        <span class="s-label">{{ t('quizPage.scope') }}</span>
+        <button
+          type="button"
+          class="pill"
+          :class="{ on: scopeDoneOnly }"
+          :disabled="!doneTopics.length"
+          @click="scopeDoneOnly = !scopeDoneOnly"
+        >
+          {{ scopeDoneOnly ? t('quizPage.scopeDoneOnly') : t('quizPage.scopeAll') }}
+        </button>
+      </div>
+      <p v-if="scopeDoneOnly && !doneTopics.length" class="muted">{{ t('quizPage.noDone') }}</p>
+      <p v-else-if="doneTopics.length && !scopeDoneOnly" class="muted">
+        {{ t('quizPage.doneTopics', { n: doneTopics.length }) }}
+      </p>
+      <div v-if="doneTopics.length" class="rec-row">
+        <span class="muted">{{ t('quizPage.recommend', { n: doneTopics.length, w: wrongCount, count: recommendedCount }) }}</span>
+        <button type="button" class="btn-link" @click="count = recommendedCount">{{ t('quizPage.applyRecommend') }}</button>
       </div>
       <button type="button" class="btn btn-accent" :disabled="busy" @click="start">
         {{ busy ? t('quizPage.generating') : t('quizPage.start') }}
@@ -759,5 +831,22 @@ function reset() {
 .muted {
   color: var(--text-secondary);
   font-size: 13px;
+}
+.rec-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.btn-link {
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font-size: 12.5px;
+  cursor: pointer;
+  padding: 2px 4px;
+}
+.btn-link:hover {
+  text-decoration: underline;
 }
 </style>

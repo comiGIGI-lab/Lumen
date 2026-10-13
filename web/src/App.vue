@@ -452,7 +452,7 @@ const {
 
 const busy = computed(() => status.value === 'running')
 
-// 把链路状态同步到状态栏；方案生成 done 时调 grantPlanExp（内部走 logExp('方案生成', 40)）
+// 把链路状态同步到状态栏；方案生成 done 时调 grantPlanExp（内部走 logExp('方案生成', 40+规模梯度) + logExp('关联强化·自习')）
 watch(status, (v, prev) => {
   if (v === 'running') {
     statusTone.value = 'warn'
@@ -460,7 +460,7 @@ watch(status, (v, prev) => {
     statusTone.value = 'error'
   } else if (v === 'done') {
     statusTone.value = 'success'
-    grantPlanExp()
+    grantPlanExp(result.value?.outline?.length || 0)
     const r = result.value
     if (prev === 'running' && r && r.course && r.type !== 'crisis') {
       recordPlan(r.course, profile.value)
@@ -693,7 +693,7 @@ function onLoadHistory(payload) {
   if (payload.type !== 'crisis') showExport.value = true
 }
 
-/** 学情页里点「打开这门课」：切回方案页并载入该课程的历史方案 */
+/** 学情页里点「打开学习方案」：切回方案页并载入该课程的历史方案 */
 async function onOpenCourseFromProgress(courseName) {
   if (!courseName) {
     goCourse()
@@ -752,6 +752,27 @@ async function onToggleProgress({ kind, index, done }) {
     if (back[index]) back[index] = { ...back[index], done: prev }
     studyProgress.value = { ...studyProgress.value, [kind]: back }
     notify({ type: 'error', text: `没能保存成功，出了点小状况：${e.message}` })
+  }
+}
+
+// 重点标注（普通 / 重点 / 核心）：与勾选共用乐观更新 + 回滚的套路
+async function onToggleImportance({ kind, index, importance }) {
+  const c = result.value?.course
+  if (!c) return
+
+  const list = [...(studyProgress.value[kind] || [])]
+  const prev = list[index]?.importance
+  list[index] = { ...(list[index] || { title: '' }), importance }
+  studyProgress.value = { ...studyProgress.value, [kind]: list }
+
+  try {
+    const r = await api.progressImportance(c, kind, index, importance)
+    if (r.progress) studyProgress.value = r.progress
+  } catch (e) {
+    const back = [...(studyProgress.value[kind] || [])]
+    if (back[index]) back[index] = { ...back[index], importance: prev }
+    studyProgress.value = { ...studyProgress.value, [kind]: back }
+    notify({ type: 'error', text: `重点标注没保存成功：${e.message}` })
   }
 }
 
@@ -977,6 +998,7 @@ const degradedBanner = computed(() => {
         @copy-outline="onCopyOutline"
         @copy-plan="onCopyPlan"
         @toggle-progress="onToggleProgress"
+        @toggle-importance="onToggleImportance"
         @export="openExport"
       />
 
