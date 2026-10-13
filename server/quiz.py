@@ -1048,8 +1048,14 @@ def generate_quiz(course, difficulty="medium", count=_COUNT_DEFAULT, types=None,
         ), course, difficulty, client_id, include_wrong)
 
     # 主题题：知识库可选增强 + 联网工具智能体（由 web_search 开关控制）
-    topics = [str(t).strip() for t in (topics or []) if str(t).strip()]
-    avoid = [str(s).strip() for s in (avoid_stems or []) if str(s).strip()]
+    # topics / avoid_stems 必须先是列表：调用方（api_server）传的是 body 里的
+    # 原始 JSON 值，塞个数字进去时 `for t in 5` 会直接 TypeError → 500
+    # （2026-10-13 线上实测 POST /api/quiz/generate {"topics":5}）。非列表一律
+    # 当「没传」，与「不限定章节」语义一致。
+    topics = ([str(t).strip() for t in topics if str(t).strip()]
+              if isinstance(topics, (list, tuple)) else [])
+    avoid = ([str(s).strip() for s in avoid_stems if str(s).strip()]
+             if isinstance(avoid_stems, (list, tuple)) else [])
     hits = _retrieve(course)
     # 限定章节出题：按主题词过滤。用户既已指定范围，命不中任何章节就明确报错，
     # 不再退回全课程——退回会让人误以为正在练所选章节。

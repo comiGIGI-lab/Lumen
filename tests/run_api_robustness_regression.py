@@ -130,6 +130,27 @@ def test_call_sites_cover_every_endpoint():
               "%s 命中 %d 块" % (path, len(blocks)))
 
 
+def test_quiz_container_params_guarded():
+    """[4] quiz.generate_quiz 的 topics / avoid_stems 必须是列表。
+
+    传标量会 `for t in (topics or [])` → TypeError → 500
+    （2026-10-13 线上实测 POST /api/quiz/generate
+     {"course":"Python入门","topics":5} → TypeError: 'int' object is not iterable，
+     quiz.py:1051）。
+
+    与 run_api_contract_regression.py 互补：那个查「调用方关键字 vs 被调方签名」
+    漂移（6ea66c0 事故），这个查「本该是列表的字段被塞了标量」。
+    """
+    print("[4] 类型收敛：quiz 的 topics / avoid_stems 必须是列表")
+    quiz = read(os.path.join(REPO_ROOT, "server", "quiz.py"))
+    check("quiz_topics_guarded",
+          "isinstance(topics, (list, tuple))" in quiz,
+          "topics 未做 isinstance 收敛")
+    check("quiz_avoid_guarded",
+          "isinstance(avoid_stems, (list, tuple))" in quiz,
+          "avoid_stems 未做 isinstance 收敛")
+
+
 if __name__ == "__main__":
     print("=" * 62)
     print("接口健壮性回归：畸形入参不得打成 500")
@@ -138,6 +159,7 @@ if __name__ == "__main__":
     if src:
         test_helper_behaviour(src)
         test_call_sites_cover_every_endpoint()
+    test_quiz_container_params_guarded()
     print()
     print("=" * 62)
     print("通过 %d / 失败 %d" % (PASS, FAIL))
