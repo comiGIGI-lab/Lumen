@@ -1592,7 +1592,10 @@ class ApiHandler(BaseHTTPRequestHandler):
             # ---- 账号：登录 / 账号管理（读 body，必须放在 _read_body() 之后）----
             if path == "/api/login":
                 username = _as_text(body.get("username"))
-                password = body.get("password") or ""
+                # 密码也必须过 _as_text：`or ""` 对数组/对象是真值，
+                # 会原样送进 PBKDF2 → TypeError → 500（2026-10-13 实测
+                # {"password":[1]} 打出 500）。容器值收敛为空串，走正常 401。
+                password = _as_text(body.get("password"))
                 user = accounts.verify(username, password)
                 if not user:
                     # 不区分「账号不存在」和「密码错」，避免被拿来枚举账号
@@ -1607,7 +1610,7 @@ class ApiHandler(BaseHTTPRequestHandler):
             if path == "/api/register":
                 # 自助注册：只建普通账号，注册完直接登录
                 username = _as_text(body.get("username"))
-                password = body.get("password") or ""
+                password = _as_text(body.get("password"))
                 ok, msg = accounts.register(username, password)
                 if not ok:
                     return self._send_json({"ok": False, "error": msg}, 400)
@@ -1629,8 +1632,8 @@ class ApiHandler(BaseHTTPRequestHandler):
                         {"ok": False, "error": "请先登录后再修改密码"}, 401)
                 ok, msg = accounts.change_password(
                     user["username"],
-                    body.get("old_password") or "",
-                    body.get("new_password") or "",
+                    _as_text(body.get("old_password")),
+                    _as_text(body.get("new_password")),
                 )
                 if not ok:
                     return self._send_json({"ok": False, "error": msg}, 400)
@@ -1640,17 +1643,20 @@ class ApiHandler(BaseHTTPRequestHandler):
                 guard = self._require_admin()
                 if guard:
                     return self._send_json(guard[0], guard[1])
-                act = body.get("action") or "create"
+                # 密码 / 角色也要过 _as_text：`or ""` 对数组是真值，会进 PBKDF2 → 500
+                act = _as_text(body.get("action")) or "create"
                 target = _as_text(body.get("username"))
+                raw_password = _as_text(body.get("password"))
+                raw_role = _as_text(body.get("role"))
                 if act == "create":
                     ok, msg = accounts.create_user(
-                        target, body.get("password") or "", body.get("role") or accounts.ROLE_USER
+                        target, raw_password, raw_role or accounts.ROLE_USER
                     )
                 elif act == "role":
                     # 提拔 / 降级（如把某个账号设为管理员）
-                    ok, msg = accounts.set_role(target, body.get("role") or "")
+                    ok, msg = accounts.set_role(target, raw_role)
                 elif act == "password":
-                    ok, msg = accounts.set_password(target, body.get("password") or "")
+                    ok, msg = accounts.set_password(target, raw_password)
                 elif act == "delete":
                     ok, msg = accounts.delete_user(target)
                 else:
@@ -1751,13 +1757,16 @@ class ApiHandler(BaseHTTPRequestHandler):
                     if guard:
                         return self._send_json(guard[0], guard[1])
                     user = {"username": "guest", "role": "guest"}
-                text = (body.get("content") or body.get("text") or "").strip()
+                # 一律过 _as_text：原先 `(body.get("content") or "").strip()`
+                # 遇到数组/对象会 AttributeError → 500（2026-10-13 实测）。
+                text = _as_text(body.get("content") or body.get("text"))
                 title = _as_text(body.get("title"))
-                tags = body.get("tags")
+                raw_tags = body.get("tags")
+                tags = raw_tags if isinstance(raw_tags, list) else None
                 scope = self._knowledge_scope(body.get("scope"))
-                category = str(body.get("category") or "").strip()
-                if isinstance(tags, str):
-                    tags = [t.strip() for t in tags.split(",") if t.strip()]
+                category = _as_text(body.get("category"))
+                if isinstance(raw_tags, str):
+                    tags = [t.strip() for t in raw_tags.split(",") if t.strip()]
 
                 store = KnowledgeStore()
                 guest = user.get("username") == "guest"
@@ -1850,8 +1859,12 @@ class ApiHandler(BaseHTTPRequestHandler):
                 guard = self._require_user()
                 if guard:
                     return self._send_json(guard[0], guard[1])
-                profile = body.get("profile") or load_profile(
-                    filepath=self._profile_file())
+                # profile 必须是 dict：传数组时会一路走到 planner 的
+                # `profile.get(...)` 抛 AttributeError → 500（2026-10-13 实测）。
+                # 非法值直接回落到磁盘上的画像，行为与「没传」一致。
+                raw_profile = body.get("profile")
+                profile = (raw_profile if isinstance(raw_profile, dict) else None) \
+                    or load_profile(filepath=self._profile_file())
                 use_cache = bool(body.get("use_cache", True))
                 t0 = time.time()
                 # 匿名 LLM 限速双闸
@@ -2100,14 +2113,17 @@ class ApiHandler(BaseHTTPRequestHandler):
                 #   clear_key=true  → 主动清空
                 #   api_key 非空     → 更新
                 #   其余（含 api_key=""）→ 沿用 settings.json 里已有的 Key
-                provider = body.get("provider") or "mock"
-                base_url = body.get("base_url") or "https://api.deepseek.com"
-                model = body.get("model") or "deepseek-chat"
+                # 全部过 _as_text：这三个值是直接写进 settings.json 的，
+                # 传对象会落进配置；api_key 那行原本还会 AttributeError
+                # （`_as_text` 判定通过后 `body["api_key"].strip()` 对数字会炸）。
+                provider = _as_text(body.get("provider")) or "mock"
+                base_url = _as_text(body.get("base_url")) or "https://api.deepseek.com"
+                model = _as_text(body.get("model")) or "deepseek-chat"
 
                 if body.get("clear_key"):
                     api_key = ""
                 elif _as_text(body.get("api_key")):
-                    api_key = body["api_key"].strip()
+                    api_key = _as_text(body.get("api_key"))
                 else:
                     try:
                         api_key = load_settings().get("api_key") or ""
@@ -2489,9 +2505,12 @@ class ApiHandler(BaseHTTPRequestHandler):
         if detail["action"] == "BLOCK":
             log_safety_hit("quiz_stream", course, detail, client_id)
             return self._send_json({"ok": False, "error": SAFETY_ERROR_MESSAGE}, 400)
-        if accounts.auth_enabled() and not self._auth(query):
-            return self._send_json({"ok": False, "error": "请先登录后再操作"}, 401)
-        # 匿名 LLM 限速双闸（SSE：必须在 _sse_open 之前判定）
+        # 与方案流式（_handle_stream）保持一致：**未登录可用**，靠下面的匿名双闸限量。
+        # 原先是 cc7559f「写接口登录闸」留下的 401；后来整体放宽成「游客可用 +
+        # 按浏览器每日限额（GUEST_DAILY_CAP）」时**漏改了这里** ⇒ 未登录访客
+        # 一进闯关就被挡（而方案生成、问答都还能用）。可佐证它是残留而非设计：
+        # 紧接着的 _enforce_anon_llm_quota(query) 本就是**匿名**配额检查，
+        # 「拒绝所有匿名用户」与「给匿名用户配额」不可能同时是有意为之。
         if self._enforce_anon_llm_quota(query):
             return
 
