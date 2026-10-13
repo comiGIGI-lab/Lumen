@@ -946,12 +946,18 @@ class ApiHandler(BaseHTTPRequestHandler):
 
     def _send_json(self, obj, status: int = 200):
         body = _j(obj)
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Content-Length", str(len(body)))
-        self._cors()
-        self.end_headers()
-        self.wfile.write(body)
+        try:
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self._cors()
+            self.end_headers()
+            self.wfile.write(body)
+        except (BrokenPipeError, ConnectionResetError):
+            # 客户端提前断开（超时 / 关页面 / 刷新）**不是服务端错误**。
+            # 不吞的话会刷出 BrokenPipeError 的 Traceback，并被算成一次 500 ——
+            # 2026-10-13 实测：出题慢于浏览器超时，日志里出现一堆假 500。
+            self.close_connection = True
 
     def _send_text(self, text: str, status: int = 200,
                    content_type: str = "text/plain; charset=utf-8"):
@@ -982,7 +988,11 @@ class ApiHandler(BaseHTTPRequestHandler):
             )
         self._cors()
         self.end_headers()
-        self.wfile.write(data)
+        try:
+            self.wfile.write(data)
+        except (BrokenPipeError, ConnectionResetError):
+            # 同 _send_json：客户端中途断开不是服务端错误，别刷 Traceback。
+            self.close_connection = True
 
     def _read_body(self) -> dict:
         try:
@@ -1907,10 +1917,12 @@ class ApiHandler(BaseHTTPRequestHandler):
                 # 匿名 LLM 限速双闸（登录用户已在方法内直接放行）
                 if self._enforce_anon_llm_quota():
                     return
+                # history 必须是 list：传数字会在 run_chat_pipeline 的 len() 上抛
+                # TypeError、传对象会在切片上抛 KeyError，两者都变成 500（2026-10-13 实测）。
                 res = run_chat_pipeline(
                     question,
-                    history=body.get("history") or [],
-                    course_context=body.get("course_context") or None,
+                    history=_as_list(body.get("history")),
+                    course_context=_as_text(body.get("course_context")) or None,
                 )
                 # Phase B（Agentic 检索）：弱命中联网补题。知识库没检索到
                 # （retrieved 空）时尝试 Tavily 检索回灌增强；任何失败保持原答案。
@@ -1921,7 +1933,7 @@ class ApiHandler(BaseHTTPRequestHandler):
                         import web_tools
                         enhanced = web_tools.enhance_chat(
                             question, res.get("answer") or "",
-                            history=body.get("history") or [])
+                            history=_as_list(body.get("history")))
                         if enhanced:
                             res = {"answer": enhanced["answer"],
                                    "source": enhanced["source"],
@@ -2068,7 +2080,12 @@ class ApiHandler(BaseHTTPRequestHandler):
             if path == "/api/export":
                 course = _as_text(body.get("course"))
                 fmt = _as_text(body.get("format") or "markdown").lower()
-                result = body.get("result") or progress_store.load_result(course, self._owner_id())
+                # result 必须是 dict：传字符串会一路走到 render_plan_markdown 的
+                # `result.get(...)` 抛 AttributeError → 500（2026-10-13 实测）。
+                # 非 dict 一律当作「没传」，回落磁盘上的方案。
+                raw_result = body.get("result")
+                result = raw_result if isinstance(raw_result, dict) \
+                    else progress_store.load_result(course, self._owner_id())
                 if not result:
                     return self._send_json({"ok": False, "error": "没有可导出的方案"}, 400)
                 guard = self._require_user()
