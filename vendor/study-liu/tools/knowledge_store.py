@@ -141,22 +141,23 @@ class KnowledgeStore:
 
     def search(self, keyword):
         """
-        搜索笔记（标题、内容、标签里搜，不区分大小写）。
+        搜索笔记（标题、内容、分类、标签里搜，不区分大小写）。
         参数：
             keyword: 搜索关键词
         返回：
             匹配的笔记列表
         """
         data = self._load()
-        kw = keyword.lower()
+        kw = keyword.lower().lstrip("#")
         results = []
         for item in data:
-            # 标题、内容、标签都搜
-            in_title = kw in item.get("title", "").lower()
-            in_content = kw in item.get("content", "").lower()
-            in_tags = any(kw in tag.lower() for tag in item.get("tags", []))
-            if in_title or in_content or in_tags:
-                results.append(item)
+            note = self.normalize(item)
+            in_title = kw in note.get("title", "").lower()
+            in_content = kw in note.get("content", "").lower()
+            in_category = kw in note.get("category", "").lower()
+            in_tags = any(kw in str(tag).lstrip("#").lower() for tag in note.get("tags", []))
+            if in_title or in_content or in_category or in_tags:
+                results.append(note)
         return results
 
     def list_all(self):

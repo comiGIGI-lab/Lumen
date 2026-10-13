@@ -34,6 +34,25 @@ CHUNK_OVERLAP = 120       # 块间重叠，避免恰好切断一个完整语义
 MAX_CHUNKS = 60           # 单个文件最多切多少块（挡住超长文档一次写爆知识库）
 MAX_TEXT_CHARS = 300_000  # 单个文件解析出的正文上限
 
+
+def _vision_reader():
+    """现有识图入口。未配置视觉模型时返回 None，文档仍按正文导入。"""
+    try:
+        from tools.vision_ocr import extract_text_from_image, is_ocr_available
+        if not is_ocr_available():
+            return None
+        return extract_text_from_image
+    except Exception:
+        return None
+
+
+def _append_embedded_vision(path, text):
+    try:
+        import embedded_vision
+        return embedded_vision.append_vision_text(path, text, _vision_reader())
+    except Exception:
+        return (text or "").strip(), 0
+
 # 上传文件落盘目录（相对 data/）
 UPLOAD_SUBDIR = "uploads"
 # 落盘文件保留时长（秒）——解析完就删，留一天防止排查时找不到
@@ -75,8 +94,7 @@ def capabilities():
     except Exception:
         office = {"available": False, "engine": "", "fallback": "ooxml", "extensions": [".docx", ".pptx"], "note": "office_parse 模块不可用"}
 
-    # 兜底层：xlsx / xls / html / epub / zip / csv / json / xml——doc_parse+office_parse 不覆盖的格式。
-    # 音频不在此列（缺 speech_recognition 且无 ffmpeg），语音走 /api/asr。
+    # 兜底层：xlsx / xls / html / epub / zip / 音频 / 视频字幕——doc_parse+office_parse 不覆盖的格式。
     # 进程级惰性 import（markitdown 缺包时静默 available=False，不让 api_server 起不来）。
     try:
         import markitdown_fallback
@@ -394,6 +412,7 @@ def ingest(path, filename, tags=None, store=None, data_dir=None, title=None,
         out["kind"] = "document"
         parse_engine = ""
         parse_blocks_list = []
+        default_tags_extra = []
         if ext == ".pdf":
             # PDF 走 doc_parse：数字文本 pypdf，扫描件 / 复杂版式尝试 MinerU 侧车
             try:
@@ -404,8 +423,10 @@ def ingest(path, filename, tags=None, store=None, data_dir=None, title=None,
             except Exception as e:
                 parsed = {"text": "", "engine": "", "error": "解析失败：%s" % e}
             text = (parsed.get("text") or "").strip()
+            text, seen_images = _append_embedded_vision(path, text)
             parse_engine = parsed.get("engine") or ""
             parse_blocks_list = list(parsed.get("blocks") or [])
+            default_tags_extra = ["#vision"] if seen_images else []
             if not text:
                 err = (parsed.get("error") or "").strip() or "文件里没有解析到任何文字"
                 low = err.lower()
@@ -430,8 +451,10 @@ def ingest(path, filename, tags=None, store=None, data_dir=None, title=None,
             except Exception as e:
                 parsed = {"text": "", "engine": "", "error": "解析失败：%s" % e}
             text = (parsed.get("text") or "").strip()
+            text, seen_images = _append_embedded_vision(path, text)
             parse_engine = parsed.get("engine") or ""
             parse_blocks_list = list(parsed.get("blocks") or [])
+            default_tags_extra = ["#vision"] if seen_images else []
             if not text:
                 err = (parsed.get("error") or "").strip() or "文件里没有解析到任何文字"
                 out["error"] = err if ("失败" in err or "没有解析" in err or "不支持" in err) else ("解析失败：%s" % err)
@@ -459,12 +482,12 @@ def ingest(path, filename, tags=None, store=None, data_dir=None, title=None,
                 out["error"] = "解析失败：%s" % e
                 return out
         base_title = os.path.splitext(os.path.basename(filename))[0] or "导入的笔记"
-        default_tags = ["#import", "#%s" % (ext.lstrip(".") or "file")]
+        default_tags = ["#import", "#%s" % (ext.lstrip(".") or "file")] + default_tags_extra
         if parse_engine:
             default_tags.append("#%s" % parse_engine)
         out["engine"] = parse_engine
     else:
-        # 兜底层：xlsx / xls / html / epub / zip / csv / json / xml 等 doc_parse+office_parse 不覆盖的格式走 markitdown。
+        # 兜底层：xlsx / xls / html / epub / zip / 音频 等 doc_parse+office_parse 不覆盖的格式走 markitdown。
         # 它是补盲，不替换任何现网解析器；缺包时静默回落到 unsupported 提示。
         out["kind"] = "document"
         parse_engine = ""

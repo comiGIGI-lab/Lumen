@@ -38,6 +38,30 @@ def test_share_reissue():
     return ok
 
 
+def test_tag_search():
+    path = os.path.join(tempfile.mkdtemp(prefix="kb-tag-"), "knowledge.json")
+    store = KnowledgeStore(path)
+    tagged = store.add(
+        "栈与队列的区别", "线性表的两端操作。",
+        tags=["#import", "数据结构与算法"], category="数据结构与算法",
+    )
+    titled = store.add("数据结构-测试笔记", "只在标题里出现数据结构。", tags=["#test"])
+    official = store.add("调度习题", "进程到达时间。", tags=["#pptx"], category="官方样例")
+    store.add("指针", "只谈指针和内存。", tags=["#pdf"], category="高等数学")
+    found = {item["id"] for item in store.search("数据结构与算法")}
+    ok = check("精确搜索命中主题标签", tagged in found and titled not in found)
+    official_hits = {item["id"] for item in store.search("官方样例")}
+    ok = check("精确搜索命中分类", official_hits == {official}) and ok
+    hash_hits = {item["id"] for item in store.search("#pdf")}
+    ok = check("带井号也能搜到类型标签", len(hash_hits) == 1) and ok
+    ranked = store.retrieve("数据结构与算法", top_k=2)
+    ok = check(
+        "相关检索把同名标签排在仅标题命中之前",
+        bool(ranked) and ranked[0][0]["id"] == tagged,
+    ) and ok
+    return ok
+
+
 def test_store():
     path = os.path.join(tempfile.mkdtemp(prefix="kb-scope-"), "knowledge.json")
     with open(path, "w", encoding="utf-8") as f:
@@ -118,5 +142,5 @@ def test_http():
 
 
 if __name__ == "__main__":
-    passed = test_store() and test_share_reissue() and test_http()
+    passed = test_store() and test_tag_search() and test_share_reissue() and test_http()
     raise SystemExit(0 if passed else 1)

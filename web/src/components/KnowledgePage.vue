@@ -14,6 +14,7 @@ import MindMapPage from './MindMapPage.vue'
 import WrongBookPage from './WrongBookPage.vue'
 import { api } from '@/api/client'
 import { useKnowledge } from '@/composables/useKnowledge'
+import { renderChunkPreview } from '@/utils/chunkPreview'
 
 const emit = defineEmits(['back', 'open-import', 'go-course', 'notify'])
 const props = defineProps({
@@ -575,7 +576,7 @@ onBeforeUnmount(() => {
           </p>
           <article v-for="c in currentChunks" :key="c.id">
             <header><span>{{ c.src }}</span></header>
-            <p>{{ c.text }}</p>
+            <div class="chunk-text" v-html="renderChunkPreview(c.text)"></div>
           </article>
         </div>
 
@@ -983,6 +984,34 @@ th, td {
   font-size: 11px;
   color: var(--text-muted);
 }
+.chunk-text {
+  margin-top: 8px;
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.75;
+  overflow-wrap: anywhere;
+}
+.chunk-text :deep(p) { margin: 0; }
+.chunk-text :deep(p + p) { margin-top: 0.75em; }
+.chunk-text :deep(.fx) {
+  padding: 0 0.15em;
+  font-family: "Times New Roman", var(--font-serif), serif;
+}
+.chunk-text :deep(.fx-frac) {
+  display: inline-flex;
+  flex-direction: column;
+  vertical-align: middle;
+  margin: 0 0.15em;
+  text-align: center;
+  line-height: 1.15;
+}
+.chunk-text :deep(.fx-frac span:first-child) {
+  border-bottom: 1px solid currentColor;
+  padding: 0 0.2em;
+}
+.chunk-text :deep(.fx-group) { padding: 0 0.1em; }
+.chunk-text :deep(sub),
+.chunk-text :deep(sup) { font-size: 0.75em; }
 .ok, .ghost, .danger {
   border-radius: 1000px;
   padding: 7px 14px;

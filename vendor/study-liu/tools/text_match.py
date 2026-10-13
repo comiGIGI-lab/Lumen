@@ -79,9 +79,11 @@ def token_counts(text):
 
 # ---------- 打分 ----------
 
-# 字段权重：标题与标签命中远比正文命中重要
+# 字段权重：标题、分类、标签命中都比正文重要。
+# 界面上显示的「标签」主要来自 category 和主题 tags，不能只搜标题。
 FIELD_WEIGHTS = (
     ("title", 6.0),
+    ("category", 5.0),
     ("tags", 4.5),
     ("content", 1.0),
 )
@@ -109,14 +111,21 @@ def score_item(query_tokens, item):
         return 0.0, {}
 
     uniq = set(query_tokens)
+    tags = [str(tag).lstrip("#") for tag in (item.get("tags", []) or [])]
     title_c = token_counts(item.get("title", ""))
-    tags_c = token_counts(" ".join(item.get("tags", []) or []))
+    category_c = token_counts(item.get("category", ""))
+    tags_c = token_counts(" ".join(tags))
     content_c = token_counts(item.get("content", ""))
-    field_maps = {"title": title_c, "tags": tags_c, "content": content_c}
+    field_maps = {
+        "title": title_c,
+        "category": category_c,
+        "tags": tags_c,
+        "content": content_c,
+    }
 
     hit_weight = 0.0          # 命中权重和（绝对量，不按查询长度除）
     covered = set()
-    per_field_hits = {"title": 0, "tags": 0, "content": 0}
+    per_field_hits = {"title": 0, "category": 0, "tags": 0, "content": 0}
 
     for tok in uniq:
         best = 0.0
@@ -147,9 +156,20 @@ def score_item(query_tokens, item):
 
     # 整句精确命中（大小写不敏感）→ 强加成，保住「精确匹配一定最优」
     raw = " ".join(query_tokens)
+    phrase = "".join(query_tokens).lower()
     for fname, weight in FIELD_WEIGHTS:
-        text = item.get(fname) if fname != "tags" else " ".join(item.get("tags", []) or [])
-        if isinstance(text, str) and raw and raw in text.lower():
+        if fname == "tags":
+            text = " ".join(tags)
+        else:
+            text = item.get(fname) or ""
+        if not isinstance(text, str):
+            continue
+        low = text.lower()
+        if raw and raw in low:
+            score += 20.0
+            break
+        # 分类和主题标签常是一个整词。二字切分后再拼回去，避免只因没写进标题就搜不到。
+        if fname in ("category", "tags") and phrase and phrase in low.replace(" ", ""):
             score += 20.0
             break
 

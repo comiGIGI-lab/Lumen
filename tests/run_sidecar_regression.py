@@ -785,6 +785,49 @@ def test_office_sidecar():
         check("ingest engine 为 docling 或 ooxml", False)
 
 
+def _png(width, height, payload):
+    chunk = struct.pack(">II", width, height) + payload
+    return b"\x89PNG\r\n\x1a\n" + b"IHDR" + chunk
+
+
+def test_embedded_vision():
+    print("\n[embedded_vision] PDF / Word / PPT 内嵌图片")
+    import embedded_vision
+    d = tempfile.mkdtemp(prefix="emb-")
+    big = _png(320, 240, b"x" * 13000)
+    icon = _png(16, 16, b"x" * 13000)
+    docx = os.path.join(d, "a.docx")
+    with __import__("zipfile").ZipFile(docx, "w") as zf:
+        zf.writestr("word/document.xml", "<w:document/>")
+        zf.writestr("word/media/photo.png", big)
+        zf.writestr("word/media/icon.png", icon)
+    calls = []
+
+    def reader(path):
+        calls.append(path)
+        return {"text": "图中公式 v=v0+at", "error": None}
+
+    text, count = embedded_vision.append_vision_text(docx, "正文", reader)
+    check("大图转写并入正文", "图中公式" in text and "正文" in text, text)
+    check("只识别一张大图", count == 1 and len(calls) == 1, calls)
+    text2, count2 = embedded_vision.append_vision_text(docx, "正文", None)
+    check("没有识图器时保留正文", text2 == "正文" and count2 == 0)
+
+    def broken(_path):
+        raise RuntimeError("down")
+
+    text3, count3 = embedded_vision.append_vision_text(docx, "正文", broken)
+    check("识图失败不影响正文", text3 == "正文" and count3 == 0)
+
+    jpg = b"\xff\xd8\xff" + (b"y" * 13000)
+    pdf = os.path.join(d, "a.pdf")
+    raw = b"1 0 obj\n<< /Subtype /Image /Filter /DCTDecode >>\nstream\n" + jpg + b"\nendstream\nendobj\n"
+    with open(pdf, "wb") as f:
+        f.write(raw)
+    images = embedded_vision.extract_pdf_images(pdf)
+    check("PDF 抽出未压缩 JPEG", len(images) == 1 and images[0][1] == ".jpg", images)
+
+
 def main():
     print("=" * 60)
     print("侧车回归（MinerU + whisper.cpp + Docling office，假 CLI，不装真引擎）")
@@ -802,6 +845,7 @@ def main():
         test_asr_router,
         test_kb_capabilities_surface,
         test_office_sidecar,
+        test_embedded_vision,
     ):
         try:
             fn()
