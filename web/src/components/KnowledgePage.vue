@@ -29,14 +29,42 @@ const SCOPES = computed(() => [
   { id: 'public', label: t('kb.scopePublic') },
 ])
 
+/** 文档类型标签。新增了 markitdown 兜底那批格式（xlsx/html/csv…），
+ *  否则它们会原样显示成 `xlsx` 这种小写英文（2026-10-13）。 */
 function typeLabel(type) {
-  return { pdf: 'PDF', image: t('kb.typeImage'), md: 'Markdown', txt: t('kb.typeText'), note: t('kb.typeNote'), docx: 'Word', pptx: 'PPT' }[type] || type
+  const MAP = {
+    pdf: 'PDF',
+    image: t('kb.typeImage'),
+    md: 'Markdown',
+    txt: t('kb.typeText'),
+    note: t('kb.typeNote'),
+    docx: 'Word',
+    pptx: 'PPT',
+    xlsx: 'Excel',
+    xls: 'Excel',
+    html: 'HTML',
+    epub: 'EPUB',
+    zip: 'ZIP',
+    csv: 'CSV',
+    json: 'JSON',
+    xml: 'XML',
+  }
+  return MAP[type] || type || t('kb.typeNote')
+}
+
+/** 分类标签用的文案：内部标签（#manual / #import / #pdf…）不能当分类显示。
+ *  历史上 `add()` 会把 tags[0] 当分类回退，导致界面出现「manual」这种标签。 */
+function categoryText(note) {
+  const cat = String((note && note.category) || '').trim()
+  if (cat && !cat.startsWith('#')) return categoryLabel(cat)
+  return tagLabel(note && note.tag)
 }
 function statusLabel(status) {
   return { ready: t('kb.stReady'), parsing: t('kb.stParsing'), queue: t('kb.stQueue'), failed: t('kb.stFailed') }[status] || status
 }
 
-const ACCEPT = '.pdf,.md,.markdown,.txt,.text,.docx,.pptx,.png,.jpg,.jpeg,.webp,.bmp,.gif'
+// 与后端 /api/knowledge/capabilities 的 document.extensions 对齐（16 项）
+const ACCEPT = '.pdf,.docx,.pptx,.xlsx,.xls,.html,.htm,.epub,.zip,.csv,.json,.xml,.md,.markdown,.txt,.text,.png,.jpg,.jpeg,.webp,.bmp,.gif'
 const MAX_FILES = 10
 const MAX_BYTES = 16 * 1024 * 1024
 
@@ -493,7 +521,7 @@ onBeforeUnmount(() => {
             @click="pickNote(n.id)"
           >
             <span class="note-t">{{ n.title }}</span>
-            <span class="chip">{{ n.category ? categoryLabel(n.category) : tagLabel(n.tag) }}</span>
+            <span class="chip">{{ categoryText(n) }}</span>
             <span class="note-d">{{ n.updated }}</span>
           </button>
           <p v-if="!filtered.length" class="none">

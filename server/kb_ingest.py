@@ -544,6 +544,12 @@ def ingest(path, filename, tags=None, store=None, data_dir=None, title=None,
     # 图片识图出来的内容标记来源，便于事后区分
     if out["kind"] == "image":
         tags.append("#vision")
+    # 记住「来源文件名」：同一个笔记下可以导入多个文件（都归到该笔记），
+    # 前端靠这个标签把文档拆开、各自显示真实类型与文件名。
+    # 缺了它，同一笔记下的多个文件会塌成一条文档、类型只取第一个（2026-10-13 修）。
+    _src_name = os.path.basename(str(filename or "")).strip()
+    if _src_name and not any(str(t).lower().startswith("#src:") for t in tags):
+        tags.append("#src:%s" % _src_name)
 
     # ---- 4.1 AI 自动分类：用户没手动选分类时，用大模型分析正文补学科+主题标签 ----
     # 分类失败静默降级为关键词兜底，绝不阻塞导入。

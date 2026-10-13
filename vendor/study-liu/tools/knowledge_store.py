@@ -70,8 +70,14 @@ class KnowledgeStore:
         clean_tags = [str(tag).strip() for tag in (tags or []) if str(tag).strip()]
         scope = scope if scope in ("private", "shared", "public") else "public"
         category = str(category or "").strip()
-        if not category and clean_tags:
-            category = clean_tags[0]
+        # 回退取「第一个话题标签」——但**绝不能取内部标签**（#manual / #import / #pdf /
+        # #ooxml / #vision …）。否则界面的分类标签会把 #manual 原样显示出来
+        # （2026-10-13 修的 bug：新建笔记后笔记页出现「manual」分类的空笔记）。
+        if not category:
+            for _t in clean_tags:
+                if not _t.startswith("#"):
+                    category = _t
+                    break
         with self._lock:
             data = self._load()
             # id 自增：取现有最大 id + 1
