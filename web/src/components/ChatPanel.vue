@@ -139,7 +139,9 @@ function md(text) {
                     ? t('chatPanelX.5')
                     : m.source === 'crisis_intervention'
                       ? t('chatPanelX.6')
-                      : t('chatPanelX.7')
+                      : m.source === 'web'
+                        ? t('chatPanelX.9')
+                        : t('chatPanelX.7')
             }}
           </span>
           <div

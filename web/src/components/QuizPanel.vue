@@ -452,6 +452,7 @@ function reset() {
         >
           {{ webSearch ? t('quizPage.webSearchOn') : t('quizPage.webSearchOff') }}
         </button>
+        <p class="muted">{{ t('quizPage.webSearchHint') }}</p>
       </div>
       <div class="field">
         <span class="s-label">{{ t('quizPage.lively') }}</span>
@@ -644,6 +645,14 @@ function reset() {
 .opts {
   display: flex;
   gap: 8px;
+}
+.scope-opts {
+  flex-wrap: wrap;
+}
+.scope-done {
+  margin-left: 6px;
+  font-size: 11px;
+  color: var(--text-secondary);
 }
 .pill {
   border: 1px solid var(--border);

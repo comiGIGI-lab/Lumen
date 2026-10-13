@@ -430,6 +430,39 @@ def runtime_checks():
         check("stream_grade_while_generating",
               graded_mid and graded_mid.get("ok") and graded_mid.get("correct") is True,
               "first question must be gradeable before the rest arrive")
+
+        # 第二批与第一题题干重复时必须补题，不能把「要 3 题」静默收成 2 题。
+        def fake_dup(messages):
+            text = messages[-1]["content"] if messages else ""
+            asked = text.split("出题依据的资料")[0]
+            m = re.search(r"(\d+)\s*道(?:单选|多选|判断)", asked)
+            n = int(m.group(1)) if m else 1
+            if "以下题干已经出过" in text:
+                pool = [dict(ALL_QS[2])]
+            elif n <= 1:
+                pool = [dict(ALL_QS[0])]
+            else:
+                pool = [dict(ALL_QS[0]), dict(ALL_QS[1])]
+            return json.dumps({"questions": pool}, ensure_ascii=False)
+        quiz_mod._llm_chat = fake_dup
+        dup_events = []
+        for event, data in quiz_mod.iter_generate_quiz("线性代数", difficulty="easy", count=3):
+            if event == "question":
+                dup_events.append(data["question"]["stem"])
+            if event == "done":
+                dup_done = data
+        check("stream_refills_duplicate_stem",
+              len(set(dup_events)) == 3 and dup_done.get("short") is False,
+              "duplicate stems must be refilled, got %s" % dup_events)
+
+        # 指定章节但知识库无对应材料：报错，不许退回全课程出题。
+        quiz_mod._llm_chat = fake_chat_ok
+        miss = quiz_mod.generate_quiz("线性代数", difficulty="easy", count=3,
+                                      topics=["完全不存在的章节名称"])
+        check("topics_without_kb_hit_errors",
+              miss.get("ok") is False and "所选章节" in (miss.get("error") or ""),
+              "unmatched topics must error, not fall back: %s" % miss.get("error"))
+
         quiz_mod._llm_chat = fake_chat_ok
 
         # 趣味文风开关：只改表达，不改知识点/答案/题数

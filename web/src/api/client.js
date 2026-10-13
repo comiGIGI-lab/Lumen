@@ -304,6 +304,14 @@ export const api = {
     })
   },
 
+  /** 把已有笔记改到用户指定的分类。ids 是后端条目 id。 */
+  knowledgeSetCategory(ids, category) {
+    return request('/knowledge/category', {
+      method: 'POST',
+      body: JSON.stringify({ ids, category }),
+    })
+  },
+
   /** 为自己的笔记生成口令。接收方兑换后得到一份私有副本。 */
   knowledgeShare(ids) {
     return request('/knowledge/share', {
@@ -393,6 +401,17 @@ export const api = {
     })
   },
 
+  /**
+   * 标注某大纲 / 计划项为 普通(0) / 重点(1) / 核心(2)。
+   * 索引与进度清单顺序一一对应（后端按同一顺序生成）。
+   */
+  progressImportance(course, kind, index, importance) {
+    return request('/progress/importance', {
+      method: 'POST',
+      body: JSON.stringify({ course, kind, index, importance }),
+    })
+  },
+
   /** 学情概览：本浏览器名下所有课程的完成度汇总 */
   progressOverview() {
     return request('/progress/overview')
@@ -464,10 +483,13 @@ export const api = {
    * 响应不含 answer —— 判分走 quizGrade（服务端持标准答案）。
    * web_search：联网搜索开关（默认开）；关闭/无 key/失败时降级为空上下文、不拒绝。
    */
-  quizGenerate(course, difficulty = 'medium', count = 5, types = 'mixed', webSearch = true, lively = false) {
+  quizGenerate(course, difficulty = 'medium', count = 5, types = 'mixed', webSearch = true, lively = false, topics = null, includeWrong = false) {
+    const body = { course, difficulty, count, types, web_search: webSearch, lively }
+    if (topics && topics.length) body.topics = topics
+    if (includeWrong) body.include_wrong = true
     return request('/quiz/generate', {
       method: 'POST',
-      body: JSON.stringify({ course, difficulty, count, types, web_search: webSearch, lively }),
+      body: JSON.stringify(body),
     })
   },
 
@@ -476,6 +498,19 @@ export const api = {
     return request('/quiz/grade', {
       method: 'POST',
       body: JSON.stringify({ quiz_id: quizId, question_id: questionId, selected }),
+    })
+  },
+
+  /**
+   * 错题重做：把当前筛选出的错题 id 交给后端，为每道生成一道同知识点的新题。
+   * 响应形状与 quizGenerate 完全一致（quiz_id + 无答案的 questions），前端复用答题 / 判分 / 复盘。
+   */
+  quizFromWrongbook(ids, difficulty = 'medium', types = null) {
+    const body = { ids, difficulty }
+    if (types) body.types = types
+    return request('/quiz/from-wrongbook', {
+      method: 'POST',
+      body: JSON.stringify(body),
     })
   },
 
@@ -529,7 +564,7 @@ export const api = {
  * 出题 SSE。第一题到达即 question 事件，后续题继续推，结束为 done。
  * EventSource 只能 GET，token / client_id 走查询参数。
  */
-export function quizStreamUrl(course, { difficulty = 'medium', count = 5, types = 'mixed', webSearch = true, lively = false } = {}) {
+export function quizStreamUrl(course, { difficulty = 'medium', count = 5, types = 'mixed', webSearch = true, lively = false, topics = null, includeWrong = false } = {}) {
   const qs = new URLSearchParams({
     course,
     difficulty,
@@ -539,6 +574,11 @@ export function quizStreamUrl(course, { difficulty = 'medium', count = 5, types 
     lively: lively ? '1' : '0',
     client_id: clientId(),
   })
+  // topics 走重复 query 参数（后端 parse_qs 聚合成数组），每个条目单独一项
+  if (topics && topics.length) {
+    topics.forEach((t) => qs.append('topics', t))
+  }
+  if (includeWrong) qs.set('include_wrong', '1')
   if (authToken()) qs.set('token', authToken())
   return `${BASE}/quiz/stream?${qs.toString()}`
 }

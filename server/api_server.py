@@ -335,6 +335,25 @@ def client_courses_many(keys) -> set:
 # wrong_book_store / mindmap_store 按 client_id 过滤全局文件，这里把
 # 「登录用户名桶 + 绑定浏览器桶」的结果合并（错题按 id 去重，id 全局唯一）。
 
+def _quiz_wrongbook_items(course):
+    """给 quiz 的「加入错题」用：取本课程全部未掌握错题。
+
+    归属桶按当前请求解析。SSE 在主线程里消费生成器，这里读到的就是发起请求的用户。
+    """
+    keys = ApiHandler._active_owner_keys()
+    raw = _wrongbook_items(keys, course=course, status="unmastered")
+    return [{
+        "course": it.get("course") or "",
+        "question": it.get("question") or "",
+        "answer": it.get("answer") or "",
+        "reason": it.get("reason") or "",
+        "qtype": wrongbook_quiz_mod.parse_qtype(it) or "single",
+    } for it in raw if (it.get("question") or "").strip()]
+
+
+quiz_mod.set_wrongbook_provider(_quiz_wrongbook_items)
+
+
 def _wrongbook_items(keys, course=None, keyword=None, status=None):
     items, seen = [], set()
     for k in keys or []:
@@ -981,7 +1000,10 @@ class ApiHandler(BaseHTTPRequestHandler):
 
         user = self._auth()
         if not user:
-            return self._send_json({"ok": False, "error": "请先登录后再上传"}, 401)
+            guard = self._require_user()
+            if guard:
+                return self._send_json(guard[0], guard[1])
+            user = {"username": "guest", "role": "guest"}
 
         files = parsed["files"]
         if not files:
@@ -995,12 +1017,16 @@ class ApiHandler(BaseHTTPRequestHandler):
         # 分组时就聚到同一条笔记下；不传则每个文件按自己的文件名各成一条。
         group_title = (fields.get("title") or "").strip()
 
+        guest = user.get("username") == "guest"
+        cap = 8 if guest else MAX_KB_NOTES
         store = KnowledgeStore()
-        existing = len(store.list_all())
-        if existing >= MAX_KB_NOTES:
+        existing = len(store.visible(user["username"])) if guest else len(store.list_all())
+        if existing >= cap:
             return self._send_json({
                 "ok": False,
-                "error": "知识库已达上限 %d 条，请先删除一些笔记" % MAX_KB_NOTES,
+                "error": ("未登录最多体验 %d 条资料，登录后可继续导入并保存到账号" % cap)
+                if guest else ("知识库已达上限 %d 条，请先删除一些笔记" % MAX_KB_NOTES),
+                "guest": guest,
             }, 400)
 
         cleanup_uploads(DATA_DIR)   # 顺手清过期临时文件，不需要定时任务
@@ -1110,16 +1136,30 @@ class ApiHandler(BaseHTTPRequestHandler):
             return {"ok": False, "error": "需要管理员权限"}, 403
         return None
 
-    def _require_user(self):
-        """写接口登录校验（与 _require_admin 同语义：账号体系未启用时放行）。
+    # 未登录也能用全部学习功能，但按浏览器限量（与 LLM 双闸分开计数）。
+    # 管理员/设置/知识库分享口令不走这里，仍要求登录。
+    GUEST_DAILY_CAP = 30
 
-        返回 None 表示放行；否则返回 (响应体, HTTP 状态码)。
-        auth 启用时要求登录，未登录 401。profile 不走这里：首次访问会自动保存画像。
+    def _require_user(self):
+        """学习功能写接口：已登录或账号体系未启用时放行。
+
+        未登录不 401，改为本浏览器每日限量。用尽才 429，并提示登录后不限次、
+        且数据才会写入账号。返回 None 表示放行；否则返回 (响应体, HTTP 状态码)。
         """
         if not accounts.auth_enabled():
             return None
-        if not self._auth():
-            return {"ok": False, "error": "请先登录后再操作"}, 401
+        if self._auth():
+            return None
+        cid = self._client_id()
+        day = storage_ratelimit._today()
+        if not storage_ratelimit.check_and_incr(
+                "guest:" + cid, day, self.GUEST_DAILY_CAP):
+            return {
+                "ok": False,
+                "error": "今日体验次数已用完。登录后可继续使用，数据才会保存到账号。",
+                "code": "GUEST_LIMIT",
+                "guest": True,
+            }, 429
         return None
 
     def _client_id(self, query=None) -> str:
@@ -1156,6 +1196,9 @@ class ApiHandler(BaseHTTPRequestHandler):
                 pass
             return data_scope.owner_key(user["username"])
         return self._client_id(query)
+
+    # 当前正在处理的请求，给模块级回调读归属桶用。只在本请求线程内有效。
+    _request_local = threading.local()
 
     def _owner_keys(self, query=None) -> list:
         """读路径的桶列表。"""
@@ -1246,6 +1289,7 @@ class ApiHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self):
+        ApiHandler._request_local.handler = self
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path.rstrip("/") or "/"
         query = urllib.parse.parse_qs(parsed.query)
@@ -1406,7 +1450,7 @@ class ApiHandler(BaseHTTPRequestHandler):
             if path == "/api/knowledge/categories":
                 user = self._auth()
                 store = KnowledgeStore()
-                username = (user or {}).get("username", "")
+                username = (user or {}).get("username", "") or "guest"
                 return self._send_json({
                     "ok": True,
                     "categories": store.categories(username),
@@ -1414,7 +1458,8 @@ class ApiHandler(BaseHTTPRequestHandler):
 
             if path == "/api/knowledge":
                 user = self._auth()
-                username = (user or {}).get("username", "")
+                # 未登录只看本次体验写入的 guest 资料，看不到别人的 private。
+                username = (user or {}).get("username", "") or "guest"
                 q = (query.get("q") or [""])[0].strip()
                 scope = (query.get("scope") or [""])[0].strip().lower()
                 category = (query.get("category") or [""])[0].strip()
@@ -1468,6 +1513,7 @@ class ApiHandler(BaseHTTPRequestHandler):
             return self._send_json({"ok": False, "error": error_text.internal_error(e)}, 500)
 
     def do_POST(self):
+        ApiHandler._request_local.handler = self
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path.rstrip("/") or "/"
 
@@ -1557,7 +1603,7 @@ class ApiHandler(BaseHTTPRequestHandler):
                 if not user:
                     return self._send_json({"ok": False, "error": "请先登录后再添加分类"}, 401)
                 category = str(body.get("category") or "").strip()
-                if not category or len(category) > 24:
+                if not category or len(category) > 40:
                     return self._send_json({"ok": False, "error": "分类名需为 1–24 个字符"}, 400)
                 store = KnowledgeStore()
                 note_id = store.add(
@@ -1591,11 +1637,59 @@ class ApiHandler(BaseHTTPRequestHandler):
                     return self._send_json({"ok": False, "error": "口令无效或笔记已删除"}, 404)
                 return self._send_json({"ok": True, "ids": created, "count": len(created)})
 
+            if path == "/api/knowledge/category":
+                # 已有笔记改归用户自定义分类。不同学校课名不同，不能只靠上传时的自动标签。
+                user = self._auth()
+                if not user:
+                    guard = self._require_user()
+                    if guard:
+                        return self._send_json(guard[0], guard[1])
+                    user = {"username": "guest", "role": "guest"}
+                raw_ids = body.get("ids") or []
+                if not isinstance(raw_ids, list) or not raw_ids:
+                    return self._send_json({"ok": False, "error": "请选择要归类的笔记"}, 400)
+                category = str(body.get("category") or "").strip()
+                if not category or len(category) > 40:
+                    return self._send_json({"ok": False, "error": "分类名需为 1–40 个字符"}, 400)
+                store = KnowledgeStore()
+                updated = []
+                is_admin = user.get("role") == "admin"
+                for raw in raw_ids:
+                    try:
+                        note_id = int(raw)
+                    except (TypeError, ValueError):
+                        continue
+                    target = next(
+                        (store.normalize(item) for item in store.list_all()
+                         if item.get("id") == note_id),
+                        None)
+                    if not target:
+                        continue
+                    owner = str(target.get("owner") or "").strip()
+                    if not is_admin and (not owner or owner != user.get("username")):
+                        continue
+                    if store.set_category(note_id, category):
+                        updated.append(note_id)
+                        try:
+                            import vector_store
+                            vector_store.set_note_category(note_id, category)
+                        except Exception:
+                            pass
+                if not updated:
+                    return self._send_json({"ok": False, "error": "只能改自己的资料"}, 403)
+                return self._send_json({
+                    "ok": True, "ids": updated, "category": category,
+                    "categories": store.categories(user["username"]),
+                })
+
             if path == "/api/knowledge":
                 # 粘贴文本入库（与上传导入共用分块 + 内容安全逻辑）
                 user = self._auth()
                 if not user:
-                    return self._send_json({"ok": False, "error": "请先登录后再上传"}, 401)
+                    guard = self._require_user()
+                    if guard:
+                        return self._send_json(guard[0], guard[1])
+                    user = {"username": "guest", "role": "guest"}
                 text = (body.get("content") or body.get("text") or "").strip()
                 title = (body.get("title") or "").strip()
                 tags = body.get("tags")
@@ -1605,9 +1699,16 @@ class ApiHandler(BaseHTTPRequestHandler):
                     tags = [t.strip() for t in tags.split(",") if t.strip()]
 
                 store = KnowledgeStore()
-                if len(store.list_all()) >= MAX_KB_NOTES:
-                    return self._send_json(
-                        {"ok": False, "error": "知识库已达上限 %d 条" % MAX_KB_NOTES}, 400)
+                guest = user.get("username") == "guest"
+                kb_cap = 8 if guest else MAX_KB_NOTES
+                kb_have = len(store.visible(user["username"])) if guest else len(store.list_all())
+                if kb_have >= kb_cap:
+                    return self._send_json({
+                        "ok": False,
+                        "error": ("未登录最多体验 %d 条资料，登录后可继续导入并保存到账号" % kb_cap)
+                        if guest else ("知识库已达上限 %d 条" % MAX_KB_NOTES),
+                        "guest": guest,
+                    }, 400)
 
                 # 允许「只给标题、正文留空」——界面上「新建笔记」就是先建一个空容器，
                 # 等导入材料再填进去。标题和正文同时为空才算无效请求。
@@ -1795,6 +1896,8 @@ class ApiHandler(BaseHTTPRequestHandler):
                     web_search=body.get("web_search", True),
                     lively=body.get("lively", False),
                     client_id=self._client_id(),
+                    topics=body.get("topics") or None,
+                    include_wrong=bool(body.get("include_wrong")),
                 )
                 return self._send_json(res)
 
@@ -1846,6 +1949,44 @@ class ApiHandler(BaseHTTPRequestHandler):
                 if guard:
                     return self._send_json(guard[0], guard[1])
                 return self._send_json(rep)
+
+            if path == "/api/quiz/from-wrongbook":
+                # 错题重做：取本桶下指定 id 的错题，为每道生成同知识点新题（不联网）。
+                # 试卷整体已通过 /api/quiz/generate 安全闸，这里仅按归属桶读取错题，不再拦一次。
+                guard = self._require_user()
+                if guard:
+                    return self._send_json(guard[0], guard[1])
+                if self._enforce_anon_llm_quota():
+                    return
+                raw_ids = body.get("ids") or []
+                if not isinstance(raw_ids, list) or not raw_ids:
+                    return self._send_json({"ok": False, "error": "请选择要重做的错题"}, 400)
+                cid = self._owner_id()
+                items = []
+                for rid in raw_ids:
+                    try:
+                        item_id = int(rid)
+                    except (TypeError, ValueError):
+                        continue
+                    it = wrong_book_store.get_item(cid, item_id)
+                    if not it:
+                        continue
+                    items.append({
+                        "course": it.get("course") or "",
+                        "question": it.get("question") or "",
+                        "answer": it.get("answer") or "",
+                        "reason": it.get("reason") or "",
+                        "qtype": wrongbook_quiz_mod.parse_qtype(it) or "single",
+                    })
+                if not items:
+                    return self._send_json({"ok": False, "error": "没有可重做的错题"}, 400)
+                res = quiz_mod.generate_quiz_from_wrongbook(
+                    items,
+                    difficulty=body.get("difficulty") or "medium",
+                    types=body.get("types") or None,
+                    client_id=self._client_id(),
+                )
+                return self._send_json(res)
             if path == "/api/export":
                 course = (body.get("course") or "").strip()
                 fmt = (body.get("format") or "markdown").strip().lower()
@@ -1935,6 +2076,30 @@ class ApiHandler(BaseHTTPRequestHandler):
                     "ok": True,
                     "progress": progress_store.get_progress(course),
                     "stats": {"done": done, "total": total, "ratio": round(ratio, 4)},
+                })
+
+            if path == "/api/progress/importance":
+                # 标注大纲/计划某项的重要程度：普通(0)/重点(1)/核心(2)。
+                course = (body.get("course") or "").strip()
+                kind = (body.get("kind") or "").strip()
+                if not course or kind not in ("outline", "plan"):
+                    return self._send_json(
+                        {"ok": False, "error": "需要 course 与 kind（outline/plan）"}, 400)
+                guard = self._require_user()
+                if guard:
+                    return self._send_json(guard[0], guard[1])
+                try:
+                    index = int(body.get("index"))
+                    importance = int(body.get("importance") or 0)
+                except (TypeError, ValueError):
+                    return self._send_json(
+                        {"ok": False, "error": "index / importance 必须是整数"}, 400)
+                if not progress_store.set_importance(course, kind, index, importance):
+                    return self._send_json(
+                        {"ok": False, "error": "未找到该课程或该项越界"}, 404)
+                return self._send_json({
+                    "ok": True,
+                    "progress": progress_store.get_progress(course),
                 })
 
             if path == "/api/mindmap":
@@ -2104,7 +2269,10 @@ class ApiHandler(BaseHTTPRequestHandler):
                     return self._send_json({"ok": False, "error": "id 必须是数字"}, 400)
                 user = self._auth()
                 if not user:
-                    return self._send_json({"ok": False, "error": "请先登录后再删除"}, 401)
+                    guard = self._require_user()
+                    if guard:
+                        return self._send_json(guard[0], guard[1])
+                    user = {"username": "guest", "role": "guest"}
                 store = KnowledgeStore()
                 target = next(
                     (store.normalize(item) for item in store.list_all()
@@ -2218,6 +2386,13 @@ class ApiHandler(BaseHTTPRequestHandler):
         finally:
             self._sse_close()
 
+    @staticmethod
+    def _active_owner_keys():
+        handler = getattr(ApiHandler._request_local, "handler", None)
+        if handler is None:
+            return ["anonymous"]
+        return handler._owner_keys()
+
     def _handle_quiz_stream(self, query):
         """GET /api/quiz/stream —— 第一题校验通过即推，后续题继续推。
 
@@ -2252,6 +2427,10 @@ class ApiHandler(BaseHTTPRequestHandler):
         web_search = raw_web not in ("0", "false", "False")
         raw_lively = (query.get("lively") or ["0"])[0]
         lively = raw_lively in ("1", "true", "True")
+        raw_topics = query.get("topics") or []
+        topics = [str(t).strip() for t in raw_topics if str(t).strip()]
+        raw_wrong = (query.get("include_wrong") or ["0"])[0]
+        include_wrong = raw_wrong in ("1", "true", "True")
 
         self._sse_open()
         self.close_connection = True
@@ -2268,6 +2447,8 @@ class ApiHandler(BaseHTTPRequestHandler):
                 web_search=web_search,
                 lively=lively,
                 client_id=client_id,
+                topics=topics or None,
+                include_wrong=include_wrong,
             ):
                 emit(event, data)
         except (BrokenPipeError, ConnectionResetError):

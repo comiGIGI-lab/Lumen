@@ -163,6 +163,30 @@ def _kb_blocks(hits):
     return "\n\n".join(blocks)
 
 
+# 指定了章节但知识库一条都对不上时的固定报错。不要静默退回全课程：
+# 用户明确收窄了范围，退回全量会让他以为在练所选章节。
+NO_TOPIC_MATCH_ERROR = "所选章节在知识库中没有对应材料，请先导入该章节的资料或改选范围。"
+
+# 闯关勾选「加入错题」时，由 api_server 注入的取数回调。quiz 不 import 存储层，
+# 归属桶的判断留在 api_server。签名 (course) -> [{course, question, answer, reason, qtype}]。
+_wrongbook_provider = None
+
+
+def set_wrongbook_provider(fn):
+    """注入错题取数回调。传 None 即关闭（回归测试用）。"""
+    global _wrongbook_provider
+    _wrongbook_provider = fn
+
+
+def _hit_matches_topic(hit, topics):
+    """知识库命中是否命中任一限定章节（标题或正文含章节关键词即算）。"""
+    note = hit[0] if isinstance(hit, (tuple, list)) else hit
+    if not isinstance(note, dict):
+        return False
+    text = "%s\n%s" % (note.get("title", "") or "", note.get("content", "") or "")
+    return any(str(t) in text for t in topics)
+
+
 # ---------------------------------------------------------------------------
 # 联网出题工具智能体（langchain-tavily）
 # ---------------------------------------------------------------------------
@@ -344,7 +368,16 @@ _TOOL_SYSTEM = """你是严谨的 AI 出题老师。你需要借助 Tavily 联�
 若已有知识库资料足够，可直接用 <finish> 输出题目。"""
 
 
-def _tool_user(course, difficulty, plan, is_url, kb_ctx, lively=False):
+def _avoid_rule(avoid_stems):
+    """把已出过的题干回传给模型，要求换题，降低批次之间题干撞车的概率。"""
+    stems = [str(s).strip() for s in (avoid_stems or []) if str(s).strip()]
+    if not stems:
+        return ""
+    shown = "\n".join("• %s" % s[:80] for s in stems[:12])
+    return "以下题干已经出过，请换成考察点相同但题干完全不同的新题：\n%s\n\n" % shown
+
+
+def _tool_user(course, difficulty, plan, is_url, kb_ctx, lively=False, topics=None):
     lines = []
     if is_url:
         lines.append("待抓取的文档 URL：%s" % course)
@@ -352,6 +385,9 @@ def _tool_user(course, difficulty, plan, is_url, kb_ctx, lively=False):
         lines.append("出题主题（课程名）：%s" % course)
     lines.append("难度：%s" % difficulty)
     lines.append("题型要求：%s" % _plan_spec(plan, difficulty))
+    if topics:
+        lines.append("本次出题范围限定在以下章节 / 主题内，不要超出这些范围：\n"
+                     + "\n".join("• %s" % t for t in topics))
     if kb_ctx and kb_ctx.strip():
         lines.append("【知识库已有资料，可与联网资料结合使用】\n%s" % kb_ctx)
     lines.append("文风：" + _style_rule(lively))
@@ -359,7 +395,7 @@ def _tool_user(course, difficulty, plan, is_url, kb_ctx, lively=False):
     return "\n\n".join(lines)
 
 
-def _run_tool_agent(course, difficulty, plan, api_key, is_url, kb_ctx="", lively=False):
+def _run_tool_agent(course, difficulty, plan, api_key, is_url, kb_ctx="", lively=False, topics=None, avoid_stems=None):
     """工具智能体：驱动现有出题 LLM 走「调用 Tavily 工具 → 收尾出题」循环。
 
     返回 {"ok": bool, "questions": [...], "sources": [...], "error": str}。
@@ -369,7 +405,7 @@ def _run_tool_agent(course, difficulty, plan, api_key, is_url, kb_ctx="", lively
     tools = _build_tavily_tools(api_key)
     messages = [
         {"role": "system", "content": _TOOL_SYSTEM},
-        {"role": "user", "content": _tool_user(course, difficulty, plan, is_url, kb_ctx, lively)},
+        {"role": "user", "content": _avoid_rule(avoid_stems) + _tool_user(course, difficulty, plan, is_url, kb_ctx, lively, topics)},
     ]
     sources = []
     for step in range(1, MAX_AGENT_STEPS + 1):
@@ -493,7 +529,7 @@ def _style_rule(lively):
     )
 
 
-def _build_prompt(course, difficulty, plan, kb, lively=False):
+def _build_prompt(course, difficulty, plan, kb, lively=False, topics=None, avoid_stems=None):
     hint = DIFFICULTY_HINT.get(difficulty, DIFFICULTY_HINT["medium"])
     spec = _plan_spec(plan, difficulty)
     if kb and kb.strip():
@@ -501,8 +537,12 @@ def _build_prompt(course, difficulty, plan, kb, lively=False):
     else:
         material_rule = ("下方暂无参考资料，请基于你对该主题的可靠通用知识严谨出题，"
                         "确保事实准确、不杜撰。")
-    return (
-        "你是严谨的出题老师。%s\n%s\n\n"
+    topic_rule = ""
+    if topics:
+        topic_rule = ("出题范围限定在以下章节 / 主题内，不要超出这些范围：\n"
+                      + "\n".join("• %s" % t for t in topics) + "\n")
+    return _avoid_rule(avoid_stems) + (
+        "你是严谨的出题老师。%s\n%s\n%s\n\n"
         "课程：%s\n难度要求：%s\n\n"
         "请出：%s。只输出一个 JSON 对象，不要输出其他文字：\n"
         '{"questions": [{"type": "single", "stem": "题干", '
@@ -511,7 +551,7 @@ def _build_prompt(course, difficulty, plan, kb, lively=False):
         '"answer": ["A"], "explanation": "解析", "knowledge_point": "知识点"}]}\n\n'
         "要求：每题必须带 type 字段（single/multi/judge）；选项文本两两不同；"
         "题干、解析、知识点都用中文且非空。\n\n"
-        "出题依据的资料：\n%s" % (material_rule, _style_rule(lively), course, hint, spec, kb)
+        "出题依据的资料：\n%s" % (material_rule, _style_rule(lively), topic_rule, course, hint, spec, kb)
     )
 
 
@@ -753,12 +793,65 @@ def _iter_questions(questions, quiz_id):
         })
 
 
+# 去重丢掉题目后，最多再补这么多次。每次都把已出题干回传给模型避开，防止死循环补同一题。
+_REFILL_LIMIT = 2
+
+
+def _run_stems(quiz_id):
+    """已落盘的题干，用于让后续批次避开重复题。"""
+    with _LOCK:
+        runs = _load()
+        run = runs.get(quiz_id) or {}
+        return [q.get("stem") or "" for q in run.get("questions") or []]
+
+
+def _append_wrongbook(quiz_id, course, difficulty, client_id, include_wrong, start_index):
+    """把本课程全部未掌握错题重做成新题，追加进当前局。失败不拖垮主流程。"""
+    if not include_wrong or _wrongbook_provider is None:
+        return []
+    try:
+        items = _wrongbook_provider(course) or []
+    except Exception:
+        logging.warning("读取错题本失败，本次不并入错题")
+        return []
+    if not items:
+        return []
+    res = generate_quiz_from_wrongbook(items, difficulty=difficulty, client_id=client_id)
+    if not res.get("ok"):
+        return []
+    out = []
+    with _LOCK:
+        runs = _load()
+        extra = list((runs.get(res["quiz_id"]) or {}).get("questions") or [])
+        runs.pop(res["quiz_id"], None)
+        _save()
+    for q in extra:
+        pub = _append_question(quiz_id, dict(q), "wrongbook", [])
+        if pub:
+            out.append(pub)
+    return out
+
+
+def _generate_fresh(course, difficulty, count, types, client_id, web_search, lively, topics,
+                    avoid_stems):
+    """要一批与已出题干不重复的题。count 可以小于整卷下限，调用方负责夹住。"""
+    res = generate_quiz(
+        course, difficulty=difficulty, count=count, types=types,
+        client_id=client_id, web_search=web_search, min_questions=1, lively=lively,
+        min_count=1, topics=topics, avoid_stems=avoid_stems,
+    )
+    return res
+
+
 def iter_generate_quiz(course, difficulty="medium", count=_COUNT_DEFAULT, types=None,
-                       client_id="", web_search=True, lively=False):
+                       client_id="", web_search=True, lively=False, topics=None,
+                       include_wrong=False):
     """边出边推。默认拆成「先 1 题、再剩余题」两次模型调用。
 
     第一次调用返回并落盘后立刻 yield meta + question，调用方可以在第二次调用进行时判分。
     题量已经是 1，或注入的 _llm_chat 一次就给出全部题时，不再二次调用。
+    第二次调用若与第一题题干撞车，会按差额再补，最多 _REFILL_LIMIT 次。
+    include_wrong 为真时，在新题之外再并入本课程的全部未掌握错题重做题。
     yield (event, data)，data 不含 answer。整卷 POST 仍走 generate_quiz。
     """
     course = str(course or "").strip()
@@ -790,10 +883,8 @@ def iter_generate_quiz(course, difficulty="medium", count=_COUNT_DEFAULT, types=
         return quiz_id
 
     first_n = 1 if total > 1 else total
-    gen = _emit_bundle(generate_quiz(
-        course, difficulty=difficulty, count=first_n, types=types,
-        client_id=client_id, web_search=web_search, min_questions=1, lively=lively,
-        min_count=1,
+    gen = _emit_bundle(_generate_fresh(
+        course, difficulty, first_n, types, client_id, web_search, lively, topics, None,
     ))
     quiz_id = None
     failed = False
@@ -810,17 +901,27 @@ def iter_generate_quiz(course, difficulty="medium", count=_COUNT_DEFAULT, types=
         yield ("done", {"ok": True, "quiz_id": quiz_id, "count": first_n})
         return
 
-    rest = generate_quiz(
-        course, difficulty=difficulty, count=total - first_n, types=types,
-        client_id=client_id, web_search=web_search, min_questions=1, lively=lively,
-        min_count=1,
-    )
+    # 后续题逐批补。第一批剩余题按原计划出，不带避让题干——那一批和首题同属一轮，
+    # 提前回传题干会让模型换题，凑不满原计划的题数。
+    # 批内与已出题干重复的由 _append_question 丢掉；只有真被丢掉才把已出题干回传，
+    # 按差额再要，直到凑满 total 或补不出新题。
     added = 0
-    if rest.get("ok"):
+    avoid = None
+    for _ in range(_REFILL_LIMIT + 1):
+        need = total - first_n - added
+        if need <= 0:
+            break
+        rest = _generate_fresh(
+            course, difficulty, need, types, client_id, web_search, lively, topics, avoid,
+        )
+        if not rest.get("ok"):
+            break
         with _LOCK:
             runs = _load()
-            extra_run = runs.get(rest["quiz_id"]) or {}
-            extra = list(extra_run.get("questions") or [])
+            extra = list((runs.get(rest["quiz_id"]) or {}).get("questions") or [])
+            runs.pop(rest["quiz_id"], None)
+            _save()
+        gained = 0
         for q in extra:
             if added >= total - first_n:
                 break
@@ -831,12 +932,26 @@ def iter_generate_quiz(course, difficulty="medium", count=_COUNT_DEFAULT, types=
                     "ok": True, "index": first_n + added, "question": pub, "quiz_id": quiz_id,
                 })
                 added += 1
-        with _LOCK:
-            runs = _load()
-            runs.pop(rest["quiz_id"], None)
-            _save()
+                gained += 1
+        if gained == 0:
+            break
+        # 这一批有题被去重丢掉才需要换题干重出，否则下一轮差额请求会重复拿到同一题。
+        if gained < len(extra):
+            avoid = _run_stems(quiz_id)
+
+    # 错题并入：不占 total 的名额，作为额外练习题追加在新题之后。
+    wrong_added = _append_wrongbook(quiz_id, course, difficulty, client_id, include_wrong,
+                                    first_n + added)
+    for pub in wrong_added:
+        yield ("question", {
+            "ok": True, "index": first_n + added + wrong_added.index(pub),
+            "question": pub, "quiz_id": quiz_id,
+        })
+
     _finish_run(quiz_id, "done")
-    yield ("done", {"ok": True, "quiz_id": quiz_id, "count": first_n + added})
+    yield ("done", {"ok": True, "quiz_id": quiz_id,
+                    "count": first_n + added + len(wrong_added),
+                    "expected": total, "short": first_n + added < total})
 
 
 def _assemble(course, difficulty, plan, questions, src_kind, src_list, citations, client_id,
@@ -865,7 +980,7 @@ def _assemble(course, difficulty, plan, questions, src_kind, src_list, citations
     }
 
 
-def generate_quiz(course, difficulty="medium", count=_COUNT_DEFAULT, types=None, client_id="", web_search=True, min_questions=None, lively=False, min_count=None):
+def generate_quiz(course, difficulty="medium", count=_COUNT_DEFAULT, types=None, client_id="", web_search=True, min_questions=None, lively=False, min_count=None, topics=None, avoid_stems=None):
     """出题入口。返回 dict（HTTP 层直接回 JSON）。
 
     联网出题走「Tavily 工具智能体」：URL 用 extract、主题用 search，模型按复杂度自选自浅/深
@@ -907,14 +1022,23 @@ def generate_quiz(course, difficulty="medium", count=_COUNT_DEFAULT, types=None,
         )
 
     # 主题题：知识库可选增强 + 联网工具智能体（由 web_search 开关控制）
+    topics = [str(t).strip() for t in (topics or []) if str(t).strip()]
+    avoid = [str(s).strip() for s in (avoid_stems or []) if str(s).strip()]
     hits = _retrieve(course)
+    # 限定章节出题：按主题词过滤。用户既已指定范围，命不中任何章节就明确报错，
+    # 不再退回全课程——退回会让人误以为正在练所选章节。
+    if topics:
+        matched = [h for h in hits if _hit_matches_topic(h, topics)] if hits else []
+        if not matched:
+            return {"ok": False, "error": NO_TOPIC_MATCH_ERROR, "retrieved": []}
+        hits = matched
     kb_ctx = _kb_blocks(hits) if hits else ""
     kb_citations = [
         {"id": n.get("id"), "title": n.get("title", ""), "score": round(s, 2)}
         for n, s, _ in hits
     ]
     if web_search and key:
-        agent = _run_tool_agent(course, difficulty, plan, key, is_url=False, kb_ctx=kb_ctx, lively=lively)
+        agent = _run_tool_agent(course, difficulty, plan, key, is_url=False, kb_ctx=kb_ctx, lively=lively, topics=topics, avoid_stems=avoid)
         if agent["ok"]:
             web_sources = agent["sources"]
             src_kind = "web" if web_sources else ("kb" if hits else "topic")
@@ -925,11 +1049,86 @@ def generate_quiz(course, difficulty="medium", count=_COUNT_DEFAULT, types=None,
         # 联网工具智能体失败/异常 → 降级为空上下文，基于通用知识出题（不拒绝）
         logging.warning("联网工具智能体失败，降级为空上下文出题: %s", agent.get("error"))
     # 联网关闭 / 无 key / 降级：直接 KB 或通用知识出题
-    questions = _generate_from_prompt(_build_prompt(course, difficulty, plan, kb_ctx, lively))
+    questions = _generate_from_prompt(_build_prompt(course, difficulty, plan, kb_ctx, lively, topics, avoid))
     src_kind = "kb" if hits else "topic"
     return _assemble(
         course, difficulty, plan, questions, src_kind, [], kb_citations, client_id,
         min_questions,
+    )
+
+
+# ---------------------------------------------------------------------------
+# 错题重做：为每道错题生成「同知识点」的新题（不联网，考点来自已存错题）
+# ---------------------------------------------------------------------------
+
+def _build_wrongbook_prompt(items, difficulty):
+    """为每条错题（原题 / 正确答 / 解析）生成一道全新的同知识点练习。
+
+    题型（single/multi/judge）必须与原题一致，避免多选变成单选丢信息；
+    题干与选项文字都要与原题不同，确保是「练同一考点」而非「复读原题」。
+    """
+    hint = DIFFICULTY_HINT.get(difficulty, DIFFICULTY_HINT["medium"])
+    lines = [
+        "你是严谨的出题老师。下面列出用户之前答错的若干道题（含原题、正确答、解析）。",
+        "请为每一道【原】题，生成一道【全新的】练习题：考点 / 知识点必须相同，"
+        "但题干与各个选项文字都不得与原题雷同；题型（单选 single / 多选 multi / 判断 judge）"
+        "必须与原题保持一致；题干、解析、知识点都用中文且非空。",
+        "难度要求：%s" % hint,
+    ]
+    for i, it in enumerate(items, 1):
+        q = (it.get("question") or "").strip()
+        a = (it.get("answer") or "").strip()
+        r = (it.get("reason") or "").strip()
+        tp = (it.get("qtype") or "single").strip().lower()
+        if tp not in Q_TYPES:
+            tp = "single"
+        block = "[%d] 原题题型：%s\n原题：%s" % (i, tp, q)
+        if a:
+            block += "\n正确答：%s" % a
+        if r:
+            block += "\n解析：%s" % r
+        lines.append(block)
+    lines.append("请只输出一个 JSON 对象，不要输出其他文字：")
+    lines.append(
+        '{"questions": [{"type": "single", "stem": "题干", '
+        '"options": [{"key": "A", "text": "选项"}, {"key": "B", "text": "选项"}, '
+        '{"key": "C", "text": "选项"}, {"key": "D", "text": "选项"}], '
+        '"answer": ["A"], "explanation": "解析", "knowledge_point": "知识点"}]}'
+    )
+    lines.append(
+        "要求：题目数量必须与上面的原题目的数量一致；每题必须带 type 字段（single/multi/judge）；"
+        "选项文本两两不同；题干、解析、知识点都用中文且非空。"
+    )
+    return "\n\n".join(lines)
+
+
+def generate_quiz_from_wrongbook(items, difficulty="medium", types=None, client_id=""):
+    """错题重做入口：为每条错题产出一道同知识点的新选择题，复用 _assemble 同结构返回。
+
+    items: [{course, question, answer, reason, qtype}] —— 由 api_server 从错题本读取。
+    不联网（考点来自已存错题），直接走 _generate_from_prompt；返回与 generate_quiz
+    相同的 {ok, quiz_id, course, difficulty, count, types, source, questions, retrieved}。
+    """
+    if not items:
+        return {"ok": False, "error": "没有可重做的错题", "retrieved": []}
+    difficulty = str(difficulty or "medium").strip().lower()
+    if difficulty not in DIFFICULTIES:
+        difficulty = "medium"
+
+    # 单条错题也允许成局（min_questions=1）；批量时按 _assemble 下限即可
+    questions = _generate_from_prompt(_build_wrongbook_prompt(items, difficulty))
+    if not questions:
+        return {"ok": False, "error": "本次生成的题目未通过格式校验，请重试。", "retrieved": []}
+
+    # plan 由实际生成题的题型构成（错题重做保留每题原始题型）
+    plan = {"single": 0, "multi": 0, "judge": 0}
+    for q in questions:
+        plan[q.get("type", "single")] = plan.get(q.get("type", "single"), 0) + 1
+
+    return _assemble(
+        items[0].get("course") or "",
+        difficulty, plan, questions, "wrongbook", [], [], client_id,
+        min_questions=1,
     )
 
 
