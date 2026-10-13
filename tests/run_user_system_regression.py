@@ -166,6 +166,15 @@ def source_checks():
           and "ANON_LIMIT_CLIENT" in api and "ANON_LIMIT_GLOBAL" in api)
     # 四个消耗 token 的入口都挂了闸（定义 1 次 + 至少 4 处调用）
     check("api_quota_on_llm_endpoints", api.count("_enforce_anon_llm_quota") >= 5)
+    # 全局配置类接口（settings / settings.test / cache.clear）必须要求**登录**：
+    # _require_user 会放行匿名访客，用它守卫全局接口 = 任何人一个空 POST 就能
+    # 覆盖 LLM 供应商（2026-10-13 实测踩到）。这三个接口应改用 _require_login。
+    check("global_cfg_requires_login", api.count("_require_login(") >= 3)
+    _bad_guard = re.search(
+        r'path == "/api/(settings|settings/test|cache/clear)":\s*\n\s*guard = self\._require_user\(\)',
+        api)
+    check("global_cfg_not_guest_guard", not _bad_guard,
+          _bad_guard.group(0) if _bad_guard else "")
     check("client_dispatches_anon_limit", "zjxt:anon-limit" in cli and "ANON_LIMIT_CLIENT" in cli)
     check("app_opens_login_on_anon_limit",
           "zjxt:anon-limit" in read(app_vue) and "showLogin" in read(app_vue))

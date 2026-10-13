@@ -1162,6 +1162,23 @@ class ApiHandler(BaseHTTPRequestHandler):
             }, 429
         return None
 
+    def _require_login(self, error="请先登录后再操作"):
+        """全局配置类写接口：必须「已登录」（不限角色）；账号体系未启用时放行。
+
+        与 _require_user 的区别：后者**对匿名访客放行**（只按浏览器日限），
+        只适合个人学习数据的写接口。像 /api/settings 这种改动**全局**
+        配置（LLM 供应商 / Key / 模型）的接口若走 _require_user，任何
+        匿名访客一个空 body 的 POST 就能把 provider 覆盖成 mock，拖垮整站
+        模型能力（2026-10-13 实测踩到并修复）。见上方
+        「管理员/设置/知识库分享口令不走这里，仍要求登录」的约定。
+        返回 None 表示放行；否则返回 (响应体, HTTP 状态码)。
+        """
+        if not accounts.auth_enabled():
+            return None
+        if not self._auth():
+            return {"ok": False, "error": error}, 401
+        return None
+
     def _client_id(self, query=None) -> str:
         """取客户端标识：优先 X-Client-Id 请求头，SSE 场景回落 client_id 查询参数。"""
         cid = (self.headers.get("X-Client-Id") or "").strip()
@@ -2019,13 +2036,13 @@ class ApiHandler(BaseHTTPRequestHandler):
                 })
 
             if path == "/api/settings/test":
-                guard = self._require_user()
+                guard = self._require_login("请先登录后再测试模型连接")
                 if guard:
                     return self._send_json(guard[0], guard[1])
                 return self._send_json(test_llm_connection(body))
 
             if path == "/api/settings":
-                guard = self._require_user()
+                guard = self._require_login("请先登录后再修改设置")
                 if guard:
                     return self._send_json(guard[0], guard[1])
                 # 「留空 = 保持现有 Key」。
@@ -2218,7 +2235,9 @@ class ApiHandler(BaseHTTPRequestHandler):
                 })
 
             if path == "/api/cache/clear":
-                guard = self._require_user()
+                # 方案缓存是**全局**的（key 只含课程+画像，不含账号）：匿名访客
+                # 反复清空会迫使整站重复调用 LLM（成本放大），同样要求登录。
+                guard = self._require_login("请先登录后再清空缓存")
                 if guard:
                     return self._send_json(guard[0], guard[1])
                 n = cache_store.clear_cache(body.get("course") or None)
