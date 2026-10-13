@@ -186,6 +186,28 @@ const MANUAL = {
       minutes: '{n} 分',
       hours: '{n} 小时',
     },
+    // ⚠️ 2026-10-13 三补：2c2add5（Feature D 经验梯度 / 错题重做）新用到的 key
+    //    在 auto-zh / auto-en 里一条都没有 ⇒ 缺键时 t() 最后返回 key 本身，
+    //    线上会直接显示成 wrongBookRedo.title、quizPage.scopeAll 这种原文。
+    quizPage: {
+      scope: '出题范围',
+      scopeAll: '全部范围',
+      scopeDoneOnly: '只考已学章节',
+      noDone: '还没有勾选完成的章节，先在学习方案里把学过的章节打勾。',
+      doneTopics: '已勾选完成 {n} 章，可只考这些章节',
+      recommend: '建议 {count} 道（已学 {n} 章、未掌握错题 {w} 道）',
+      applyRecommend: '用推荐题数',
+    },
+    wrongBookRedo: {
+      title: '错题重做',
+      countHint: '本次重做 {n} 道',
+      diffLabel: '难度',
+      loading: '出题中…',
+      genFail: '出题失败',
+      scoreLine: '得分 {score} / {total}',
+      done: '错题重做完成，经验已结算',
+      back: '返回',
+    },
   },
 
   'en-US': {
@@ -351,6 +373,25 @@ const MANUAL = {
       goalOther: 'Other',
       minutes: '{n} min',
       hours: '{n} h',
+    },
+    quizPage: {
+      scope: 'Scope',
+      scopeAll: 'Full range',
+      scopeDoneOnly: 'Completed chapters only',
+      noDone: 'No chapters checked off yet \u2014 tick the ones you have finished in your plan first.',
+      doneTopics: '{n} chapters checked off \u2014 you can quiz only those',
+      recommend: 'Suggested {count} questions ({n} chapters done, {w} open mistakes)',
+      applyRecommend: 'Use suggested',
+    },
+    wrongBookRedo: {
+      title: 'Redo wrong answers',
+      countHint: '{n} questions this round',
+      diffLabel: 'Difficulty',
+      loading: 'Generating\u2026',
+      genFail: 'Failed to generate',
+      scoreLine: 'Score {score} / {total}',
+      done: 'Redo finished, experience settled',
+      back: 'Back',
     },
   },
 }
