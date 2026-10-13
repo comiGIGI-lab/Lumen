@@ -2189,16 +2189,22 @@ class ApiHandler(BaseHTTPRequestHandler):
                 if guard:
                     return self._send_json(guard[0], guard[1])
                 cid = self._owner_id()
+                # 文本字段一律过 _as_text：原先 `body.get(..) or ""` 对数组/对象
+                # 是**真值**，会原样落库——2026-10-13 实测
+                # POST /api/wrongbook {"question":{"a":1}} 把 "{'a': 1}"
+                # 写进了 MySQL，错题页直接渲染出这段 Python 字面量。
+                # 过 _as_text 后容器值变空串，被下面的「题干不能为空」挡回 400。
+                raw_tags = body.get("tags")
                 try:
                     item = wrong_book_store.add_item(
                         cid,
-                        course=body.get("course") or "",
-                        question=body.get("question") or "",
-                        my_answer=body.get("my_answer") or "",
-                        answer=body.get("answer") or "",
-                        reason=body.get("reason") or "",
-                        tags=body.get("tags"),
-                        source=body.get("source") or "manual",
+                        course=_as_text(body.get("course")),
+                        question=_as_text(body.get("question")),
+                        my_answer=_as_text(body.get("my_answer")),
+                        answer=_as_text(body.get("answer")),
+                        reason=_as_text(body.get("reason")),
+                        tags=raw_tags if isinstance(raw_tags, list) else None,
+                        source=_as_text(body.get("source")) or "manual",
                     )
                 except ValueError as e:
                     return self._send_json({"ok": False, "error": str(e)}, 400)
@@ -2227,12 +2233,12 @@ class ApiHandler(BaseHTTPRequestHandler):
                         {"ok": False, "error": "题干不能为空"}, 400)
                 try:
                     built = wrongbook_quiz_mod.build_quiz_wrong(
-                        course=body.get("course") or "",
+                        course=_as_text(body.get("course")),
                         question=q,
                         selected=body.get("selected"),
                         answer=body.get("answer"),
-                        explanation=body.get("explanation") or "",
-                        knowledge_point=body.get("knowledge_point") or "",
+                        explanation=_as_text(body.get("explanation")),
+                        knowledge_point=_as_text(body.get("knowledge_point")),
                         extra_tags=body.get("tags"),
                     )
                     item = wrong_book_store.add_item(cid, **built)
