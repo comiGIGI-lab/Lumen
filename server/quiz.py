@@ -980,7 +980,33 @@ def _assemble(course, difficulty, plan, questions, src_kind, src_list, citations
     }
 
 
-def generate_quiz(course, difficulty="medium", count=_COUNT_DEFAULT, types=None, client_id="", web_search=True, min_questions=None, lively=False, min_count=None, topics=None, avoid_stems=None):
+def _merge_wrongbook(res, course, difficulty, client_id, include_wrong):
+    """整卷出题收尾：include_wrong 为真时把本课程未掌握错题并入同一局。
+
+    2026-10-13 修：api_server 的 /api/quiz/generate 一直在传 include_wrong=，
+    但 generate_quiz 的签名里没有这个参数 ⇒ TypeError，**该接口对任何请求都 500**
+    （流式 iter_generate_quiz 有，整卷这条漏了）。这里补齐成与流式一致的行为：
+    错题不占 total 名额，作为额外练习题追加在新题之后；并入失败只记日志、不影响新题。
+    """
+    if not include_wrong or not res.get("ok"):
+        return res
+    try:
+        extra = _append_wrongbook(
+            res.get("quiz_id"), course, difficulty, client_id, True,
+            len(res.get("questions") or []))
+    except Exception:
+        logging.warning("并入错题失败，本次只回新题")
+        return res
+    if not extra:
+        return res
+    res = dict(res)
+    res["questions"] = list(res.get("questions") or []) + list(extra)
+    res["count"] = len(res["questions"])
+    res["wrong_added"] = len(extra)
+    return res
+
+
+def generate_quiz(course, difficulty="medium", count=_COUNT_DEFAULT, types=None, client_id="", web_search=True, min_questions=None, lively=False, min_count=None, topics=None, avoid_stems=None, include_wrong=False):
     """出题入口。返回 dict（HTTP 层直接回 JSON）。
 
     联网出题走「Tavily 工具智能体」：URL 用 extract、主题用 search，模型按复杂度自选自浅/深
@@ -1016,10 +1042,10 @@ def generate_quiz(course, difficulty="medium", count=_COUNT_DEFAULT, types=None,
         agent = _run_tool_agent(course, difficulty, plan, key, is_url=True, kb_ctx="", lively=lively)
         if not agent["ok"]:
             return {"ok": False, "error": WEAK_HIT_ERROR, "retrieved": []}
-        return _assemble(
+        return _merge_wrongbook(_assemble(
             course, difficulty, plan, agent["questions"], "web",
             agent["sources"], agent["sources"], client_id, min_questions,
-        )
+        ), course, difficulty, client_id, include_wrong)
 
     # 主题题：知识库可选增强 + 联网工具智能体（由 web_search 开关控制）
     topics = [str(t).strip() for t in (topics or []) if str(t).strip()]
@@ -1042,19 +1068,19 @@ def generate_quiz(course, difficulty="medium", count=_COUNT_DEFAULT, types=None,
         if agent["ok"]:
             web_sources = agent["sources"]
             src_kind = "web" if web_sources else ("kb" if hits else "topic")
-            return _assemble(
+            return _merge_wrongbook(_assemble(
                 course, difficulty, plan, agent["questions"], src_kind,
                 web_sources, kb_citations + web_sources, client_id, min_questions,
-            )
+            ), course, difficulty, client_id, include_wrong)
         # 联网工具智能体失败/异常 → 降级为空上下文，基于通用知识出题（不拒绝）
         logging.warning("联网工具智能体失败，降级为空上下文出题: %s", agent.get("error"))
     # 联网关闭 / 无 key / 降级：直接 KB 或通用知识出题
     questions = _generate_from_prompt(_build_prompt(course, difficulty, plan, kb_ctx, lively, topics, avoid))
     src_kind = "kb" if hits else "topic"
-    return _assemble(
+    return _merge_wrongbook(_assemble(
         course, difficulty, plan, questions, src_kind, [], kb_citations, client_id,
         min_questions,
-    )
+    ), course, difficulty, client_id, include_wrong)
 
 
 # ---------------------------------------------------------------------------
