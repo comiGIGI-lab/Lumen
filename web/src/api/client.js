@@ -554,6 +554,38 @@ export const api = {
   asrStatus() {
     return request('/asr')
   },
+
+  /**
+   * 语音转写：把 PCM 二进制 POST 到 /asr（application/octet-stream）。
+   * 用 XHR 而不是 fetch，因为要上报上传进度（onProgress 0~1）。
+   * 返回后端 JSON：{ text, duration, elapsed, rtf, engine, model, ok, hint? }
+   */
+  asrTranscribe(pcm, { onProgress } = {}) {
+    return new Promise((resolve, reject) => {
+      const buf = pcm instanceof ArrayBuffer ? pcm : pcm.buffer
+      if (!buf || !buf.byteLength) {
+        reject(new Error('没有音频数据'))
+        return
+      }
+      const xhr = new XMLHttpRequest()
+      xhr.open('POST', `${BASE}/asr`)
+      xhr.setRequestHeader('Content-Type', 'application/octet-stream')
+      xhr.setRequestHeader('X-Client-Id', clientId())
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable && onProgress) onProgress(e.loaded / e.total)
+      }
+      xhr.onload = () => {
+        let body = {}
+        try { body = JSON.parse(xhr.responseText) } catch (_) {}
+        if (xhr.status >= 200 && xhr.status < 300 && body.ok !== false) resolve(body)
+        else reject(new Error(body.error || `转写失败（HTTP ${xhr.status}）`))
+      }
+      xhr.onerror = () => reject(new Error('网络错误，音频没传上去'))
+      xhr.ontimeout = () => reject(new Error('转写超时，请换一段更短的音频'))
+      xhr.timeout = 420000
+      xhr.send(buf)
+    })
+  },
 }
 
 /**
