@@ -287,6 +287,41 @@ CLIENT_HISTORY_FILE = os.path.join(DATA_DIR, "client_history.json")
 _MAX_CLIENT_COURSES = 50
 
 
+# ============================================================
+# 3.0 请求参数安全取值（公网接口必须对畸形入参免疫）
+# ============================================================
+# 历史写法 `(body.get("course") or "").strip()` 只在客户端老实传字符串时成立。
+# 任何非字符串（数字 / 列表 / 对象）都会在 .strip() 上抛 AttributeError，
+# 被 do_POST 的兜底 except 吞成 **500「服务暂时不可用」**——2026-10-13 线上实测：
+#   POST /api/plan   {"course":123}          → 500
+#   POST /api/login  {"username":123,...}   → 500
+# 也就是说任何访客都能用一个数字就把接口打成 500。下面两个助手统一收口：
+#   标量（str/int/float）照常接受；bool / None / 列表 / 对象一律当作「没传」，
+# 由各接口原有的参数校验回 400，不再冒 500。
+def _as_text(value) -> str:
+    """任意 JSON 值 → 去空白字符串，绝不抛异常。容器与 bool 视为空。"""
+    if isinstance(value, str):
+        return value.strip()
+    if value is None or isinstance(value, bool):
+        return ""
+    if isinstance(value, (int, float)):
+        return str(value)
+    return ""
+
+
+def _as_int(value, default: int, low=None, high=None) -> int:
+    """任意 JSON 值 → 受限整数。解析失败或越界一律回落到 default。"""
+    try:
+        n = int(str(value).strip())
+    except (TypeError, ValueError):
+        return default
+    if low is not None:
+        n = max(low, n)
+    if high is not None:
+        n = min(high, n)
+    return n
+
+
 def load_client_history() -> dict:
     try:
         with open(CLIENT_HISTORY_FILE, "r", encoding="utf-8") as f:
@@ -956,6 +991,12 @@ class ApiHandler(BaseHTTPRequestHandler):
             length = 0
         if length <= 0:
             return {}
+        # 必须封顶：Content-Length 是客户端说了算的。
+        # 传一个超大整数会让 rfile.read(length) 抛 OverflowError
+        # （2026-10-13 线上实测：`Content-Length: 99999999999999999999` → 500），
+        # 也会让请求体无限进内存。上限与 nginx client_max_body_size 对齐。
+        if length > MAX_UPLOAD_BYTES:
+            return {}
         raw = self.rfile.read(length)
         try:
             data = json.loads(raw.decode("utf-8"))
@@ -1347,7 +1388,10 @@ class ApiHandler(BaseHTTPRequestHandler):
                 return self._send_json(mode_info())
 
             if path == "/api/trace":
-                limit = int((query.get("limit") or ["120"])[0])
+                # 日志页是公开只读接口：limit 必须容错（原来 int("abc") 会抛
+                # ValueError ⇒ 任何访客一个 ?limit=abc 就能打出 500），
+                # 同时封顶，避免 ?limit=99999999… 把整个 trace.log 吐出去。
+                limit = _as_int((query.get("limit") or ["120"])[0], 120, low=1, high=1000)
                 return self._send_json({"lines": tail_trace(limit)})
 
             if path == "/api/history":
@@ -1547,7 +1591,7 @@ class ApiHandler(BaseHTTPRequestHandler):
         try:
             # ---- 账号：登录 / 账号管理（读 body，必须放在 _read_body() 之后）----
             if path == "/api/login":
-                username = (body.get("username") or "").strip()
+                username = _as_text(body.get("username"))
                 password = body.get("password") or ""
                 user = accounts.verify(username, password)
                 if not user:
@@ -1562,7 +1606,7 @@ class ApiHandler(BaseHTTPRequestHandler):
 
             if path == "/api/register":
                 # 自助注册：只建普通账号，注册完直接登录
-                username = (body.get("username") or "").strip()
+                username = _as_text(body.get("username"))
                 password = body.get("password") or ""
                 ok, msg = accounts.register(username, password)
                 if not ok:
@@ -1597,7 +1641,7 @@ class ApiHandler(BaseHTTPRequestHandler):
                 if guard:
                     return self._send_json(guard[0], guard[1])
                 act = body.get("action") or "create"
-                target = (body.get("username") or "").strip()
+                target = _as_text(body.get("username"))
                 if act == "create":
                     ok, msg = accounts.create_user(
                         target, body.get("password") or "", body.get("role") or accounts.ROLE_USER
@@ -1708,7 +1752,7 @@ class ApiHandler(BaseHTTPRequestHandler):
                         return self._send_json(guard[0], guard[1])
                     user = {"username": "guest", "role": "guest"}
                 text = (body.get("content") or body.get("text") or "").strip()
-                title = (body.get("title") or "").strip()
+                title = _as_text(body.get("title"))
                 tags = body.get("tags")
                 scope = self._knowledge_scope(body.get("scope"))
                 category = str(body.get("category") or "").strip()
@@ -1760,10 +1804,14 @@ class ApiHandler(BaseHTTPRequestHandler):
                 # 画像按用户隔离：登录用户走 MySQL（storage_profiles），未登录退回
                 # 全局 profile.json 旧行为（vendor user_profile）。
                 profile = {
-                    "level": body.get("level", DEFAULT_PROFILE["level"]),
-                    "daily_hours": body.get("daily_hours", DEFAULT_PROFILE["daily_hours"]),
-                    "goal": body.get("goal", DEFAULT_PROFILE["goal"]),
-                    "deadline": body.get("deadline", ""),
+                    # 一律过 _as_text：传数组/对象这类不可哈希值时，
+                    # 下游 user_profile._normalize 的 `v not in ...` 会抛
+                    # TypeError → 500（2026-10-13 线上实测）。
+                    "level": _as_text(body.get("level")) or DEFAULT_PROFILE["level"],
+                    "daily_hours": (_as_text(body.get("daily_hours"))
+                                    or DEFAULT_PROFILE["daily_hours"]),
+                    "goal": _as_text(body.get("goal")) or DEFAULT_PROFILE["goal"],
+                    "deadline": _as_text(body.get("deadline")),
                 }
                 user = self._auth_any()
                 if user:
@@ -1787,7 +1835,7 @@ class ApiHandler(BaseHTTPRequestHandler):
                 })
 
             if path == "/api/plan":
-                course = (body.get("course") or "").strip()
+                course = _as_text(body.get("course"))
                 if not course:
                     return self._send_json({"ok": False, "error": "请先输入课程名"}, 400)
                 # B30: 危机干预前置短路——优先级高于内容安全校验
@@ -1819,7 +1867,7 @@ class ApiHandler(BaseHTTPRequestHandler):
                 return self._send_json(payload)
 
             if path == "/api/chat":
-                question = (body.get("question") or "").strip()
+                question = _as_text(body.get("question"))
                 if not question:
                     return self._send_json({"ok": False, "error": "请输入问题"}, 400)
                 # B30: 危机干预前置短路——优先级高于内容安全校验
@@ -1888,7 +1936,7 @@ class ApiHandler(BaseHTTPRequestHandler):
             if path == "/api/quiz/generate":
                 # 选择题闯关出题（Day5）：安全闸与 /api/chat 同一套。
                 # answer 只存服务端（data/quiz_runs.json），本响应不带答案。
-                course = (body.get("course") or "").strip()
+                course = _as_text(body.get("course"))
                 if not course:
                     return self._send_json({"ok": False, "error": "请先输入课程名"}, 400)
                 if detect_crisis(course):
@@ -1923,8 +1971,8 @@ class ApiHandler(BaseHTTPRequestHandler):
                 guard = self._require_user()
                 if guard:
                     return self._send_json(guard[0], guard[1])
-                quiz_id = (body.get("quiz_id") or "").strip()
-                question_id = (body.get("question_id") or "").strip()
+                quiz_id = _as_text(body.get("quiz_id"))
+                question_id = _as_text(body.get("question_id"))
                 # 多选是数组。对 list 做 .strip() 会直接 500，整卷流式答题时必须保留原值。
                 raw_sel = body.get("selected")
                 selected = raw_sel.strip() if isinstance(raw_sel, str) else raw_sel
@@ -1941,7 +1989,7 @@ class ApiHandler(BaseHTTPRequestHandler):
             if path == "/api/quiz/report":
                 # 选择题闯关复盘（Day6）：与 /api/chat 同一套安全闸，作用于本局课程名。
                 # run_id 取 POST body 或查询串 ?run_id=，二选一。
-                run_id = (body.get("run_id") or "").strip()
+                run_id = _as_text(body.get("run_id"))
                 if not run_id:
                     _q = urllib.parse.parse_qs(parsed.query)
                     run_id = (_q.get("run_id") or [""])[0].strip()
@@ -2005,8 +2053,8 @@ class ApiHandler(BaseHTTPRequestHandler):
                 )
                 return self._send_json(res)
             if path == "/api/export":
-                course = (body.get("course") or "").strip()
-                fmt = (body.get("format") or "markdown").strip().lower()
+                course = _as_text(body.get("course"))
+                fmt = _as_text(body.get("format") or "markdown").lower()
                 result = body.get("result") or progress_store.load_result(course, self._owner_id())
                 if not result:
                     return self._send_json({"ok": False, "error": "没有可导出的方案"}, 400)
@@ -2058,7 +2106,7 @@ class ApiHandler(BaseHTTPRequestHandler):
 
                 if body.get("clear_key"):
                     api_key = ""
-                elif (body.get("api_key") or "").strip():
+                elif _as_text(body.get("api_key")):
                     api_key = body["api_key"].strip()
                 else:
                     try:
@@ -2072,8 +2120,8 @@ class ApiHandler(BaseHTTPRequestHandler):
             if path == "/api/progress/done":
                 # 勾选/取消勾选大纲或计划里的某一项。
                 # 底层 progress_store.set_done() 在桌面版就写好了，只是从来没有路由调它。
-                course = (body.get("course") or "").strip()
-                kind = (body.get("kind") or "").strip()
+                course = _as_text(body.get("course"))
+                kind = _as_text(body.get("kind"))
                 if not course or kind not in ("outline", "plan"):
                     return self._send_json(
                         {"ok": False, "error": "需要 course 与 kind（outline/plan）"}, 400)
@@ -2098,8 +2146,8 @@ class ApiHandler(BaseHTTPRequestHandler):
 
             if path == "/api/progress/importance":
                 # 标注大纲/计划某项的重要程度：普通(0)/重点(1)/核心(2)。
-                course = (body.get("course") or "").strip()
-                kind = (body.get("kind") or "").strip()
+                course = _as_text(body.get("course"))
+                kind = _as_text(body.get("kind"))
                 if not course or kind not in ("outline", "plan"):
                     return self._send_json(
                         {"ok": False, "error": "需要 course 与 kind（outline/plan）"}, 400)
@@ -2129,7 +2177,7 @@ class ApiHandler(BaseHTTPRequestHandler):
                 # id 合法唯一、parent 存在、恰好一个根、无环（见 mindmap_store._clean_nodes）
                 entry, err = mindmap_store.save_map(
                     self._owner_id(),
-                    (body.get("course") or "").strip(),
+                    _as_text(body.get("course")),
                     body.get("nodes"),
                 )
                 if err:

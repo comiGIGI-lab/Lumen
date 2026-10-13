@@ -59,6 +59,12 @@ def _normalize(profile):
     out = dict(DEFAULT_PROFILE)
     for k in out.keys():
         v = profile.get(k, out[k])
+        # 防御：客户端可能传数组 / 对象这类**不可哈希**值，直接做 `in` 判定
+        # 会抛 TypeError: unhashable type（2026-10-13 线上实测：
+        # POST /api/profile {"daily_hours":{"a":1}} → 500）。
+        # 先压成标量再判定，非法值一律回落默认值。
+        if not isinstance(v, (str, int, float)):
+            v = out[k]
         if k == "daily_hours" and v not in _DAILY_HOURS_NUM:
             v = out[k]
         if k == "level" and v not in LEVELS:
