@@ -217,6 +217,11 @@ def test_mineru_parse_and_route():
         check("强制 mineru 覆盖文本层", r["engine"] == "mineru", r)
         os.environ.pop("STUDY_LIU_PDF_ENGINE", None)
 
+        doc_parse._read_native_pdf = lambda _p: "课\x03程\x03名\x03称 (cid:12)(cid:34)" * 30
+        r = doc_parse.extract_pdf_text(pdf)
+        check("字形码乱码改走 mineru", r["engine"] == "mineru", r)
+        check("乱码正文不入库", "(cid:" not in r["text"] and "\x03" not in r["text"])
+
     try:
         with_env({
             "STUDY_LIU_MINERU_BIN": fake,
@@ -225,6 +230,17 @@ def test_mineru_parse_and_route():
         }, run)
     finally:
         doc_parse._read_native_pdf = orig_native
+
+
+def test_pdf_garbled_is_stripped():
+    print("\n[doc_parse] 字形码不当正文")
+    check("纯 (cid:) 视为乱码", doc_parse.text_looks_garbled("(cid:12)(cid:34)(cid:56)(cid:78)"))
+    check("控制符视为乱码", doc_parse.text_looks_garbled("\x03\x04\x05\x06正文"))
+    check("正常中文不当乱码", doc_parse.text_looks_garbled("计算机系统课程设计") is False)
+    cleaned = doc_parse._clean_pdf_text("计算机系统 (cid:9)\x03 课程")
+    check("清洗保留汉字", "计算机系统" in cleaned and "课程" in cleaned, cleaned)
+    check("清洗去掉字形码", "(cid:" not in cleaned and "\x03" not in cleaned)
+    check("洗完没有可读字则放弃", doc_parse._clean_pdf_text("(cid:1)(cid:2)\x03") == "")
 
 
 def test_mineru_falls_back_when_cli_fails():
@@ -776,6 +792,7 @@ def main():
     for fn in (
         test_mineru_missing,
         test_mineru_parse_and_route,
+        test_pdf_garbled_is_stripped,
         test_mineru_falls_back_when_cli_fails,
         test_mineru_ram_gate,
         test_wav_header,

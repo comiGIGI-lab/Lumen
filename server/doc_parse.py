@@ -25,6 +25,7 @@ STUDY_LIU_MINERU_MIN_RAM_KB  闸值，默认 2097152（2GiB）；0 关闭
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -128,10 +129,41 @@ def available():
     return True, ""
 
 
+# pypdf 在 ToUnicode / 字形名映射失败时会把字符码原样吐出来：
+# \x03、U+FFFD，或 pdf.js 风格的 (cid:123)。这些不是正文，塞进分块预览就是乱码。
+_CID_RE = re.compile(r"\(cid:\d+\)")
+_MOJIBAKE_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\ufffd]")
+_CJK_RE = re.compile(r"[\u4e00-\u9fff]")
+
+
+def _clean_pdf_text(text):
+    """丢掉字形码残留。清完没有可读字符时返回空串，交给 MinerU 或报错。"""
+    raw = text or ""
+    if not raw.strip():
+        return ""
+    cleaned = _CID_RE.sub("", raw)
+    cleaned = _MOJIBAKE_RE.sub("", cleaned)
+    if not re.search(r"[0-9A-Za-z\u4e00-\u9fff]", cleaned):
+        return ""
+    return cleaned
+
+
+def text_looks_garbled(text):
+    """中文课件抽成控制符 / 替代符 / (cid:N)，或汉字几乎全丢。"""
+    raw = text or ""
+    if not raw.strip():
+        return False
+    if _CID_RE.search(raw) or _MOJIBAKE_RE.search(raw):
+        return True
+    cjk = len(_CJK_RE.findall(raw))
+    odd = len(_CID_RE.findall(raw)) + len(_MOJIBAKE_RE.findall(raw))
+    return cjk < 8 and odd >= 4
+
+
 def _read_native_pdf(path):
     """读 PDF 文本层。测试可替换本函数。失败抛异常。"""
     from tools.document_importer import read_text
-    return read_text(path)
+    return _clean_pdf_text(read_text(path))
 
 
 def _should_use_mineru(native_text, path, mineru_ok):
@@ -252,6 +284,9 @@ def extract_pdf_text(path):
         native = (_read_native_pdf(path) or "").strip()
     except Exception as e:
         native_err = str(e)
+    if text_looks_garbled(native):
+        # 抽到的是字形码，不能当正文入库，否则分块预览全是乱码。
+        native = ""
 
     mineru_ok, mineru_reason = available()
     if _should_use_mineru(native, path, mineru_ok):

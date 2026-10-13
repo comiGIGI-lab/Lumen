@@ -24,6 +24,21 @@ import os
 import re
 
 
+_CID_RE = re.compile(r"\(cid:\d+\)")
+_MOJIBAKE_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\ufffd]")
+
+
+def _strip_unmapped_glyphs(text):
+    """ToUnicode 失败时抽出的 (cid:N) / 控制符不是正文，丢掉后再判断有没有字。"""
+    if not text:
+        return ""
+    cleaned = _CID_RE.sub("", text)
+    cleaned = _MOJIBAKE_RE.sub("", cleaned)
+    if not re.search(r"[0-9A-Za-z\u4e00-\u9fff]", cleaned):
+        return ""
+    return cleaned
+
+
 # ---------- 句切分 ----------
 _SENT_SPLIT_RE = re.compile(r"(?<=[。！？.!?；;])\s*|\n+")
 
@@ -129,7 +144,7 @@ def _read_pdf_file(path):
                 chunks.append(page.extract_text() or "")
             except Exception:
                 chunks.append("")
-        text = "\n".join(chunks)
+        text = _strip_unmapped_glyphs("\n".join(chunks))
         if text.strip():
             return text
     except ImportError:
@@ -144,7 +159,7 @@ def _read_pdf_file(path):
         with pdfplumber.open(path) as pdf:
             for page in pdf.pages:
                 chunks.append(page.extract_text() or "")
-        text = "\n".join(chunks)
+        text = _strip_unmapped_glyphs("\n".join(chunks))
         if text.strip():
             return text
     except ImportError:
