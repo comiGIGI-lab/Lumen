@@ -7,7 +7,6 @@ defineProps({
   title: { type: String, required: true },
   icon: { type: String, default: '📄' },
   count: { type: Number, default: 0 },
-  unit: { type: String, default: '' },
   emptyText: { type: String, default: '暂无内容' },
   loading: { type: Boolean, default: false },
   accent: { type: String, default: '#e51520' },
@@ -23,9 +22,6 @@ const { t } = useI18n()
         <span class="ico">{{ icon }}</span>
         {{ title }}
       </div>
-      <span v-if="count > 0" class="chip chip-brand count">
-        {{ count }} {{ unit }}
-      </span>
     </div>
 
     <div class="panel-body">
@@ -80,10 +76,6 @@ const { t } = useI18n()
 
 .ico {
   font-size: 15px;
-}
-
-.count {
-  flex: none;
 }
 
 .panel-body {

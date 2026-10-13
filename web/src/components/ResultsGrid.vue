@@ -135,7 +135,6 @@ const dayNo = (item, i) => item?.day ?? i + 1
     <ResultPanel
       :title="t('resultsGrid.1')"
       icon="📑"
-      :unit="t('resultsGrid.unitChapter')"
       :count="outline.length"
       :loading="loading"
       :empty-text="t('stage.plannerEmpty')"
@@ -174,7 +173,6 @@ const dayNo = (item, i) => item?.day ?? i + 1
     <ResultPanel
       :title="t('resultsGrid.3')"
       icon="🔗"
-      :unit="t('resultsGrid.unitItem')"
       :count="resources.length"
       :loading="loading"
       :empty-text="t('stage.searcherEmpty')"
@@ -214,7 +212,6 @@ const dayNo = (item, i) => item?.day ?? i + 1
     <ResultPanel
       :title="t('resultsGrid.4')"
       icon="📅"
-      :unit="t('resultsGrid.unitDay')"
       :count="planItems.length"
       :loading="loading"
       :empty-text="t('stage.writerEmpty')"
