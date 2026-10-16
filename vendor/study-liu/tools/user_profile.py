@@ -5,7 +5,9 @@
 设计：
 - 4 个画像字段，每个有明确的可选值 + 默认值
 - 持久化到 data/profile.json（与知识库 / 历史记录 同级）
-- 提供 format_profile_text(profile) → 把画像拼成可读字符串，用于注入 prompt
+- 提供 format_profile_text(profile, diagnosis=None) → 把画像拼成可读字符串，用于注入 prompt
+  （diagnosis 是**可选的**诊断前测记录，见 tools/diagnosis_store.py；不传时输出与加诊断之前
+    逐字节一致，保证老调用方零回归）
 
 字段定义：
     level:        入门 | 进阶 | 冲刺              默认 "入门"
@@ -16,6 +18,11 @@
 总可用时长估算（供 prompt）：
     days_left = (deadline - today).days  if  deadline  else  None
     derived_total_hours = days_left * daily_hours_h   if  days_left else None
+
+诊断段（2026-10-16 新增）：
+    format_profile_text(profile, diagnosis=rec) 会在画像后追加一行「诊断结果：…」，
+    形如「入门摸底 6 题，正确 3/6（50%）；薄弱章节：第2章（掌握 33%）…」。
+    没做过诊断 / 一道都没作答时该行为空，prompt 与以前完全一致。
 """
 
 import json
@@ -126,13 +133,20 @@ def derive_total_hours(profile):
     return hours_per_day * days_left
 
 
-def format_profile_text(profile):
+def format_profile_text(profile, diagnosis=None):
     """把画像格式化成一段中文，用于注入到 prompt。
 
     示例：
         用户画像：入门水平；每天学习约 2 小时；目标：通过考试；
         截止日期：2026-10-30（剩余约 12 天 ≈ 24 小时）。
+        诊断结果：入门摸底 6 题，正确 3/6（50%）；薄弱章节：第2章（掌握 33%），
+        请把这几章拆得更细、补基础示例与练习、适当放慢节奏。
 
+    diagnosis 可为：
+      - None（默认）→ 不加诊断段，输出与加诊断功能之前**逐字节一致**；
+      - dict（一次诊断记录）→ 交给 diagnosis_store 压成一行；
+      - str → 直接当作诊断段文本用（便于调用方自己拼）。
+    诊断数据不可用时静默不加（不能因为诊断读不出来就让画像注入整段消失）。
     """
     p = _normalize(profile)
     parts = [
@@ -156,7 +170,28 @@ def format_profile_text(profile):
         else:
             parts.append(f"截止日期：{p['deadline']}（已过期 {abs(days_left)} 天）")
     lines = "；".join(parts)
-    return f"用户画像：{lines}。"
+    text = f"用户画像：{lines}。"
+
+    seg = _diagnosis_segment(diagnosis)
+    if seg:
+        text += "\n" + seg
+    return text
+
+
+def _diagnosis_segment(diagnosis):
+    """把诊断入参压成一行文本；不可用 / 无作答 → 空串。"""
+    if not diagnosis:
+        return ""
+    if isinstance(diagnosis, str):
+        return diagnosis.strip()
+    if isinstance(diagnosis, dict):
+        try:
+            from tools import diagnosis_store as _ds
+            return _ds.format_for_prompt(diagnosis)
+        except Exception:                                    # noqa: BLE001
+            # 诊断模块不可用（裁剪安装 / 数据损坏）不能连累画像注入
+            return ""
+    return ""
 
 
 def suggest_plan_length(profile):

@@ -30,6 +30,9 @@ API = os.path.join(SERVER, "api_server.py")
 # api_server.py 里的模块别名 → 真实源码文件（只列会被它的业务调用命中的）
 MODULE_FILES = {
     "quiz_mod": os.path.join(SERVER, "quiz.py"),
+    # 诊断前测（2026-10-16）：api_server 传 outline/profile/count 等关键字参数，
+    # 一并纳入静态比对，防再次出现"调用方多写一个参数 → 整个接口 500"。
+    "diagnosis_mod": os.path.join(SERVER, "diagnosis.py"),
     "accounts": os.path.join(SERVER, "accounts.py"),
     "wrong_book_store": os.path.join(SERVER, "storage_wrongbook.py"),
     "mindmap_store": os.path.join(SERVER, "storage_mindmap.py"),

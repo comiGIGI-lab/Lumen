@@ -161,6 +161,8 @@ if SOURCE_DIR not in sys.path:
 import quiz as quiz_mod                                             # noqa: E402
 # 闯关错题 → 错题本的题型适配（纯转换，无 IO）。同样依赖 SOURCE_DIR 已在 path 里。
 import wrongbook_quiz as wrongbook_quiz_mod                         # noqa: E402
+# 诊断性前测（2026-10-16）：本身复用 quiz 的出题引擎，必须排在 quiz 之后 import。
+import diagnosis as diagnosis_mod                                   # noqa: E402
 
 # ------------------------------------------------------------
 # 1.5 用标准库加载 .env（必须在 import core.config 之前）
@@ -1489,6 +1491,16 @@ class ApiHandler(BaseHTTPRequestHandler):
                     "courses": _wrongbook_courses(items),
                 })
 
+            if path == "/api/diagnosis":
+                # 摸底诊断：取题（**不带答案**）/ 判分后的知识点热力图。纯读接口。
+                # 按 diagnosis_id 取，或按 course 取「自己这条最近的」（client 严格匹配，
+                # 取不到就 not_found，不会把别的浏览器/账号的诊断串给自己）。
+                return self._send_json(diagnosis_mod.get_diagnosis(
+                    diagnosis_id=(query.get("diagnosis_id") or [""])[0].strip(),
+                    course=(query.get("course") or [""])[0].strip(),
+                    client_id=self._client_id(),
+                ))
+
             if path == "/api/asr":
                 # 语音转写能力探测：引擎/模型缺失时这里就告诉前端，
                 # 界面可以直接把入口置灰并给出「去怎么修」的提示，而不是让用户白录一遍
@@ -2010,6 +2022,53 @@ class ApiHandler(BaseHTTPRequestHandler):
                     return self._send_json(
                         {"ok": False, "error": "本局不存在或已过期，请重新出题"}, 404)
                 return self._send_json(g)
+
+            if path == "/api/diagnosis/generate":
+                # 摸底诊断出题（2026-10-16）：复用闯关的出题引擎，安全闸与限速与
+                # /api/quiz/generate 完全同套。标准答案只留服务端
+                # （data/diagnosis.json，与 quiz_runs.json 分开），本响应不带 answer。
+                course = _as_text(body.get("course"))
+                if not course:
+                    return self._send_json({"ok": False, "error": "请先输入课程名"}, 400)
+                if detect_crisis(course):
+                    log_crisis("diagnosis", course, self._client_id())
+                    return self._send_json(_crisis_response_chat(course))
+                detail = check_detail(course)
+                if detail["action"] == "BLOCK":
+                    log_safety_hit("diagnosis", course, detail, self._client_id())
+                    return self._send_json(
+                        {"ok": False, "error": SAFETY_ERROR_MESSAGE}, 400)
+                guard = self._require_user()
+                if guard:
+                    return self._send_json(guard[0], guard[1])
+                if self._enforce_anon_llm_quota():
+                    return
+                res = diagnosis_mod.generate_diagnosis(
+                    course,
+                    # 调用方已有大纲时传进来，能省掉一次出大纲的模型调用
+                    outline=body.get("outline") or None,
+                    profile=body.get("profile") or None,
+                    count=body.get("count") or diagnosis_mod.DEFAULT_COUNT,
+                    client_id=self._client_id(),
+                )
+                return self._send_json(res)
+
+            if path == "/api/diagnosis/grade":
+                # 诊断判分。answers 支持两种形状：{"q1": "A"} 或
+                # [{"question_id": "q1", "selected": "A"}]；也支持分批交卷（一题一判），
+                # 服务端按题合并，不会把上一题的结果冲掉。
+                guard = self._require_user()
+                if guard:
+                    return self._send_json(guard[0], guard[1])
+                did = _as_text(body.get("diagnosis_id"))
+                if not did:
+                    return self._send_json({"ok": False, "error": "缺少 diagnosis_id"}, 400)
+                try:
+                    res = diagnosis_mod.grade_diagnosis(did, body.get("answers"))
+                except KeyError:
+                    return self._send_json(
+                        {"ok": False, "error": "这次摸底记录不存在或已过期，请重新生成诊断题"}, 404)
+                return self._send_json(res)
 
             if path == "/api/quiz/report":
                 # 选择题闯关复盘（Day6）：与 /api/chat 同一套安全闸，作用于本局课程名。

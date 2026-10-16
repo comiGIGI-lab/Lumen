@@ -638,13 +638,31 @@ def _parse_outline_from_llm(text):
     return []
 
 
-def plan_outline(course, profile=None, kb_context=None):
+def _diagnosis_for(course):
+    """取本课程最近一次摸底诊断记录；没有 / 读失败 → None（按"没做诊断"处理）。
+
+    单一事实来源是 data/diagnosis.json（见 tools/diagnosis_store.py）。
+    与 profile.json 一样按课程/部署粒度共享：本应用画像本来就是全局一份，
+    诊断沿用同一口径；将来若要严格按账号隔离，调用方把 record 直接传进
+    plan_outline(diagnosis=...) 覆盖即可。
+    """
+    try:
+        from tools import diagnosis_store
+        return diagnosis_store.latest_for_course(course)
+    except Exception:                                        # noqa: BLE001
+        return None
+
+
+def plan_outline(course, profile=None, kb_context=None, diagnosis=None):
     """
     为课程生成学习大纲。
     参数：
         course: 课程名
         profile: 可选，用户画像（注入 prompt 让章节深度 / 数量更贴合）
         kb_context: 可选，知识库检索到的资料文本（已截断），注入 prompt
+        diagnosis: 可选，摸底诊断记录。**不传**时自动按课程取最近一次
+            （data/diagnosis.json）；显式传 None 想表达"本次不要诊断"请用
+            `diagnosis=False`。没有诊断时 prompt 与加诊断之前逐字节一致。
     返回：
         章节列表，每项 {"title": str, "points": [str, ...]}
     """
@@ -653,7 +671,12 @@ def plan_outline(course, profile=None, kb_context=None):
     if profile:
         try:
             from tools.user_profile import format_profile_text
-            profile_text = format_profile_text(profile) + "\n"
+            # 诊断段的价值就在这里兑现：让大纲对**弱项章节**加厚、对已掌握的压缩。
+            if diagnosis is None:
+                diagnosis = _diagnosis_for(course)
+            elif diagnosis is False:
+                diagnosis = None
+            profile_text = format_profile_text(profile, diagnosis) + "\n"
         except Exception:
             profile_text = ""
 
