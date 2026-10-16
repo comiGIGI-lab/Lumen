@@ -18,7 +18,7 @@ const props = defineProps({
 })
 const { t } = useI18n()
 
-const emit = defineEmits(['generate', 'profile-change', 'replay'])
+const emit = defineEmits(['generate', 'profile-change', 'replay', 'diagnosis'])
 
 const course = defineModel('course', { type: String, default: '' })
 const profile = defineModel('profile', {
@@ -142,6 +142,14 @@ function pick(name) {
   emit('generate', name)
 }
 
+/**
+ * 摸底诊断入口（2026-10-16）：不需要课程已经生成过方案 —— 诊断就是为了给大纲定起点。
+ * 空课程名时交给父组件提示（保持与 generate 一致的空值语义）。
+ */
+function openDiagnosis() {
+  emit('diagnosis', { name: (course.value || '').trim(), profile: { ...profile.value } })
+}
+
 /** 截止日 → 计划天数 的即时反馈（与后端 tools.user_profile.suggest_plan_length 同规则） */
 const deadlineHint = computed(() => {
   const dl = profile.value?.deadline
@@ -176,6 +184,16 @@ const deadlineHint = computed(() => {
         <span v-if="busy" class="spinner"></span>
         <span v-else>✨</span>
         {{ busy ? t('courseFormX.1') : t('courseFormX.2') }}
+      </button>
+      <!-- 摸底诊断：先测一遍再生成，大纲会按弱项加厚（无需先有方案） -->
+      <button
+        class="btn btn-ghost diag-entry"
+        type="button"
+        :disabled="busy"
+        :title="t('diagnosis.entryHint')"
+        @click="openDiagnosis"
+      >
+        🩺 {{ t('diagnosis.entry') }}
       </button>
     </div>
 
@@ -319,6 +337,13 @@ const deadlineHint = computed(() => {
 .generate {
   padding: 11px 22px;
   font-size: 13.5px;
+}
+
+/* 摸底诊断入口：次要按钮，别抢「生成方案」的视觉主位 */
+.diag-entry {
+  padding: 11px 16px;
+  font-size: 13px;
+  white-space: nowrap;
 }
 
 .spinner {

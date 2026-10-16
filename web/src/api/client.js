@@ -555,6 +555,32 @@ export const api = {
     return request('/asr')
   },
 
+  /** 诊断性前测：按章节均衡出题（5-8 道，响应**不含**标准答案） */
+  diagnosisGenerate(course, profile = null, count = 6) {
+    const body = { course, count }
+    if (profile) body.profile = profile
+    return request('/diagnosis/generate', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  },
+
+  /** 诊断判分：answers 形如 { q1: 'A', q2: 0 }；返回知识点掌握热力图 */
+  diagnosisGrade(diagnosisId, answers) {
+    return request('/diagnosis/grade', {
+      method: 'POST',
+      body: JSON.stringify({ diagnosis_id: diagnosisId, answers }),
+    })
+  },
+
+  /** 取一次诊断（题目无答案；已判分则带热力图） */
+  diagnosisGet({ diagnosisId = '', course = '' } = {}) {
+    const qs = []
+    if (diagnosisId) qs.push(`diagnosis_id=${encodeURIComponent(diagnosisId)}`)
+    if (course) qs.push(`course=${encodeURIComponent(course)}`)
+    return request(`/diagnosis${qs.length ? '?' + qs.join('&') : ''}`)
+  },
+
   /**
    * 语音转写：把 PCM 二进制 POST 到 /asr（application/octet-stream）。
    * 用 XHR 而不是 fetch，因为要上报上传进度（onProgress 0~1）。

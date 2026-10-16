@@ -20,6 +20,8 @@ import CourseForm from './components/CourseForm.vue'
 import ResultsGrid from './components/ResultsGrid.vue'
 import ChatPanel from './components/ChatPanel.vue'
 import TraceDrawer from './components/TraceDrawer.vue'
+// 摸底诊断弹窗（2026-10-16）：课程表单入口 → 答题 → 知识点热力图 → 按诊断重生成方案
+import DiagnosisDialog from './components/DiagnosisDialog.vue'
 import StatusBar from './components/StatusBar.vue'
 import SettingsDialog from './components/SettingsDialog.vue'
 import HistoryDialog from './components/HistoryDialog.vue'
@@ -395,6 +397,9 @@ const needsKey = ref(false)
 const showHistory = ref(false)
 const showTrace = ref(false)
 const showExport = ref(false)
+// 摸底诊断：弹窗开关 + 本次诊断的课程名（诊断是按课程走的）
+const showDiagnosis = ref(false)
+const diagCourse = ref('')
 const exportAt = ref('')
 
 watch(activeScene, (s) => {
@@ -682,6 +687,29 @@ async function openTrace() {
   await stream.refreshTrace()
 }
 
+/**
+ * 摸底诊断入口（2026-10-16）。
+ * 诊断要按课程走，但**不要求已经生成过方案** —— 它的意义正是给大纲定起点。
+ */
+function onDiagnosis(payload) {
+  const name = String(payload?.name || '').trim()
+  if (!name) {
+    statusTone.value = 'warn'
+    statusText.value = '⚠ ' + t('diagnosis.needCourse')
+    notify({ type: 'warn', text: t('diagnosis.needCourseToast') })
+    return
+  }
+  diagCourse.value = name
+  showDiagnosis.value = true
+}
+
+/** 看完热力图后「按诊断结果生成方案」：必须绕过结果缓存，否则 24h 内会秒出旧方案、诊断白做 */
+function onDiagnosisApplyPlan(name) {
+  showDiagnosis.value = false
+  const c = String(name || '').trim()
+  if (c) onGenerate(c, false)
+}
+
 function onLoadHistory(payload) {
   showHistory.value = false
   if (!payload?.ok) return
@@ -956,6 +984,7 @@ const degradedBanner = computed(() => {
         @generate="onGenerate"
         @profile-change="onProfileChange"
         @replay="onReplayHistory"
+        @diagnosis="onDiagnosis"
       />
 
       <!-- 生成选项 -->
@@ -1023,6 +1052,16 @@ const degradedBanner = computed(() => {
       :error="traceError"
       @close="showTrace = false"
       @refresh="stream.refreshTrace()"
+    />
+
+    <!-- 摸底诊断：答题 + 知识点掌握热力图；「按诊断结果生成方案」会绕过结果缓存 -->
+    <DiagnosisDialog
+      :open="showDiagnosis"
+      :course="diagCourse"
+      :profile="profile"
+      @close="showDiagnosis = false"
+      @notify="notify"
+      @apply-plan="onDiagnosisApplyPlan"
     />
 
     <SettingsDialog
