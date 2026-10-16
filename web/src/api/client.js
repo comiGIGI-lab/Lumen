@@ -559,6 +559,11 @@ export const api = {
    * 语音转写：把 PCM 二进制 POST 到 /asr（application/octet-stream）。
    * 用 XHR 而不是 fetch，因为要上报上传进度（onProgress 0~1）。
    * 返回后端 JSON：{ text, duration, elapsed, rtf, engine, model, ok, hint? }
+   *
+   * 请求头与 knowledgeImport 保持一致：X-Client-Id 认「是哪台浏览器」，
+   * X-Auth-Token 认「是哪个账号」。当前 /api/asr 不校验登录也不限额，
+   * 但 token 必须照带——否则一旦后端给转写加配额，已登录用户会被当成
+   * 匿名访客撞每日上限（P0-1 工单明确要求两个头都带）。
    */
   asrTranscribe(pcm, { onProgress } = {}) {
     return new Promise((resolve, reject) => {
@@ -571,6 +576,7 @@ export const api = {
       xhr.open('POST', `${BASE}/asr`)
       xhr.setRequestHeader('Content-Type', 'application/octet-stream')
       xhr.setRequestHeader('X-Client-Id', clientId())
+      if (authToken()) xhr.setRequestHeader('X-Auth-Token', authToken())
       xhr.upload.onprogress = (e) => {
         if (e.lengthComputable && onProgress) onProgress(e.loaded / e.total)
       }
@@ -582,7 +588,7 @@ export const api = {
       }
       xhr.onerror = () => reject(new Error('网络错误，音频没传上去'))
       xhr.ontimeout = () => reject(new Error('转写超时，请换一段更短的音频'))
-      xhr.timeout = 420000
+      xhr.timeout = 300000 // 工单规定 300s；本地 Vosk/whisper.cpp 足够
       xhr.send(buf)
     })
   },
