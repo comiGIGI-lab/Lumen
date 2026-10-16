@@ -93,9 +93,13 @@ cd web && npm install && npm run dev
 | 例外 | 范围 | 缺失时行为 |
 |---|---|---|
 | `PyMySQL` | 用户数据存储层（`server/db.py`、`server/storage_*.py`） | 抛 `DbUnavailable`，存储层 **fail-open 回退 JSON**，服务照常 |
-| `langchain-tavily` | 闯关联网出题（`server/quiz.py`） | 静默回退纯知识库出题 |
+| `langchain-tavily` | 闯关联网出题（`server/quiz.py`） | 记 warning 日志后回退纯知识库出题 |
 
 安装：`pip install -r server/requirements.txt`（只装联网出题那一项；MySQL 驱动按需安装）。
+
+#### 依赖策略与三层证据判据（2026-10-16 新增）
+
+背景复盘：`langchain-tavily` 的传递依赖（PyPI `requires_dist`）包含完整 `langchain>=1.0.0,<2`。此前「不引入完整 LangChain 框架」的说法只查了源码 import 层、未查依赖闭包，判据错配导致口径失实。自本节起约定：凡对外声称「用了 / 没用某依赖」，必须三层证据齐全——源码 import 层（grep）→ 声明层（`server/requirements.txt` 一律钉版本，上下界）→ 实际闭包层（`importlib.metadata` 解析传递依赖，由 `tests/run_dependency_facts.py` 机器复验）。依赖缺失导致的降级一律记 warning 日志，禁止静默；测试中「跳过」必须计 WARN 并在报告末尾列出，不得伪装成 PASS。
 
 ---
 

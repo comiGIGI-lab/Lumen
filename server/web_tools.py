@@ -36,7 +36,9 @@ def available():
     try:
         import langchain_tavily  # noqa: F401
         return True
-    except Exception:
+    except Exception as e:
+        # 2026-10-16 复盘：静默降级会掩盖「依赖从未装过」的事实，必须留痕
+        _log.warning("langchain_tavily 不可导入，联网补题停用：%s", e)
         return False
 
 
@@ -58,7 +60,9 @@ def build_tools(api_key=None):
         return {}
     try:
         from langchain_tavily import TavilySearch, TavilyExtract
-    except Exception:
+    except Exception as e:
+        # 2026-10-16 复盘：同 available()，缺依赖必须留 warning，不许静默
+        _log.warning("langchain_tavily 不可导入，工具构造返回空（联网出题/补题停用）：%s", e)
         return {}
     return {
         "tavily_search": TavilySearch(

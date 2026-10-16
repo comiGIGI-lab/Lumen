@@ -9,4 +9,7 @@
 # TAVILY_API_KEY），不入库、不落盘。
 #
 # 安装：pip install -r server/requirements.txt
-langchain-tavily
+# 2026-10-16 起钉版本（上下界）。事实：langchain-tavily 的传递依赖包含完整
+# langchain>=1.0.0,<2（PyPI requires_dist），即装它即装 LangChain——依赖闭包
+# 由 tests/run_dependency_facts.py 机器复验，口径见 README「依赖策略」一节。
+langchain-tavily>=0.2.18,<0.3

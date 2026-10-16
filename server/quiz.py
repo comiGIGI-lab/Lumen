@@ -402,7 +402,15 @@ def _run_tool_agent(course, difficulty, plan, api_key, is_url, kb_ctx="", lively
     - 题目在收尾 <finish> 中由模型给出；sources 取模型返回，extract 时兜底用 URL。
     - 工具失败只记 warning 并反馈给模型（不中断），模型可改浅层或基于通用知识出题。
     """
-    tools = _build_tavily_tools(api_key)
+    # 2026-10-16 复盘修复：_build_tavily_tools 内的 from langchain_tavily import ...
+    # 在依赖未安装时直接 ImportError 冒泡（api_server 出题路由无 try → 500）。
+    # 这里包 try 后返回 ok=False，兑现 generate 路径注释承诺的
+    # 「工具智能体失败/异常 → 降级为空上下文，基于通用知识出题（不拒绝）」。
+    try:
+        tools = _build_tavily_tools(api_key)
+    except Exception as e:
+        _log.warning("[工具智能体] Tavily 工具构造失败（langchain-tavily 未安装？），降级：%s", e)
+        return {"ok": False, "error": "Tavily 工具不可用", "sources": []}
     messages = [
         {"role": "system", "content": _TOOL_SYSTEM},
         {"role": "user", "content": _avoid_rule(avoid_stems) + _tool_user(course, difficulty, plan, is_url, kb_ctx, lively, topics)},
