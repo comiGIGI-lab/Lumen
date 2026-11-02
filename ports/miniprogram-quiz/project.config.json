@@ -1,0 +1,35 @@
+{
+  "description": "智识有方 LUMEN · 卡在这题",
+  "packOptions": {
+    "ignore": [],
+    "include": []
+  },
+  "setting": {
+    "urlCheck": true,
+    "es6": true,
+    "enhance": true,
+    "postcss": true,
+    "preloadBackgroundData": false,
+    "minified": true,
+    "coverView": true,
+    "autoAudits": false,
+    "showShadowRootInInspector": false,
+    "compileHotReLoad": false,
+    "lazyloadPlaceholderEnable": false,
+    "bigPackageSizeSupport": true,
+    "checkInvalidKey": true,
+    "checkSiteMap": true,
+    "uploadWithSourceMap": true,
+    "babelSetting": {
+      "ignore": [],
+      "disablePlugins": [],
+      "outputPath": ""
+    }
+  },
+  "compileType": "miniprogram",
+  "libVersion": "3.5.5",
+  "appid": "touristappid",
+  "projectname": "lumen-stuck-on-this",
+  "miniprogramRoot": "./",
+  "condition": {}
+}

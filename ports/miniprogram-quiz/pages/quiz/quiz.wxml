@@ -1,0 +1,30 @@
+<view class="wrap" wx:if="{{item}}">
+  <view class="kicker">{{courseName}} · {{item.pid}}</view>
+  <view class="h1" wx:if="{{isVariant}}">这是变式，不是刚错的那一题</view>
+  <view class="h1" wx:else>先把这题判清楚</view>
+  <view class="demo">演示档 · 本地判分 · 零网络</view>
+
+  <view class="card">
+    <view class="q">{{item.q}}</view>
+    <view
+      class="opt {{chosen===index ? 'on' : ''}} {{revealed && index===item.a ? 'ok' : ''}} {{revealed && chosen===index && index!==item.a ? 'bad' : ''}}"
+      wx:for="{{item.o}}"
+      wx:for-item="opt"
+      wx:for-index="index"
+      wx:key="index"
+      data-i="{{index}}"
+      bindtap="choose"
+    >{{opt}}</view>
+  </view>
+
+  <view class="btn" wx:if="{{!revealed}}" bindtap="submit">提交判定</view>
+
+  <view class="card" wx:if="{{revealed}}">
+    <view class="tag">{{correct ? '对了' : '错了，已进错题本'}}</view>
+    <view class="sub">{{item.e}}</view>
+    <view class="muted" wx:if="{{!correct && variantId}}">下一题会换成变式，不会再出刚错的原文。</view>
+  </view>
+
+  <view class="btn" wx:if="{{revealed}}" bindtap="next">{{nextLabel}}</view>
+  <view class="btn btn-ghost" wx:if="{{revealed}}" bindtap="goWrong">去错题本</view>
+</view>

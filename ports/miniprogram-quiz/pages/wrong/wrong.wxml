@@ -1,0 +1,14 @@
+<view class="wrap">
+  <view class="kicker">本机错题本</view>
+  <view class="h1">错过的题还在</view>
+  <view class="sub">答错会进来。再练优先出变式，不会拿刚错的原文再糊你一次。</view>
+
+  <view class="empty" wx:if="{{!list.length}}">还没有错题。去「今晚这题」做一道，故意选错就能看见闭环。</view>
+
+  <view class="card" wx:for="{{list}}" wx:key="id" bindtap="retry" data-id="{{item.id}}" data-course="{{item.courseId}}">
+    <view class="tag">{{item.pid}} · 错 {{item.n}} 次</view>
+    <view class="q">{{item.q}}</view>
+    <view class="muted" wx:if="{{item.retriedOk}}">已用变式回练对，记录仍保留。</view>
+    <view class="go">再练 ›</view>
+  </view>
+</view>

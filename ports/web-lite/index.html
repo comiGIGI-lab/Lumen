@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>卡在这题 · UI 原型目录</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500&family=ZCOOL+KuaiLe&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="./lumen-ink.css" />
+  <style>
+    .cards { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 18px; }
+    @media (max-width: 800px) { .cards { grid-template-columns: 1fr; } }
+    a.paper-card { display: block; text-decoration: none; color: inherit; }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header class="page-head">
+      <span class="stamp">HTML PROTOTYPE</span>
+      <h1>智识有方 LUMEN · 卡在这题</h1>
+      <p class="lede">作业纸 + 墨线（阿衰意境）· 液态玻璃只做控制层。按 C-02 与 D-01 冻结：米底红字、先选题不登录、一行三列。</p>
+    </header>
+    <div class="cards">
+      <a class="paper-card" href="./01-core-loop.html">
+        <span class="tag">CORE</span>
+        <div class="cname">01 核心闭环</div>
+        <p class="muted">选课 → 一题一判 → 变式换题干 → 错题本。可点，含未选 toast。</p>
+        <div class="go">打开三列原型 →</div>
+      </a>
+      <a class="paper-card" href="./02-edges.html">
+        <span class="tag">EDGES</span>
+        <div class="cname">02 边界与扩展</div>
+        <p class="muted">判对、空态、我的 / 诚信、清空二次确认。明确没有讲一遍和今日一课。</p>
+        <div class="go">打开三列原型 →</div>
+      </a>
+    </div>
+    <div class="legend">
+      <div><b>ui-ux-pro-max。</b>采用 Neubrutalism 墨线 + Glassmorphism 控制层；否决 waitlist 灰底、Comic Neue 儿童字、紫粉题库套路。</div>
+      <div><b>字体。</b>标题 / 课名 / 按钮 / 底栏用站酷快乐体（漫画手绘）；题干与选项用思源黑体，公式仍能读。</div>
+      <div><b>下一步。</b>你若点头，再按此视觉改小程序 WXML/WXSS；原型不是已验收成品。</div>
+    </div>
+  </div>
+</body>
+</html>

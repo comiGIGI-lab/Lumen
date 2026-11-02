@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>卡在这题 · 核心闭环原型</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500&family=ZCOOL+KuaiLe&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="./lumen-ink.css" />
+</head>
+<body>
+  <div class="page">
+    <header class="page-head">
+      <span class="stamp">CORE LOOP · 60s</span>
+      <h1>核心业务流程</h1>
+      <p class="lede">用户输入是「点哪门课 / 点哪个选项」，不是登录。三列从左到右就是投稿硬门槛 Q4–Q7：选错进本、变式换题干、错过的还在。</p>
+      <p class="meta">作业纸内容层不透明 · 液态玻璃只在底栏与幽灵按钮 · 触控 ≥ 44px · 无 emoji 图标</p>
+    </header>
+
+    <div class="board">
+      <!-- 1 HOME -->
+      <section>
+        <p class="col-label">01 今晚这题</p>
+        <div class="phone" id="phone-home">
+          <div class="notch">卡在这题</div>
+          <div class="screen">
+            <p class="kicker">智识有方 LUMEN · 小程序端口</p>
+            <h2 class="h-screen">今晚卡在这题</h2>
+            <p class="sub">不做学习计划，不开口讲一遍。选一门课，先判这一道。</p>
+            <div class="honesty">题目是预先准备的演示档，不是此刻由 AI 出题。对错在这台手机上判定，数据留在本机。</div>
+            <article class="paper-card" role="button" tabindex="0" data-go="quiz" aria-label="开始高等数学">
+              <span class="tag">6 题 · 含 3 变式</span>
+              <div class="cname">高等数学</div>
+              <p class="muted">今晚卡在极限、中值定理、洛必达？先判这一题。</p>
+              <div class="go">开始这题 →</div>
+            </article>
+            <article class="paper-card" role="button" tabindex="0" data-go="quiz">
+              <span class="tag">6 题 · 含 3 变式</span>
+              <div class="cname">数据结构</div>
+              <p class="muted">链表、树、哈希卡住了？先做一道带知识点的题。</p>
+              <div class="go">开始这题 →</div>
+            </article>
+            <article class="paper-card" role="button" tabindex="0" data-go="quiz">
+              <span class="tag">6 题 · 含 3 变式</span>
+              <div class="cname">大学英语</div>
+              <p class="muted">时态、从句、虚拟语气今晚卡壳？先判一题。</p>
+              <div class="go">开始这题 →</div>
+            </article>
+          </div>
+          <nav class="tabbar" aria-label="底部导航">
+            <button class="tab active" type="button">今晚这题</button>
+            <button class="tab" type="button" data-jump="wrong">错题本</button>
+            <button class="tab" type="button">我的</button>
+          </nav>
+        </div>
+      </section>
+
+      <!-- 2 QUIZ -->
+      <section>
+        <p class="col-label">02 一题一判 → 变式</p>
+        <div class="phone" id="phone-quiz">
+          <div class="notch">这一题</div>
+          <div class="toast" id="toast">先选一个选项</div>
+          <div class="screen">
+            <p class="kicker" id="quiz-kicker">高等数学 · 洛必达法则</p>
+            <h2 class="h-screen" id="quiz-title">先把这题判清楚</h2>
+            <p class="muted">演示档 · 本地判分 · 零网络</p>
+            <div class="paper-card" style="cursor:default" id="stem-card">
+              <p class="q" id="stem">lim(x→0) (e^x−1−x)/x² 用洛必达，正确做法是？</p>
+              <button class="opt" type="button" data-i="0">A　用一次就出结果</button>
+              <button class="opt" type="button" data-i="1">B　需要连用两次</button>
+              <button class="opt" type="button" data-i="2">C　不能用洛必达</button>
+              <button class="opt" type="button" data-i="3">D　结果是 0</button>
+            </div>
+            <button class="btn btn-ink" type="button" id="submit">提交判定</button>
+            <div class="explain" id="explain" hidden>
+              <span class="tag" id="result-tag">错了，已进错题本</span>
+              <p class="sub" id="explain-text" style="margin-top:8px">第一次仍是 0/0，第二次得 1/2。</p>
+              <p class="muted" id="variant-hint">下一题会换成变式，不会再出刚错的原文。</p>
+            </div>
+            <button class="btn btn-ink" type="button" id="next" hidden>做变式（不重复原题）</button>
+            <button class="btn btn-glass" type="button" id="to-wrong" hidden>去错题本</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- 3 WRONG -->
+      <section>
+        <p class="col-label">03 错题本 · 再练优先变式</p>
+        <div class="phone" id="phone-wrong">
+          <div class="notch">错题本</div>
+          <div class="screen">
+            <p class="kicker">本机错题本</p>
+            <h2 class="h-screen">错过的题还在</h2>
+            <p class="sub">答错会进来。再练优先出变式，不会拿刚错的原文再糊你一次。</p>
+            <div class="empty" id="wrong-empty">还没有错题。去「今晚这题」做一道，故意选错就能看见闭环。</div>
+            <article class="paper-card" id="wrong-item" hidden>
+              <span class="tag" id="wrong-tag">洛必达法则 · 错 1 次</span>
+              <p class="q" id="wrong-q" style="margin-top:8px">lim(x→0) (e^x−1−x)/x² 用洛必达，正确做法是？</p>
+              <p class="muted" id="retried" hidden>已用变式回练对，记录仍保留。</p>
+              <div class="go" id="retry">再练 →</div>
+            </article>
+          </div>
+          <nav class="tabbar" aria-label="底部导航">
+            <button class="tab" type="button" data-jump="home">今晚这题</button>
+            <button class="tab active" type="button">错题本</button>
+            <button class="tab" type="button">我的</button>
+          </nav>
+        </div>
+      </section>
+    </div>
+
+    <div class="legend">
+      <div><b>玻璃在哪。</b>底栏半透明折射；「去错题本」是玻璃幽灵按钮。题干、选项、课卡片全部不透明白纸。</div>
+      <div><b>阿衰在哪。</b>粗墨边、红笔虚线批改、作业本横格。没有方便面头发，没有儿童撞色。</div>
+      <div><b>怎么点。</b>左列点课 → 中列先不选点提交看 toast → 再选错项提交 → 做变式题干必变 → 右列出现该条。</div>
+    </div>
+  </div>
+
+  <script>
+    const orig = {
+      kicker: "高等数学 · 洛必达法则",
+      title: "先把这题判清楚",
+      q: "lim(x→0) (e^x−1−x)/x² 用洛必达，正确做法是？",
+      o: ["A　用一次就出结果", "B　需要连用两次", "C　不能用洛必达", "D　结果是 0"],
+      a: 1,
+      e: "第一次仍是 0/0，第二次得 1/2。"
+    };
+    const variant = {
+      kicker: "高等数学 · 洛必达法则",
+      title: "这是变式，不是刚错的那一题",
+      q: "下列哪一种情况，洛必达一定会失败？",
+      o: ["A　0/0 型", "B　∞/∞ 型", "C　分子分母导数之比的极限不存在且不是∞", "D　0·∞ 型（已化为 0/0）"],
+      a: 2,
+      e: "导数之比振荡不存在时法则失效。"
+    };
+
+    let chosen = -1;
+    let revealed = false;
+    let isVariant = false;
+    let wrongCount = 0;
+    let retriedOk = false;
+
+    const opts = [...document.querySelectorAll("#stem-card .opt")];
+    const toast = document.getElementById("toast");
+    const explain = document.getElementById("explain");
+    const nextBtn = document.getElementById("next");
+    const toWrong = document.getElementById("to-wrong");
+    const submit = document.getElementById("submit");
+
+    function showToast() {
+      toast.classList.add("show");
+      setTimeout(() => toast.classList.remove("show"), 1600);
+    }
+
+    function renderQuestion(item) {
+      chosen = -1;
+      revealed = false;
+      document.getElementById("quiz-kicker").textContent = item.kicker;
+      document.getElementById("quiz-title").textContent = item.title;
+      document.getElementById("stem").textContent = item.q;
+      opts.forEach((b, i) => {
+        b.textContent = item.o[i];
+        b.className = "opt";
+        b.disabled = false;
+      });
+      explain.hidden = true;
+      nextBtn.hidden = true;
+      toWrong.hidden = true;
+      submit.hidden = false;
+    }
+
+    opts.forEach((b) => {
+      b.addEventListener("click", () => {
+        if (revealed) return;
+        chosen = Number(b.dataset.i);
+        opts.forEach((x) => x.classList.toggle("on", x === b));
+      });
+    });
+
+    submit.addEventListener("click", () => {
+      if (chosen < 0) { showToast(); return; }
+      const item = isVariant ? variant : orig;
+      const ok = chosen === item.a;
+      revealed = true;
+      opts.forEach((b, i) => {
+        b.disabled = true;
+        b.classList.remove("on");
+        if (i === item.a) b.classList.add("ok");
+        if (i === chosen && !ok) b.classList.add("bad");
+      });
+      document.getElementById("result-tag").textContent = ok ? "对了" : "错了，已进错题本";
+      document.getElementById("explain-text").textContent = item.e;
+      document.getElementById("variant-hint").hidden = ok || isVariant;
+      explain.hidden = false;
+      submit.hidden = true;
+      toWrong.hidden = false;
+      if (!ok && !isVariant) {
+        wrongCount += 1;
+        document.getElementById("wrong-empty").hidden = true;
+        document.getElementById("wrong-item").hidden = false;
+        document.getElementById("wrong-tag").textContent = "洛必达法则 · 错 " + wrongCount + " 次";
+        document.getElementById("wrong-q").textContent = orig.q;
+        nextBtn.textContent = "做变式（不重复原题）";
+        nextBtn.hidden = false;
+      } else {
+        nextBtn.textContent = "下一题";
+        nextBtn.hidden = false;
+        if (ok && isVariant) {
+          retriedOk = true;
+          document.getElementById("retried").hidden = false;
+        }
+      }
+    });
+
+    nextBtn.addEventListener("click", () => {
+      if (!revealed) return;
+      const item = isVariant ? variant : orig;
+      const ok = chosen === item.a;
+      if (!ok && !isVariant) {
+        isVariant = true;
+        renderQuestion(variant);
+        return;
+      }
+      isVariant = false;
+      renderQuestion(orig);
+    });
+
+    document.getElementById("retry").addEventListener("click", () => {
+      isVariant = true;
+      renderQuestion(variant);
+      document.getElementById("phone-quiz").scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+
+    document.querySelectorAll("[data-go='quiz']").forEach((el) => {
+      el.addEventListener("click", () => {
+        document.getElementById("phone-quiz").scrollIntoView({ behavior: "smooth", block: "center" });
+      });
+      el.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") el.click();
+      });
+    });
+    document.getElementById("to-wrong").addEventListener("click", () => {
+      document.getElementById("phone-wrong").scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+    document.querySelectorAll("[data-jump]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const id = btn.dataset.jump === "wrong" ? "phone-wrong" : "phone-home";
+        document.getElementById(id).scrollIntoView({ behavior: "smooth", block: "center" });
+      });
+    });
+  </script>
+</body>
+</html>

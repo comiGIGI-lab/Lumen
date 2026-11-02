@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>卡在这题 · 边界与扩展原型</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500&family=ZCOOL+KuaiLe&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="./lumen-ink.css" />
+</head>
+<body>
+  <div class="page">
+    <header class="page-head">
+      <span class="stamp">EDGES · NOT THE CORE</span>
+      <h1>边界、空态、我的</h1>
+      <p class="lede">这些屏不是主路径，但投稿要拍到：判对不进本、空错题本怎么说话、做不到的事写在脸上。登录、云、讲一遍、今日一课、四色墙——这些屏里故意没有。</p>
+    </header>
+
+    <div class="board">
+      <section>
+        <p class="col-label">04 判对 · 不进错题本</p>
+        <div class="phone">
+          <div class="notch">这一题</div>
+          <div class="screen">
+            <p class="kicker">高等数学 · 极限的定义</p>
+            <h2 class="h-screen">先把这题判清楚</h2>
+            <p class="muted">演示档 · 本地判分 · 零网络</p>
+            <div class="paper-card" style="cursor:default">
+              <p class="q">lim(x→0) sin(3x)/x 的值为？</p>
+              <div class="opt">A　0</div>
+              <div class="opt">B　1</div>
+              <div class="opt ok">C　3　已判对</div>
+              <div class="opt">D　不存在</div>
+            </div>
+            <div class="explain" style="border-style:solid;border-color:var(--ink)">
+              <span class="tag" style="color:var(--ink);background:var(--ok-bg);border-color:var(--ink)">对了</span>
+              <p class="sub" style="margin-top:8px">由 lim(sin u)/u=1，令 u=3x，原式 = 3。</p>
+              <p class="muted">对了记入「已判对」。错题本不会出现这一条。</p>
+            </div>
+            <button class="btn btn-ink" type="button">下一题</button>
+            <button class="btn btn-glass" type="button">去错题本</button>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <p class="col-label">05 空态 · 教用户怎么验证闭环</p>
+        <div class="phone">
+          <div class="notch">错题本</div>
+          <div class="screen">
+            <p class="kicker">本机错题本</p>
+            <h2 class="h-screen">错过的题还在</h2>
+            <p class="sub">答错会进来。再练优先出变式。</p>
+            <div class="empty">
+              <svg width="64" height="64" viewBox="0 0 64 64" aria-hidden="true" style="display:block;margin:0 auto 12px">
+                <rect x="10" y="8" width="44" height="48" fill="#fff" stroke="#191919" stroke-width="2"/>
+                <line x1="18" y1="20" x2="46" y2="20" stroke="#E51520" stroke-width="2"/>
+                <line x1="18" y1="28" x2="40" y2="28" stroke="#191919" stroke-width="1.5"/>
+                <line x1="18" y1="36" x2="36" y2="36" stroke="#191919" stroke-width="1.5"/>
+                <circle cx="48" cy="48" r="9" fill="#FDECEE" stroke="#191919" stroke-width="2"/>
+                <text x="48" y="52" text-anchor="middle" font-size="11" fill="#E51520" font-family="ZCOOL KuaiLe,sans-serif">0</text>
+              </svg>
+              还没有错题。去「今晚这题」做一道，<b>故意选错</b>就能看见闭环——这不是失败，是产品要你验证的那一步。
+            </div>
+          </div>
+          <nav class="tabbar">
+            <button class="tab" type="button">今晚这题</button>
+            <button class="tab active" type="button">错题本</button>
+            <button class="tab" type="button">我的</button>
+          </nav>
+        </div>
+      </section>
+
+      <section>
+        <p class="col-label">06 我的 · 诚信 + 清空</p>
+        <div class="phone" id="phone-me">
+          <div class="notch">我的</div>
+          <div class="screen">
+            <p class="kicker">本机说明</p>
+            <h2 class="h-screen">卡在这题</h2>
+            <p class="sub">这是智识有方 LUMEN 的小程序端口：只做诊断闯关和错题回练。</p>
+            <div class="paper-card" style="cursor:default">
+              <div class="row"><span>错题</span><b id="n-wrong">1 条</b></div>
+              <div class="row"><span>已判对</span><b>1 题</b></div>
+            </div>
+            <div class="honesty">
+              <span class="tag">做不到的事，写在这里</span>
+              <p class="sub" style="margin-top:8px">没有「讲一遍」三栏（那是吐司 App）。没有「今天做一件事」（那是网页）。换手机数据会丢。题目不是实时 AI 出题。</p>
+            </div>
+            <button class="btn btn-glass" type="button" id="clear">清空错题本</button>
+            <div class="paper-card" id="modal" hidden style="border-color:var(--red)">
+              <p class="q">清空错题本？</p>
+              <p class="muted">只清错题，不清已判对的记录。不可恢复。</p>
+              <button class="btn btn-ink" type="button" id="confirm">确认清空</button>
+              <button class="btn btn-glass" type="button" id="cancel">再想想</button>
+            </div>
+          </div>
+          <nav class="tabbar">
+            <button class="tab" type="button">今晚这题</button>
+            <button class="tab" type="button">错题本</button>
+            <button class="tab active" type="button">我的</button>
+          </nav>
+        </div>
+      </section>
+    </div>
+
+    <div class="legend">
+      <div><b>对了怎么画。</b>不用系统绿大块。用墨线勾正确项 + 米底，避免「对绿错红」的题库套路，也避开四色掌握度墙。</div>
+      <div><b>空态怎么教。</b>不说「暂无数据」。直接告诉用户：故意选错才能验证产品。</div>
+      <div><b>清空怎么拦。</b>二次确认写在纸上，不跳系统原生也能看清文案。点确认后错题条数归零。</div>
+    </div>
+  </div>
+  <script>
+    const modal = document.getElementById("modal");
+    document.getElementById("clear").addEventListener("click", () => { modal.hidden = false; });
+    document.getElementById("cancel").addEventListener("click", () => { modal.hidden = true; });
+    document.getElementById("confirm").addEventListener("click", () => {
+      modal.hidden = true;
+      document.getElementById("n-wrong").textContent = "0 条";
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,13 @@
+<view class="wrap">
+  <view class="kicker">智识有方 LUMEN · 小程序端口</view>
+  <view class="h1">今晚卡在这题</view>
+  <view class="sub">不做学习计划，不开口讲一遍。选一门课，先判这一道。</view>
+  <view class="demo">题目是预先准备的演示档，不是此刻由 AI 出题。对错在这台手机上判定，数据留在本机。</view>
+
+  <view class="card" wx:for="{{courses}}" wx:key="id" bindtap="startCourse" data-id="{{item.id}}">
+    <view class="tag">{{item.n}} 题 · 含 {{item.variants}} 变式</view>
+    <view class="cname">{{item.name}}</view>
+    <view class="muted">{{item.blurb}}</view>
+    <view class="go">开始这题 ›</view>
+  </view>
+</view>

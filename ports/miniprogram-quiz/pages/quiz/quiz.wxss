@@ -1,0 +1,27 @@
+.q {
+  font-size: 32rpx;
+  font-weight: 500;
+  margin-bottom: 16rpx;
+}
+
+.opt {
+  border: 1rpx solid #E4DED5;
+  border-radius: 16rpx;
+  padding: 20rpx 24rpx;
+  margin-top: 16rpx;
+}
+
+.opt.on {
+  border-color: #E51520;
+  background: #FDECEE;
+}
+
+.opt.ok {
+  border-color: #10B981;
+  background: #ECFDF5;
+}
+
+.opt.bad {
+  border-color: #E51520;
+  background: #FDECEE;
+}

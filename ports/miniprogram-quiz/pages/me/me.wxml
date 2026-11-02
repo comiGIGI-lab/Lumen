@@ -1,0 +1,17 @@
+<view class="wrap">
+  <view class="kicker">本机说明</view>
+  <view class="h1">卡在这题</view>
+  <view class="sub">这是智识有方 LUMEN 的小程序端口：只做诊断闯关和错题回练。</view>
+
+  <view class="card">
+    <view class="row">错题 {{wrongN}} 条</view>
+    <view class="row">已判对 {{solvedN}} 题</view>
+  </view>
+
+  <view class="card">
+    <view class="tag">做不到的事，写在这里</view>
+    <view class="sub">没有「讲一遍」三栏（那是吐司 App）。没有「今天做一件事」（那是网页）。换手机数据会丢。题目不是实时 AI 出题。</view>
+  </view>
+
+  <view class="btn btn-ghost" bindtap="clearWrong">清空错题本</view>
+</view>

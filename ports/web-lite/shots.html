@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=390, initial-scale=1" />
+  <title>卡在这题 · 投稿截图</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500&family=ZCOOL+KuaiLe&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="./lumen-ink.css" />
+  <style>
+    html, body { margin: 0; background: #111; }
+    .shot {
+      width: 390px;
+      height: 844px;
+      margin: 0;
+      overflow: hidden;
+    }
+    .shot .phone {
+      min-height: 844px;
+      height: 844px;
+      border-radius: 0;
+      border: 0;
+      box-shadow: none;
+    }
+    .shot .screen { padding-bottom: 96px; overflow: hidden; }
+  </style>
+</head>
+<body>
+  <div class="shot" id="shot-home">
+    <div class="phone">
+      <div class="notch">卡在这题</div>
+      <div class="screen">
+        <p class="kicker">智识有方 LUMEN · 小程序端口</p>
+        <h2 class="h-screen">今晚卡在这题</h2>
+        <p class="sub">不做学习计划，不开口讲一遍。选一门课，先判这一道。</p>
+        <div class="honesty">题目是预先准备的演示档，不是此刻由 AI 出题。对错在这台手机上判定，数据留在本机。</div>
+        <article class="paper-card" style="cursor:default">
+          <span class="tag">6 题 · 含 3 变式</span>
+          <div class="cname">高等数学</div>
+          <p class="muted">今晚卡在极限、中值定理、洛必达？先判这一题。</p>
+          <div class="go">开始这题 →</div>
+        </article>
+        <article class="paper-card" style="cursor:default">
+          <span class="tag">6 题 · 含 3 变式</span>
+          <div class="cname">数据结构</div>
+          <p class="muted">链表、树、哈希卡住了？先做一道带知识点的题。</p>
+          <div class="go">开始这题 →</div>
+        </article>
+        <article class="paper-card" style="cursor:default">
+          <span class="tag">6 题 · 含 3 变式</span>
+          <div class="cname">大学英语</div>
+          <p class="muted">时态、从句、虚拟语气今晚卡壳？先判一题。</p>
+          <div class="go">开始这题 →</div>
+        </article>
+      </div>
+      <nav class="tabbar">
+        <button class="tab active" type="button">今晚这题</button>
+        <button class="tab" type="button">错题本</button>
+        <button class="tab" type="button">我的</button>
+      </nav>
+    </div>
+  </div>
+
+  <div class="shot" id="shot-quiz">
+    <div class="phone">
+      <div class="notch">这一题</div>
+      <div class="screen">
+        <p class="kicker">高等数学 · 洛必达法则</p>
+        <h2 class="h-screen">先把这题判清楚</h2>
+        <p class="muted">演示档 · 本地判分 · 零网络</p>
+        <div class="paper-card" style="cursor:default">
+          <p class="q">lim(x→0) (e^x−1−x)/x² 用洛必达，正确做法是？</p>
+          <button class="opt opt-bad" type="button">A　用一次就出结果</button>
+          <button class="opt opt-ok" type="button">B　需要连用两次</button>
+          <button class="opt" type="button">C　不能用洛必达</button>
+          <button class="opt" type="button">D　结果是 0</button>
+        </div>
+        <div class="explain">
+          <span class="tag">错了，已进错题本</span>
+          <p class="sub" style="margin-top:8px">第一次仍是 0/0，第二次得 1/2。</p>
+          <p class="muted">下一题会换成变式，不会再出刚错的原文。</p>
+        </div>
+        <button class="btn btn-ink" type="button">做变式（不重复原题）</button>
+        <button class="btn btn-glass" type="button">去错题本</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="shot" id="shot-wrong">
+    <div class="phone">
+      <div class="notch">错题本</div>
+      <div class="screen">
+        <p class="kicker">本机错题本</p>
+        <h2 class="h-screen">错过的题还在</h2>
+        <p class="sub">答错会进来。再练优先出变式，不会拿刚错的原文再糊你一次。</p>
+        <article class="paper-card" style="cursor:default">
+          <span class="tag">洛必达法则 · 错 1 次</span>
+          <p class="q" style="margin-top:8px">lim(x→0) (e^x−1−x)/x² 用洛必达，正确做法是？</p>
+          <div class="go">再练 →</div>
+        </article>
+      </div>
+      <nav class="tabbar">
+        <button class="tab" type="button">今晚这题</button>
+        <button class="tab active" type="button">错题本</button>
+        <button class="tab" type="button">我的</button>
+      </nav>
+    </div>
+  </div>
+</body>
+</html>

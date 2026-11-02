@@ -1,0 +1,3 @@
+.q { margin-top: 10rpx; font-size: 30rpx; }
+.go { margin-top: 12rpx; color: #E51520; }
+.empty { margin-top: 48rpx; color: #808080; }

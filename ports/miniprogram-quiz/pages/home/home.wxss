@@ -1,0 +1,11 @@
+.cname {
+  font-size: 34rpx;
+  font-weight: 500;
+  margin-top: 10rpx;
+}
+
+.go {
+  margin-top: 16rpx;
+  color: #E51520;
+  font-size: 26rpx;
+}
